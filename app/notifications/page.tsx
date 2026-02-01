@@ -37,7 +37,9 @@ const alertIcons: Record<string, typeof Truck> = {
   canny: Snowflake
 }
 
-export default function NotificationsPage() {
+import { Suspense } from "react"
+
+function NotificationsContent() {
   const searchParams = useSearchParams()
   const initialCamera = searchParams.get('camera')
 
@@ -446,5 +448,17 @@ export default function NotificationsPage() {
         </div>
       </div>
     </main>
+  )
+}
+
+export default function NotificationsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    }>
+      <NotificationsContent />
+    </Suspense>
   )
 }
