@@ -38,7 +38,7 @@ export default function DashboardPage() {
             <TabsContent value="dashboard" className="flex-1 min-h-0">
               <div className="w-full h-full rounded-lg border overflow-hidden bg-background shadow-sm">
                 <iframe
-                  src="http://superset-p8o400oc80g484gsws40ok4w.217.114.187.98.sslip.io/superset/dashboard/2?standalone=2&expand_filters=0"
+                  src="https://smnt.dabdi.online/superset/dashboard/2?standalone=2&expand_filters=0"
                   className="w-full h-full border-0"
                   title="Superset Dashboard"
                   loading="lazy"
