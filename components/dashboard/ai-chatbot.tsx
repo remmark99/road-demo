@@ -2,21 +2,23 @@
 
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
-import { useRef, useEffect, useState } from "react"
+import { useRef, useEffect, useState, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Bot, Send, User, Loader2 } from "lucide-react"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
+
+const welcomeMessage = {
+    id: "welcome",
+    role: "assistant" as const,
+    content: "Привет! Я AI-ассистент для анализа дорожной ситуации в Сургуте. Задайте мне вопрос о состоянии дорог, статистике или прогнозах.",
+}
 
 export function AIChatbot() {
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const [inputValue, setInputValue] = useState("")
-
-    const welcomeMessage = {
-        id: "welcome",
-        role: "assistant" as const,
-        content: "Привет! Я AI-ассистент для анализа дорожной ситуации в Сургуте. Задайте мне вопрос о состоянии дорог, статистике или прогнозах.",
-    }
 
     const { messages, sendMessage, status, error } = useChat({
         transport: new DefaultChatTransport({ api: "/api/chat" }),
@@ -24,7 +26,7 @@ export function AIChatbot() {
     console.log(error, status, messages);
 
     // Combine welcome message with chat messages
-    const allMessages = [welcomeMessage, ...messages]
+    const allMessages = useMemo(() => [welcomeMessage, ...messages], [messages])
 
     const isLoading = status === "streaming" || status === "submitted"
 
@@ -81,12 +83,16 @@ export function AIChatbot() {
                                         : "bg-muted"
                                         }`}
                                 >
-                                    <div className="text-sm whitespace-pre-wrap">
+                                    <div className="text-sm markdown-content">
                                         {"content" in message
-                                            ? message.content
-                                            : message.parts?.map((part: any, i: number) => {
+                                            ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                                            : message.parts?.map((part: { type: string; text?: string; toolName?: string }, i: number) => {
                                                 if (part.type === "text") {
-                                                    return <span key={i}>{part.text}</span>
+                                                    return (
+                                                        <ReactMarkdown key={i} remarkPlugins={[remarkGfm]}>
+                                                            {part.text}
+                                                        </ReactMarkdown>
+                                                    )
                                                 }
                                                 if (part.type === "tool-invocation") {
                                                     return (
