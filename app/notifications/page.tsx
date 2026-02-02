@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
-import { fetchAlerts, fetchAlertTypes, ALERT_TYPE_CONFIG } from "@/lib/api/alerts"
+import { fetchAlerts, fetchAlertTypes, ALERT_TYPE_CONFIG, MODULE_MAP } from "@/lib/api/alerts"
 import { fetchCameras } from "@/lib/api/cameras"
 import type { Alert, Camera } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -295,7 +295,7 @@ function NotificationsContent() {
                 <div className="col-span-2">Тип</div>
                 <div className="col-span-2">Камера</div>
                 <div className="col-span-4">Сообщение</div>
-                <div className="col-span-1">Severity</div>
+                <div className="col-span-1">Срочность</div>
                 <div className="col-span-1"></div>
               </div>
 
@@ -388,7 +388,7 @@ function NotificationsContent() {
                               </div>
                               <div>
                                 <div className="text-muted-foreground">Модуль</div>
-                                <div className="font-medium">{alert.module_name}</div>
+                                <div className="font-medium">{MODULE_MAP[alert.module_name]}</div>
                               </div>
                               <div>
                                 <div className="text-muted-foreground">Источник видео</div>

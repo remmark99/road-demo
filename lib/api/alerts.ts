@@ -95,3 +95,8 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         color: 'text-cyan-400 bg-cyan-500/20 border-cyan-500/30'
     }
 }
+
+export const MODULE_MAP: Record<string, string> = {
+    snowplow_detection: 'Модуль снегоуборочной техники',
+    snow_detection: 'Модуль заснеженности',
+}
