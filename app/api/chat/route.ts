@@ -104,7 +104,7 @@ export async function POST(req: Request) {
 У тебя есть доступ к инструментам для получения актуальных данных из базы данных.`,
         messages: await convertToModelMessages(messages),
         tools,
-        toolChoice: "none", // или 'auto', если хочешь включить вызовы
+        toolChoice: "auto", // или 'auto', если хочешь включить вызовы
         stopWhen: stepCountIs(10),
     });
 
