@@ -15,16 +15,43 @@ import { Bot, Send, User, Loader2, RefreshCw, Database, Search, BarChart, FileTe
 import { chatStorage, type ChatSession } from "@/lib/chat-storage"
 import { cn } from "@/lib/utils"
 
-const ALL_QUESTIONS = [
-    "У каких подрядчиков и по каким типам инцидентов зафиксированы наиболее длительные задержки реакции за год?",
-    "Какие категории дорожных проблем вызывали наибольшие сложности с оперативным реагированием в течение года?",
-    "В какие часы суток чаще всего нарушаются регламенты реагирования по различным типам инцидентов?",
-    "В какие дни недели наблюдается снижение дисциплины при обработке дорожных инцидентов?",
-    "Насколько эффективно спецтехника справлялась с устранением выявленных проблем в течение года?",
-    "Как работа спецтехника повлияла на реальное увеличение скорости движения транспорта за год?",
-    "Какие камеры имели наибольшие пробелы в данных за год и требуют технического обслуживания?",
-    "Как погодные условия влияли на долю нарушений регламента подрядными организациями в течение года?"
+// Маппинг вопросов к аналитическим инструментам MCP
+const QUESTIONS_WITH_TOOLS: Array<{ question: string; tool: string }> = [
+    { 
+        question: "У каких подрядчиков и по каким типам инцидентов зафиксированы наиболее длительные задержки реакции за год?",
+        tool: "analyze_reaction_tails"
+    },
+    { 
+        question: "Какие категории дорожных проблем вызывали наибольшие сложности с оперативным реагированием в течение года?",
+        tool: "rate_problem_categories"
+    },
+    { 
+        question: "В какие часы суток чаще всего нарушаются регламенты реагирования по различным типам инцидентов?",
+        tool: "analyze_hourly_violations"
+    },
+    { 
+        question: "В какие дни недели наблюдается снижение дисциплины при обработке дорожных инцидентов?",
+        tool: "analyze_contractor_discipline_weekly"
+    },
+    { 
+        question: "Насколько эффективно спецтехника справлялась с устранением выявленных проблем в течение года?",
+        tool: "analyze_machinery_efficiency"
+    },
+    { 
+        question: "Как работа спецтехники повлияла на реальное увеличение скорости движения транспорта за год?",
+        tool: "analyze_cleaning_impact_on_traffic"
+    },
+    { 
+        question: "Какие камеры имели наибольшие пробелы в данных за год и требуют технического обслуживания?",
+        tool: "monitor_camera_data_quality"
+    },
+    { 
+        question: "Как погодные условия влияли на долю нарушений регламента подрядными организациями в течение года?",
+        tool: "analyze_sla_weather_dependency"
+    }
 ];
+
+const ALL_QUESTIONS = QUESTIONS_WITH_TOOLS.map(q => q.question);
 
 const STATUS_STEPS = [
     { icon: Search, text: "Анализирую запрос..." },
@@ -424,7 +451,16 @@ export function AIChatbot() {
     const handleQuestionClick = async (question: string) => {
         if (isLoading) return;
         if (!currentSessionId) createNewChat();
-        await sendMessage({ text: question });
+        
+        // Находим соответствующий инструмент для этого вопроса
+        const questionWithTool = QUESTIONS_WITH_TOOLS.find(q => q.question === question);
+        
+        // Формируем сообщение с явной инструкцией какой инструмент использовать
+        const messageText = questionWithTool 
+            ? `[ИСПОЛЬЗУЙ: ${questionWithTool.tool}]\n\n${question}`
+            : question;
+        
+        await sendMessage({ text: messageText });
     };
 
     return (
