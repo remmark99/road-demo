@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { roadSegments } from "@/lib/mock-data"
@@ -107,9 +107,120 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
   const markersRef = useRef<maplibregl.Marker[]>([])
   const [isDark, setIsDark] = useState(true)
+  const lastThemeRef = useRef(isDark)
   const [showOffline, setShowOffline] = useState(false)
   const [cameras, setCameras] = useState<Camera[]>([])
   const [hoveredCamera, setHoveredCamera] = useState<Camera | null>(null)
+  const [mapLoaded, setMapLoaded] = useState(false)
+
+  const addRoadSegments = useCallback(() => {
+    if (!map.current) return
+
+    roadSegments.forEach(segment => {
+      const status = statusOverride?.[segment.id] ?? segment.currentStatus
+      const color = statusColors[status]
+
+      const sourceId = `road-${segment.id}`
+      const glowLayerId = `road-${segment.id}-glow`
+      const mainLayerId = `road-${segment.id}`
+
+      // Clean up first to prevent state conflicts
+      if (map.current!.getLayer(mainLayerId)) map.current!.removeLayer(mainLayerId)
+      if (map.current!.getLayer(glowLayerId)) map.current!.removeLayer(glowLayerId)
+      if (map.current!.getSource(sourceId)) map.current!.removeSource(sourceId)
+
+      map.current!.addSource(sourceId, {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          properties: { name: segment.name },
+          geometry: {
+            type: "LineString",
+            coordinates: segment.coordinates
+          }
+        }
+      })
+
+      // Background line (wider, for glow effect)
+      map.current!.addLayer({
+        id: glowLayerId,
+        type: "line",
+        source: sourceId,
+        layout: {
+          "line-join": "round",
+          "line-cap": "round"
+        },
+        paint: {
+          "line-color": color,
+          "line-width": 12,
+          "line-opacity": 0.3
+        }
+      })
+
+      // Main line
+      map.current!.addLayer({
+        id: mainLayerId,
+        type: "line",
+        source: sourceId,
+        layout: {
+          "line-join": "round",
+          "line-cap": "round"
+        },
+        paint: {
+          "line-color": color,
+          "line-width": 6
+        }
+      })
+    })
+  }, [statusOverride])
+
+  const addCameraMarkers = useCallback(() => {
+    if (!map.current) return
+
+    // Clear existing markers
+    markersRef.current.forEach(marker => marker.remove())
+    markersRef.current = []
+
+    const visibleCameras = cameras.filter(camera =>
+      camera.status === "online" || showOffline
+    )
+
+    visibleCameras.forEach(camera => {
+      const el = document.createElement("div")
+      el.className = "camera-marker"
+      el.innerHTML = `
+        <div class="relative cursor-pointer group">
+          <div class="w-10 h-10 rounded-full bg-background border-2 ${camera.status === "online" ? "border-primary" : "border-muted"
+        } flex items-center justify-center shadow-lg transition-transform group-hover:scale-110">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${camera.status === "online" ? "text-primary" : "text-muted"
+        }">
+              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
+              <circle cx="12" cy="13" r="3"/>
+            </svg>
+          </div>
+          ${camera.status === "online" ? '<div class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-road-clean animate-pulse"></div>' : ''}
+        </div>
+      `
+
+      el.addEventListener("click", () => setSelectedCamera(camera))
+      el.addEventListener("mouseenter", () => setHoveredCamera(camera))
+      el.addEventListener("mouseleave", () => setHoveredCamera(null))
+
+      const marker = new maplibregl.Marker({ element: el })
+        .setLngLat([camera.lng, camera.lat])
+        .setPopup(
+          new maplibregl.Popup({ offset: 25, closeButton: false }).setHTML(`
+            <div class="p-2 text-sm">
+              <div class="font-semibold">${camera.name}</div>
+              <div class="text-muted-foreground">${camera.description}</div>
+            </div>
+          `)
+        )
+        .addTo(map.current!)
+
+      markersRef.current.push(marker)
+    })
+  }, [cameras, showOffline])
 
   // Fetch cameras from Supabase
   useEffect(() => {
@@ -136,20 +247,17 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
 
   // Update map style when theme changes
   useEffect(() => {
-    if (!map.current) return
+    if (!map.current || !mapLoaded) return
+    if (lastThemeRef.current === isDark) return
 
-    const center = map.current.getCenter()
-    const zoom = map.current.getZoom()
-
+    lastThemeRef.current = isDark
     map.current.setStyle(getMapStyle(isDark))
 
     map.current.once("style.load", () => {
-      map.current?.setCenter(center)
-      map.current?.setZoom(zoom)
       addRoadSegments()
       addCameraMarkers()
     })
-  }, [isDark])
+  }, [isDark, addRoadSegments, addCameraMarkers, mapLoaded])
 
   // Initialize map
   useEffect(() => {
@@ -167,7 +275,9 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
     map.current.addControl(new maplibregl.NavigationControl(), "top-right")
 
     map.current.on("load", () => {
+      setMapLoaded(true)
       addRoadSegments()
+      addCameraMarkers()
     })
 
     return () => {
@@ -175,13 +285,13 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
       map.current?.remove()
       map.current = null
     }
-  }, [])
+  }, [addRoadSegments, addCameraMarkers])
 
   // Add camera markers when cameras load or showOffline changes
   useEffect(() => {
-    if (!map.current?.isStyleLoaded() || cameras.length === 0) return
+    if (!mapLoaded || cameras.length === 0) return
     addCameraMarkers()
-  }, [cameras, showOffline])
+  }, [mapLoaded, cameras, showOffline, addCameraMarkers])
 
   // Update/show FOV when hovering
   useEffect(() => {
@@ -190,13 +300,20 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
     const sourceId = "camera-fov"
     const layerId = "camera-fov-layer"
 
-    // Remove existing layer/source
-    if (map.current.getLayer(layerId)) {
-      map.current.removeLayer(layerId)
+    const removeFov = () => {
+      if (map.current?.getLayer(`${layerId}-outline`)) {
+        map.current.removeLayer(`${layerId}-outline`)
+      }
+      if (map.current?.getLayer(layerId)) {
+        map.current.removeLayer(layerId)
+      }
+      if (map.current?.getSource(sourceId)) {
+        map.current.removeSource(sourceId)
+      }
     }
-    if (map.current.getSource(sourceId)) {
-      map.current.removeSource(sourceId)
-    }
+
+    // Always clean up existing layers/sources
+    removeFov()
 
     if (!hoveredCamera) return
 
@@ -243,15 +360,13 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
     })
 
     return () => {
-      if (map.current?.getLayer(`${layerId}-outline`)) {
-        map.current.removeLayer(`${layerId}-outline`)
-      }
+      removeFov()
     }
   }, [hoveredCamera])
 
   // Update road colors when statusOverride changes
   useEffect(() => {
-    if (!map.current?.isStyleLoaded()) return
+    if (!map.current || !mapLoaded) return
 
     roadSegments.forEach(segment => {
       const status = statusOverride?.[segment.id] ?? segment.currentStatus
@@ -261,109 +376,7 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
         map.current.setPaintProperty(`road-${segment.id}`, "line-color", color)
       }
     })
-  }, [statusOverride])
-
-  function addRoadSegments() {
-    if (!map.current) return
-
-    roadSegments.forEach(segment => {
-      const status = statusOverride?.[segment.id] ?? segment.currentStatus
-      const color = statusColors[status]
-
-      if (map.current!.getSource(`road-${segment.id}`)) return
-
-      map.current!.addSource(`road-${segment.id}`, {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          properties: { name: segment.name },
-          geometry: {
-            type: "LineString",
-            coordinates: segment.coordinates
-          }
-        }
-      })
-
-      // Background line (wider, for glow effect)
-      map.current!.addLayer({
-        id: `road-${segment.id}-glow`,
-        type: "line",
-        source: `road-${segment.id}`,
-        layout: {
-          "line-join": "round",
-          "line-cap": "round"
-        },
-        paint: {
-          "line-color": color,
-          "line-width": 12,
-          "line-opacity": 0.3
-        }
-      })
-
-      // Main line
-      map.current!.addLayer({
-        id: `road-${segment.id}`,
-        type: "line",
-        source: `road-${segment.id}`,
-        layout: {
-          "line-join": "round",
-          "line-cap": "round"
-        },
-        paint: {
-          "line-color": color,
-          "line-width": 6
-        }
-      })
-    })
-  }
-
-  function addCameraMarkers() {
-    if (!map.current) return
-
-    // Clear existing markers
-    markersRef.current.forEach(marker => marker.remove())
-    markersRef.current = []
-
-    const visibleCameras = cameras.filter(camera =>
-      camera.status === "online" || showOffline
-    )
-
-    visibleCameras.forEach(camera => {
-      const el = document.createElement("div")
-      el.className = "camera-marker"
-      el.innerHTML = `
-        <div class="relative cursor-pointer group">
-          <div class="w-10 h-10 rounded-full bg-background border-2 ${camera.status === "online" ? "border-primary" : "border-muted"
-        } flex items-center justify-center shadow-lg transition-transform group-hover:scale-110">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${camera.status === "online" ? "text-primary" : "text-muted"
-        }">
-              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
-              <circle cx="12" cy="13" r="3"/>
-            </svg>
-          </div>
-          ${camera.status === "online" ? '<div class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-road-clean animate-pulse"></div>' : ''}
-        </div>
-      `
-
-      el.addEventListener("click", () => setSelectedCamera(camera))
-      el.addEventListener("mouseenter", () => setHoveredCamera(camera))
-      el.addEventListener("mouseleave", () => setHoveredCamera(null))
-
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([camera.lng, camera.lat])
-        .setPopup(
-          new maplibregl.Popup({ offset: 25, closeButton: false }).setHTML(`
-            <div class="p-2 text-sm">
-              <div class="font-semibold">${camera.name}</div>
-              <div class="text-muted-foreground">${camera.description}</div>
-            </div>
-          `)
-        )
-        .addTo(map.current!)
-
-      markersRef.current.push(marker)
-    })
-  }
+  }, [statusOverride, mapLoaded])
 
   return (
     <>
@@ -401,19 +414,6 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
         camera={selectedCamera}
         onClose={() => setSelectedCamera(null)}
       />
-
-      <style jsx global>{`
-        .maplibregl-popup-content {
-          background: hsl(var(--card));
-          color: hsl(var(--card-foreground));
-          border: 1px solid hsl(var(--border));
-          border-radius: 0.5rem;
-          padding: 0;
-        }
-        .maplibregl-popup-tip {
-          border-top-color: hsl(var(--card)) !important;
-        }
-      `}</style>
     </>
   )
 }
