@@ -2,13 +2,16 @@
 
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
-import { useRef, useEffect, useState, useCallback } from "react"
+import { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
+import jsPDF from "jspdf"
+import * as htmlToImage from 'html-to-image'
+import { imageUrlToBase64 } from "@/lib/pdf-utils"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Bot, Send, User, Loader2, RefreshCw, Database, Search, BarChart, FileText, Download, Maximize2, Plus, MessageSquare, Trash2, History, FileDown } from "lucide-react"
+import { Bot, Send, User, Loader2, RefreshCw, Database, Search, BarChart, FileText, Download, Maximize2, Plus, MessageSquare, Trash2, History, FileDown, ChevronDown, ChevronUp } from "lucide-react"
 import { chatStorage, type ChatSession } from "@/lib/chat-storage"
 import { cn } from "@/lib/utils"
 
@@ -18,7 +21,7 @@ const ALL_QUESTIONS = [
     "В какие часы суток чаще всего нарушаются регламенты реагирования по различным типам инцидентов?",
     "В какие дни недели наблюдается снижение дисциплины при обработке дорожных инцидентов?",
     "Насколько эффективно спецтехника справлялась с устранением выявленных проблем в течение года?",
-    "Как работа спецтехники повлияла на реальное увеличение скорости движения транспорта за год?",
+    "Как работа спецтехника повлияла на реальное увеличение скорости движения транспорта за год?",
     "Какие камеры имели наибольшие пробелы в данных за год и требуют технического обслуживания?",
     "Как погодные условия влияли на долю нарушений регламента подрядными организациями в течение года?"
 ];
@@ -32,21 +35,44 @@ const STATUS_STEPS = [
 
 export function AIChatbot() {
     const messagesEndRef = useRef<HTMLDivElement>(null)
+    const chatRef = useRef<HTMLDivElement>(null)
     const [inputValue, setInputValue] = useState("")
     const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([])
     const [statusIndex, setStatusIndex] = useState(0)
     const [sessions, setSessions] = useState<ChatSession[]>([])
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+    const [isExporting, setIsExporting] = useState(false)
+    const [isQuestionsCollapsed, setIsQuestionsCollapsed] = useState(false)
+
+    // Получаем initialMessages из localStorage при смене сессии
+    const getInitialMessages = useCallback(() => {
+        if (!currentSessionId) return [];
+        const sessions = chatStorage.getSessions();
+        const session = sessions.find(s => s.id === currentSessionId);
+        return session?.messages || [];
+    }, [currentSessionId]);
 
     const { messages, sendMessage, status, error, setMessages } = useChat({
+        id: currentSessionId || 'default',
         transport: new DefaultChatTransport({ api: "/api/chat" }),
-        initialMessages: [],
+        initialMessages: getInitialMessages(),
     })
 
     // Load sessions on mount
     useEffect(() => {
         setSessions(chatStorage.getSessions());
     }, []);
+
+    // Загружаем сообщения при смене сессии
+    useEffect(() => {
+        if (currentSessionId) {
+            const sessions = chatStorage.getSessions();
+            const session = sessions.find(s => s.id === currentSessionId);
+            if (session && session.messages.length > 0) {
+                setMessages(session.messages);
+            }
+        }
+    }, [currentSessionId, setMessages]);
 
     // Save current session when messages change
     useEffect(() => {
@@ -105,6 +131,179 @@ export function AIChatbot() {
         URL.revokeObjectURL(url);
     };
 
+    const downloadPDF = async () => {
+        if (messages.length === 0) return;
+        
+        try {
+            setIsExporting(true);
+            const pdf = new jsPDF('p', 'mm', 'a4');
+
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+            const margin = 8;
+            const contentWidth = pdfWidth - (margin * 2);
+            let currentY = margin;
+
+            // Temporary container to render messages one by one
+            const tempContainer = document.createElement('div');
+            tempContainer.style.width = `800px`; // Wider for better text flow
+            tempContainer.style.position = 'absolute';
+            tempContainer.style.left = '-9999px';
+            tempContainer.style.background = 'white';
+            tempContainer.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+            document.body.appendChild(tempContainer);
+
+            // Render header as HTML too (to support Cyrillic)
+            const headerDiv = document.createElement('div');
+            headerDiv.style.padding = '12px 16px';
+            headerDiv.style.background = '#f8fafc';
+            headerDiv.style.borderBottom = '1px solid #e2e8f0';
+            headerDiv.innerHTML = `
+                <h1 style="font-size: 18px; font-weight: bold; color: #1e293b; margin: 0 0 4px 0;">
+                    История анализа дорожной ситуации
+                </h1>
+                <p style="font-size: 10px; color: #64748b; margin: 0;">
+                    Сессия: ${currentSessionId || 'новая'} | Дата: ${new Date().toLocaleString('ru-RU')}
+                </p>
+            `;
+            tempContainer.appendChild(headerDiv);
+
+            // Capture header
+            const headerCanvas = await htmlToImage.toCanvas(headerDiv, {
+                backgroundColor: '#f8fafc',
+                pixelRatio: 2,
+            });
+            const headerImgData = headerCanvas.toDataURL('image/jpeg', 0.9);
+            const headerHeight = (headerCanvas.height * contentWidth) / headerCanvas.width;
+            pdf.addImage(headerImgData, 'JPEG', margin, currentY, contentWidth, headerHeight);
+            currentY += headerHeight + 2;
+            tempContainer.removeChild(headerDiv);
+
+            // Process each message
+            for (const message of allMessages) {
+                // Skip empty messages
+                const contentText = "content" in message 
+                    ? message.content 
+                    : (message as any).parts?.filter((p: any) => p.type === 'text').map((p: any) => p.text || '').join('\n');
+                
+                if (!contentText || !contentText.trim()) continue;
+
+                // Create a temporary div for this message
+                const msgDiv = document.createElement('div');
+                msgDiv.style.padding = '10px 12px';
+                msgDiv.style.marginBottom = '4px';
+                msgDiv.style.borderRadius = '6px';
+                msgDiv.style.background = message.role === 'user' ? '#eff6ff' : '#f9fafb';
+                msgDiv.style.border = message.role === 'user' ? '1px solid #bfdbfe' : '1px solid #e5e7eb';
+                msgDiv.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+                msgDiv.style.fontSize = '12px';
+                msgDiv.style.lineHeight = '1.5';
+                msgDiv.style.color = '#1f2937';
+                
+                // Role label
+                const roleLabel = document.createElement('div');
+                roleLabel.style.fontWeight = '600';
+                roleLabel.style.marginBottom = '4px';
+                roleLabel.style.fontSize = '10px';
+                roleLabel.style.textTransform = 'uppercase';
+                roleLabel.style.letterSpacing = '0.5px';
+                roleLabel.style.color = message.role === 'user' ? '#2563eb' : '#6b7280';
+                roleLabel.innerText = message.role === 'user' ? 'Пользователь' : 'AI-ассистент';
+                msgDiv.appendChild(roleLabel);
+
+                // Content with images
+                const contentDiv = document.createElement('div');
+                const MCP_BASE_URL = process.env.NEXT_PUBLIC_MCP_SERVER_URL || "";
+                const parts = contentText.split(/(\/plots\/plot_\d+\.png)/g);
+                
+                // Pre-load images
+                const imagePromises: Promise<void>[] = [];
+                
+                for (const part of parts) {
+                    if (part.match(/\/plots\/plot_\d+\.png/)) {
+                        const imgContainer = document.createElement('div');
+                        imgContainer.style.margin = '8px 0';
+                        imgContainer.style.textAlign = 'center';
+                        
+                        const img = document.createElement('img');
+                        img.src = `${MCP_BASE_URL}${part}`;
+                        img.style.maxWidth = '100%';
+                        img.style.height = 'auto';
+                        img.style.borderRadius = '8px';
+                        img.style.border = '1px solid #e5e7eb';
+                        img.crossOrigin = 'anonymous';
+                        
+                        // Wait for image to load
+                        const loadPromise = new Promise<void>((resolve) => {
+                            img.onload = () => resolve();
+                            img.onerror = () => resolve(); // Continue even if image fails
+                        });
+                        imagePromises.push(loadPromise);
+                        
+                        imgContainer.appendChild(img);
+                        contentDiv.appendChild(imgContainer);
+                    } else if (part.trim()) {
+                        const textBlock = document.createElement('div');
+                        textBlock.style.whiteSpace = 'pre-wrap';
+                        textBlock.style.wordBreak = 'break-word';
+                        textBlock.innerText = part.trim();
+                        contentDiv.appendChild(textBlock);
+                    }
+                }
+                
+                msgDiv.appendChild(contentDiv);
+                tempContainer.appendChild(msgDiv);
+
+                // Wait for all images in this message to load
+                await Promise.all(imagePromises);
+                
+                // Small delay for rendering
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                // Capture this message
+                const canvas = await htmlToImage.toCanvas(msgDiv, {
+                    backgroundColor: '#ffffff',
+                    pixelRatio: 2,
+                });
+
+                const msgImgData = canvas.toDataURL('image/jpeg', 0.85);
+                const msgImgWidth = contentWidth;
+                const msgImgHeight = (canvas.height * msgImgWidth) / canvas.width;
+
+                // Check if we need a new page
+                if (currentY + msgImgHeight > pdfHeight - margin) {
+                    pdf.addPage();
+                    currentY = margin;
+                }
+
+                // If message is taller than page, we need to split it
+                if (msgImgHeight > pdfHeight - (margin * 2)) {
+                    // For very tall messages, just add it and let it overflow to next pages
+                    pdf.addImage(msgImgData, 'JPEG', margin, currentY, msgImgWidth, msgImgHeight);
+                    const pagesNeeded = Math.ceil(msgImgHeight / (pdfHeight - margin * 2));
+                    for (let i = 1; i < pagesNeeded; i++) {
+                        pdf.addPage();
+                    }
+                    currentY = margin + (msgImgHeight % (pdfHeight - margin * 2));
+                    if (currentY < margin + 10) currentY = margin;
+                } else {
+                pdf.addImage(msgImgData, 'JPEG', margin, currentY, msgImgWidth, msgImgHeight);
+                currentY += msgImgHeight + 2;
+                }
+
+                // Clean up
+                tempContainer.removeChild(msgDiv);
+            }
+
+            document.body.removeChild(tempContainer);
+            pdf.save(`chat-${currentSessionId || 'export'}.pdf`);
+        } catch (err) {
+            console.error('PDF Export error:', err);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
     const deleteSession = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
         chatStorage.deleteSession(id);
@@ -143,42 +342,59 @@ export function AIChatbot() {
         content: "Привет! Я AI-ассистент для анализа дорожной ситуации в Сургуте. Задайте мне вопрос о состоянии дорог, статистике или прогнозах.",
     }
 
-    console.log(error, status, messages);
-
     const renderContentWithImages = (text: string) => {
+        const MCP_BASE_URL = process.env.NEXT_PUBLIC_MCP_SERVER_URL || "";
         const parts = text.split(/(\/plots\/plot_\d+\.png)/g);
+        
         return parts.map((part, i) => {
             if (part.match(/\/plots\/plot_\d+\.png/)) {
+                const fullUrl = `${MCP_BASE_URL}${part}`;
                 return (
                     <div key={i} className="my-2 relative group">
                         <img 
-                            src={part} 
+                            src={fullUrl} 
                             alt="Road Analysis Chart" 
                             className="rounded-lg border bg-white max-w-full h-auto shadow-sm"
+                            crossOrigin="anonymous"
                         />
                         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <Button 
                                 variant="secondary" 
                                 size="icon" 
                                 className="h-8 w-8 bg-white/90 backdrop-blur"
-                                onClick={() => window.open(part, '_blank')}
+                                onClick={() => window.open(fullUrl, '_blank')}
                             >
                                 <Maximize2 className="h-4 w-4" />
                             </Button>
-                            <a href={part} download={`chart_${Date.now()}.png`}>
-                                <Button 
-                                    variant="secondary" 
-                                    size="icon" 
-                                    className="h-8 w-8 bg-white/90 backdrop-blur"
-                                >
-                                    <Download className="h-4 w-4" />
-                                </Button>
-                            </a>
+                            <Button 
+                                variant="secondary" 
+                                size="icon" 
+                                className="h-8 w-8 bg-white/90 backdrop-blur"
+                                onClick={async () => {
+                                    try {
+                                        const response = await fetch(fullUrl);
+                                        const blob = await response.blob();
+                                        const blobUrl = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = blobUrl;
+                                        a.download = `chart_${Date.now()}.png`;
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        document.body.removeChild(a);
+                                        URL.revokeObjectURL(blobUrl);
+                                    } catch (err) {
+                                        console.error('Download failed:', err);
+                                        window.open(fullUrl, '_blank');
+                                    }
+                                }}
+                            >
+                                <Download className="h-4 w-4" />
+                            </Button>
                         </div>
                     </div>
                 );
             }
-            return part;
+            return <ReactMarkdown key={i} remarkPlugins={[remarkGfm]}>{part}</ReactMarkdown>;
         });
     };
 
@@ -214,7 +430,7 @@ export function AIChatbot() {
     return (
         <div className="flex gap-4 h-[calc(100vh-280px)] min-h-[600px]">
             {/* Sidebar */}
-            <Card className="w-64 flex flex-col shrink-0 bg-muted/30">
+            <Card className="w-64 flex flex-col shrink-0 bg-muted/30 overflow-hidden">
                 <CardHeader className="p-4 border-b">
                     <Button 
                         onClick={createNewChat} 
@@ -225,8 +441,8 @@ export function AIChatbot() {
                         Новый чат
                     </Button>
                 </CardHeader>
-                <ScrollArea className="flex-1">
-                    <div className="p-2 space-y-1">
+                <ScrollArea className="flex-1 w-full">
+                    <div className="p-2 space-y-1 w-full overflow-hidden">
                         {sessions.length === 0 && (
                             <div className="text-center py-8 text-muted-foreground text-xs italic">
                                 Нет истории чатов
@@ -243,9 +459,9 @@ export function AIChatbot() {
                                         : "hover:bg-muted"
                                 )}
                             >
-                                <div className="flex items-center gap-2 overflow-hidden">
-                                    <MessageSquare className="h-3.5 w-3.5 shrink-0" />
-                                    <span className="truncate">{session.title}</span>
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <MessageSquare className="h-3.5 w-3.5 shrink-0 flex-shrink-0" />
+                                    <span className="truncate text-ellipsis overflow-hidden whitespace-nowrap max-w-[140px]">{session.title}</span>
                                 </div>
                                 <Button
                                     variant="ghost"
@@ -281,22 +497,34 @@ export function AIChatbot() {
                     </div>
                     <div className="flex items-center gap-2">
                         {messages.length > 0 && (
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="h-8 gap-2"
-                                onClick={downloadHistory}
-                            >
-                                <FileDown className="h-4 w-4" />
-                                <span className="hidden sm:inline">История</span>
-                            </Button>
+                            <>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="h-8 gap-2"
+                                    onClick={downloadPDF}
+                                    disabled={isExporting}
+                                >
+                                    {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                                    <span className="hidden sm:inline">PDF</span>
+                                </Button>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    className="h-8 gap-2 text-muted-foreground"
+                                    onClick={downloadHistory}
+                                >
+                                    <FileText className="h-4 w-4" />
+                                    <span className="hidden sm:inline">TXT</span>
+                                </Button>
+                            </>
                         )}
                     </div>
                 </CardHeader>
 
                 <CardContent className="flex-1 flex flex-col p-0 min-h-0">
                 <ScrollArea className="flex-1 p-4 min-h-0">
-                    <div className="space-y-4">
+                    <div ref={chatRef} className="space-y-4 bg-background p-4">
                         {allMessages.map((message) => {
                             const hasContent = ("content" in message && message.content.trim().length > 0) || 
                                               (message.parts && message.parts.some((p: any) => 
@@ -332,13 +560,13 @@ export function AIChatbot() {
                                 >
                                     <div className="text-sm markdown-content">
                                         {"content" in message
-                                            ? <ReactMarkdown remarkPlugins={[remarkGfm]}>{renderContentWithImages(message.content)}</ReactMarkdown>
+                                            ? renderContentWithImages(message.content)
                                             : message.parts?.map((part: { type: string; text?: string; toolName?: string }, i: number) => {
                                                 if (part.type === "text") {
                                                     return (
-                                                        <ReactMarkdown key={i} remarkPlugins={[remarkGfm]}>
-                                                            {renderContentWithImages(part.text)}
-                                                        </ReactMarkdown>
+                                                        <div key={i}>
+                                                            {renderContentWithImages(part.text || "")}
+                                                        </div>
                                                     )
                                                 }
                                                 if (part.type === "tool-invocation") {
@@ -395,31 +623,48 @@ export function AIChatbot() {
                     </div>
                 </ScrollArea>
 
-                <div className="p-4 border-t space-y-4 bg-muted/20">
-                    <div className="flex items-center justify-between">
+                <div className="p-4 border-t bg-muted/20">
+                    <div 
+                        className="flex items-center justify-between cursor-pointer"
+                        onClick={() => setIsQuestionsCollapsed(!isQuestionsCollapsed)}
+                    >
                         <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Предложенные вопросы</span>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6"
-                            onClick={refreshQuestions}
-                            disabled={isLoading}
-                        >
-                            <RefreshCw className={`h-3 w-3 ${isLoading ? 'opacity-50' : ''}`} />
-                        </Button>
-                    </div>
-                    <div className="grid gap-2">
-                        {suggestedQuestions.map((q, i) => (
-                            <button
-                                key={i}
-                                onClick={() => handleQuestionClick(q)}
+                        <div className="flex items-center gap-1">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    refreshQuestions();
+                                }}
                                 disabled={isLoading}
-                                className="text-left text-xs p-2 rounded-lg border bg-background hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                                {q}
-                            </button>
-                        ))}
+                                <RefreshCw className={`h-3 w-3 ${isLoading ? 'opacity-50' : ''}`} />
+                            </Button>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                            >
+                                {isQuestionsCollapsed ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                            </Button>
+                        </div>
                     </div>
+                    {!isQuestionsCollapsed && (
+                        <div className="grid gap-2 mt-3">
+                            {suggestedQuestions.map((q, i) => (
+                                <button
+                                    key={i}
+                                    onClick={() => handleQuestionClick(q)}
+                                    disabled={isLoading}
+                                    className="text-left text-xs p-2 rounded-lg border bg-background hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {q}
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
                 <form onSubmit={(e) => {
