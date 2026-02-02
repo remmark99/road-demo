@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Navigation } from "@/components/navigation"
 import { AIChatbot } from "@/components/dashboard/ai-chatbot"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { BarChart3, Bot, LayoutDashboard, Truck, AlertTriangle, TrendingUp } from "lucide-react"
+import { BarChart3, Bot, Activity, Grid3X3, Users, CloudRain, Building2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
@@ -13,41 +13,46 @@ type DashboardView = "general" | "cleaning" | "incidents" | "predictions"
 const DASHBOARDS = [
   {
     id: "general" as const,
-    label: "Общая статистика",
-    icon: LayoutDashboard,
-    url: "https://smnt.dabdi.online/superset/dashboard/2?standalone=2&expand_filters=0"
+    label: "Текущее состояние",
+    icon: Activity,
+    url: "https://smnt.dabdi.online/superset/dashboard/3?standalone=2&expand_filters=0"
   },
   {
     id: "cleaning" as const,
-    label: "Эффективность уборки",
-    icon: Truck,
-    url: "https://smnt.dabdi.online/superset/dashboard/2?standalone=2&expand_filters=0"
+    label: "Матрица эффективности",
+    icon: Grid3X3,
+    url: "https://smnt.dabdi.online/superset/dashboard/4?standalone=2&expand_filters=0"
   },
   {
     id: "incidents" as const,
-    label: "Инциденты",
-    icon: AlertTriangle,
-    url: "https://smnt.dabdi.online/superset/dashboard/2?standalone=2&expand_filters=0"
+    label: "Подрядчики",
+    icon: Users,
+    url: "https://smnt.dabdi.online/superset/dashboard/5?standalone=2&expand_filters=0"
   },
   {
     id: "predictions" as const,
-    label: "Прогнозы",
-    icon: TrendingUp,
-    url: "https://smnt.dabdi.online/superset/dashboard/2?standalone=2&expand_filters=0"
+    label: "Влияние осадков",
+    icon: CloudRain,
+    url: "https://smnt.dabdi.online/superset/dashboard/6?standalone=2&expand_filters=0"
+  },
+  {
+    id: "city" as const,
+    label: "Город",
+    icon: Building2,
+    url: "https://smnt.dabdi.online/superset/dashboard/7?standalone=2&expand_filters=0"
   }
 ]
 
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<DashboardView>("general")
 
-  const currentDashboard = DASHBOARDS.find(d => d.id === activeView)
 
   return (
     <main className="h-screen w-full bg-background flex flex-col">
       <Navigation />
 
       <div className="flex-1 pt-14 overflow-hidden">
-        <div className="h-full max-w-7xl mx-auto p-6 flex flex-col">
+        <div className="h-full w-full px-4 md:px-8 py-6 flex flex-col">
           <div className="mb-6 flex-none">
             <h1 className="text-2xl font-semibold flex items-center gap-2">
               <BarChart3 className="h-6 w-6 text-primary" />
@@ -70,9 +75,9 @@ export default function DashboardPage() {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="dashboard" className="flex-1 min-h-0 flex gap-6">
+            <TabsContent value="dashboard" className="flex-1 min-h-0 flex flex-col md:flex-row gap-6">
               {/* Dashboard Sidebar */}
-              <div className="w-64 flex-shrink-0 flex flex-col gap-2">
+              <div className="w-full md:w-64 flex-shrink-0 flex md:flex-col gap-2 overflow-x-auto md:overflow-y-auto pb-2 md:pb-0">
                 {DASHBOARDS.map((dashboard) => (
                   <Button
                     key={dashboard.id}
