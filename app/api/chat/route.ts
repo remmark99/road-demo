@@ -1,5 +1,5 @@
 import { openai } from "@ai-sdk/openai"
-import { convertToModelMessages, streamText, UIMessage } from "ai"
+import { convertToModelMessages, streamText, UIMessage, stepCountIs, jsonSchema } from "ai"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 
@@ -15,7 +15,13 @@ async function connectMCP(): Promise<Client | null> {
     }
 
     try {
-        const transport = new SSEClientTransport(new URL(MCP_SERVER_URL))
+        const transport = new SSEClientTransport(new URL(MCP_SERVER_URL), {
+            requestInit: {
+                headers: {
+                    Authorization: `Bearer my_secure_token_123`,
+                },
+            }
+        })
         mcpClient = new Client(
             { name: "surgut-roads-client", version: "1.0.0" },
             { capabilities: {} }
@@ -32,21 +38,61 @@ async function connectMCP(): Promise<Client | null> {
 }
 
 export async function POST(req: Request) {
-    const { messages }: { messages: UIMessage[] } = await req.json()
+    const { messages }: { messages: UIMessage[] } = await req.json();
 
-    // Try to connect to MCP server
-    const client = await connectMCP()
+    const client = await connectMCP();
 
-    // Get tools from MCP if connected
-    let toolsDescription = ""
+    let tools: Record<string, any> = {};
+
     if (client) {
         try {
-            const { tools } = await client.listTools()
-            if (tools.length > 0) {
-                toolsDescription = `\n\nУ тебя есть доступ к следующим инструментам для получения данных:\n${tools.map(t => `- ${t.name}: ${t.description}`).join("\n")}\n\nЧтобы использовать инструмент, ответь в формате:\n[TOOL_CALL: имя_инструмента]\n{параметры в JSON}\n[/TOOL_CALL]`
+            const { tools: mcpTools } = await client.listTools();
+
+            for (const mcpTool of mcpTools) {
+                const name = mcpTool.name;
+                const description = mcpTool.description || "";
+
+                // Берём inputSchema, если есть, иначе — пустой объект
+                const schema = mcpTool.inputSchema;
+
+                let jsonSchemaProps;
+                let jsonSchemaRequired;
+
+                if (!schema || schema.type !== "object") {
+                    // Если schema нет или не object, считаем, что инструмент не принимает параметров
+                    jsonSchemaProps = {};
+                    jsonSchemaRequired = [];
+                    console.warn(`[tools] Invalid schema for tool '${name}': using empty object schema`, schema);
+                } else {
+                    jsonSchemaProps = schema.properties || {};
+                    jsonSchemaRequired = Array.isArray(schema.required) ? schema.required : [];
+                }
+
+                // Гарантированно передаём в jsonSchema валидный объект
+                tools[name] = {
+                    description,
+                    inputSchema: jsonSchema({
+                        type: "object",
+                        properties: jsonSchemaProps,
+                        required: jsonSchemaRequired,
+                    }),
+                    execute: async (args: any) => {
+                        console.log(`Executing tool ${name} with args:`, args);
+                        try {
+                            const result = await client.callTool({
+                                name,
+                                arguments: args,
+                            });
+                            return result;
+                        } catch (error) {
+                            console.error(`Error calling tool ${name}:`, error);
+                            throw error;
+                        }
+                    },
+                };
             }
         } catch (e) {
-            console.error("Failed to list MCP tools:", e)
+            console.error("Failed to list MCP tools:", e);
         }
     }
 
@@ -54,10 +100,13 @@ export async function POST(req: Request) {
         model: openai("gpt-4o-mini"),
         system: `Ты - AI-ассистент для анализа дорожной ситуации в городе Сургут. 
 Ты помогаешь пользователям получать информацию о состоянии дорог, камерах наблюдения, уведомлениях и статистике.
-Отвечай на русском языке. Будь кратким и полезным.${toolsDescription}`,
+Отвечай на русском языке. Будь кратким и полезным.
+У тебя есть доступ к инструментам для получения актуальных данных из базы данных.`,
         messages: await convertToModelMessages(messages),
-    })
+        tools,
+        toolChoice: "none", // или 'auto', если хочешь включить вызовы
+        stopWhen: stepCountIs(10),
+    });
 
-    return result.toUIMessageStreamResponse()
+    return result.toUIMessageStreamResponse();
 }
-

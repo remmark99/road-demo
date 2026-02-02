@@ -21,6 +21,7 @@ export function AIChatbot() {
     const { messages, sendMessage, status, error } = useChat({
         transport: new DefaultChatTransport({ api: "/api/chat" }),
     })
+    console.log(error, status, messages);
 
     // Combine welcome message with chat messages
     const allMessages = [welcomeMessage, ...messages]
@@ -80,13 +81,31 @@ export function AIChatbot() {
                                         : "bg-muted"
                                         }`}
                                 >
-                                    <p className="text-sm whitespace-pre-wrap">
+                                    <div className="text-sm whitespace-pre-wrap">
                                         {"content" in message
                                             ? message.content
-                                            : message.parts?.map((part: { type: string; text?: string }, i: number) =>
-                                                part.type === "text" ? <span key={i}>{part.text}</span> : null
-                                            )}
-                                    </p>
+                                            : message.parts?.map((part: any, i: number) => {
+                                                if (part.type === "text") {
+                                                    return <span key={i}>{part.text}</span>
+                                                }
+                                                if (part.type === "tool-invocation") {
+                                                    return (
+                                                        <div key={i} className="flex items-center gap-2 text-xs text-blue-500/80 font-medium italic my-1 bg-blue-50/50 p-1.5 rounded">
+                                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                                            Использую: {part.toolName}
+                                                        </div>
+                                                    )
+                                                }
+                                                if (part.type === "tool-result") {
+                                                    return (
+                                                        <div key={i} className="flex items-center gap-2 text-xs text-green-600/80 font-medium italic my-1 bg-green-50/50 p-1.5 rounded">
+                                                            <span>✓ Готово: {part.toolName}</span>
+                                                        </div>
+                                                    )
+                                                }
+                                                return null
+                                            })}
+                                    </div>
                                 </div>
                             </div>
                         ))}
