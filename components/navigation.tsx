@@ -6,12 +6,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { Map, Bell, BarChart3, Camera, Settings } from "lucide-react"
+import { Map, Bell, BarChart3, Camera, Settings, Bot } from "lucide-react"
 
 const navItems = [
   { href: "/", label: "Карта", icon: Map },
   { href: "/notifications", label: "Уведомления", icon: Bell },
   { href: "/dashboard", label: "Аналитика", icon: BarChart3 },
+  { href: "/ai-assistant", label: "AI-ассистент", icon: Bot },
 ]
 
 export function Navigation() {

@@ -1,5 +1,4 @@
 import { Navigation } from "@/components/navigation";
-import { SettingsNav } from "@/components/settings/settings-nav";
 
 export default function SettingsLayout({
   children,
@@ -9,11 +8,8 @@ export default function SettingsLayout({
   return (
     <main className="min-h-screen bg-background">
       <Navigation />
-      <div className="pt-14 h-screen flex">
-        <SettingsNav />
-        <div className="flex-1 p-8">
-          {children}
-        </div>
+      <div className="pt-14">
+        {children}
       </div>
     </main>
   );
