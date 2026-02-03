@@ -5,6 +5,7 @@ import { Navigation } from "@/components/navigation"
 import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
 
 type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city"
 
@@ -98,6 +99,11 @@ export default function DashboardPage() {
                     meteor.admsurgut.ru →
                   </div>
                 </a>
+              </div>
+
+              {/* Glossary Button */}
+              <div className="hidden md:block mt-auto pt-4">
+                <GlossaryDialog />
               </div>
             </div>
 

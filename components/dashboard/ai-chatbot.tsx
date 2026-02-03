@@ -594,6 +594,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                         onClick={createNewChat}
                         className="w-full flex items-center justify-center gap-2 bg-background border shadow-sm"
                         variant="ghost"
+                        disabled={isLoading}
                     >
                         <Plus className="h-4 w-4 flex-shrink-0" />
                         <span>Новый чат</span>
@@ -609,12 +610,15 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                         {sessions.map((session) => (
                             <div
                                 key={session.id}
-                                onClick={() => loadSession(session)}
+                                onClick={() => !isLoading && loadSession(session)}
                                 className={cn(
-                                    "group flex items-center justify-between p-2 rounded-lg cursor-pointer text-sm transition-colors",
+                                    "group flex items-center justify-between p-2 rounded-lg text-sm transition-colors",
                                     currentSessionId === session.id
                                         ? "bg-primary text-primary-foreground"
-                                        : "hover:bg-muted"
+                                        : "hover:bg-muted",
+                                    isLoading
+                                        ? "cursor-not-allowed opacity-50"
+                                        : "cursor-pointer"
                                 )}
                             >
                                 <div className="flex items-center gap-2 min-w-0 flex-1">
