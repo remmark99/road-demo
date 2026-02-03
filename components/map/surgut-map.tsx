@@ -113,21 +113,19 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
   const [hoveredCamera, setHoveredCamera] = useState<Camera | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
 
+  // Add road segments only once - no statusOverride dependency
   const addRoadSegments = useCallback(() => {
     if (!map.current) return
 
     roadSegments.forEach(segment => {
-      const status = statusOverride?.[segment.id] ?? segment.currentStatus
-      const color = statusColors[status]
+      const color = statusColors[segment.currentStatus]
 
       const sourceId = `road-${segment.id}`
       const glowLayerId = `road-${segment.id}-glow`
       const mainLayerId = `road-${segment.id}`
 
-      // Clean up first to prevent state conflicts
-      if (map.current!.getLayer(mainLayerId)) map.current!.removeLayer(mainLayerId)
-      if (map.current!.getLayer(glowLayerId)) map.current!.removeLayer(glowLayerId)
-      if (map.current!.getSource(sourceId)) map.current!.removeSource(sourceId)
+      // Skip if already exists
+      if (map.current!.getSource(sourceId)) return
 
       map.current!.addSource(sourceId, {
         type: "geojson",
@@ -172,7 +170,7 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
         }
       })
     })
-  }, [statusOverride])
+  }, [])
 
   const addCameraMarkers = useCallback(() => {
     if (!map.current) return
@@ -374,6 +372,9 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
 
       if (map.current?.getLayer(`road-${segment.id}`)) {
         map.current.setPaintProperty(`road-${segment.id}`, "line-color", color)
+      }
+      if (map.current?.getLayer(`road-${segment.id}-glow`)) {
+        map.current.setPaintProperty(`road-${segment.id}-glow`, "line-color", color)
       }
     })
   }, [statusOverride, mapLoaded])
