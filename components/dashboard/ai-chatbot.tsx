@@ -588,7 +588,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
     return (
         <div className={`flex gap-4 ${heightClass}`}>
             {/* Sidebar */}
-            <Card className="w-64 flex flex-col shrink-0 bg-muted/30 overflow-hidden">
+            <Card className="w-64 flex flex-col shrink-0 bg-muted/30 overflow-hidden pt-0">
                 <CardHeader className="p-6 border-b flex items-center justify-center">
                     <Button
                         onClick={createNewChat}
