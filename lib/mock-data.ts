@@ -205,6 +205,33 @@ export const notifications: Notification[] = [
     previousStatus: "clean",
     newStatus: "warning",
     videoClipUrl: "/placeholder-video.mp4"
+  },
+  {
+    id: "notif-6",
+    timestamp: new Date(Date.now() - 8 * 60 * 60 * 1000),
+    type: "alert",
+    title: "Обнаружена лужа",
+    description: "На участке 1 обнаружена глубокая лужа",
+    segmentId: "seg-1",
+    videoClipUrl: "/placeholder-video.mp4"
+  },
+  {
+    id: "notif-7",
+    timestamp: new Date(Date.now() - 10 * 60 * 60 * 1000),
+    type: "alert",
+    title: "Обнаружена яма",
+    description: "На участке 2 обнаружена яма",
+    segmentId: "seg-2",
+    videoClipUrl: "/placeholder-video.mp4"
+  },
+  {
+    id: "notif-8",
+    timestamp: new Date(Date.now() - 12 * 60 * 60 * 1000),
+    type: "alert",
+    title: "Снежный вал",
+    description: "Зафиксирован снежный вал на обочине",
+    segmentId: "seg-1",
+    videoClipUrl: "/placeholder-video.mp4"
   }
 ]
 

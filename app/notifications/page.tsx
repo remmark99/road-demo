@@ -27,14 +27,24 @@ import {
   Snowflake,
   X,
   Filter,
-  Camera as CameraIcon
+  Camera as CameraIcon,
+  Droplets,
+  TriangleAlert,
+  Mountain,
+  MountainSnow,
+  CameraOff
 } from "lucide-react"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
-const alertIcons: Record<string, typeof Truck> = {
+const alertIcons: Record<string, any> = {
   snowplow: Truck,
-  canny: Snowflake
+  canny: Snowflake,
+  puddle: Droplets,
+  pothole: TriangleAlert,
+  snow_windrow: Mountain,
+  snow_pile: MountainSnow,
+  camera_obstruction: CameraOff
 }
 
 import { Suspense } from "react"

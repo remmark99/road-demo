@@ -93,10 +93,39 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         label: 'Заснеженность',
         icon: 'snowflake',
         color: 'text-cyan-400 bg-cyan-500/20 border-cyan-500/30'
+    },
+    puddle: {
+        label: 'Лужи',
+        icon: 'droplets',
+        color: 'text-indigo-400 bg-indigo-500/20 border-indigo-500/30'
+    },
+    pothole: {
+        label: 'Ямы',
+        icon: 'triangle-alert',
+        color: 'text-amber-400 bg-amber-500/20 border-amber-500/30'
+    },
+    snow_windrow: {
+        label: 'Снежный вал',
+        icon: 'mountain',
+        color: 'text-slate-400 bg-slate-500/20 border-slate-500/30'
+    },
+    snow_pile: {
+        label: 'Снежная гора',
+        icon: 'mountain-snow',
+        color: 'text-white bg-white/10 border-white/20'
+    },
+    camera_obstruction: {
+        label: 'Загрязнение камеры',
+        icon: 'camera-off',
+        color: 'text-red-400 bg-red-500/20 border-red-500/30'
     }
 }
 
 export const MODULE_MAP: Record<string, string> = {
     snowplow_detection: 'Модуль спецтехники',
     snow_detection: 'Модуль заснеженности',
+    puddle_detection: 'Модуль детекции луж',
+    pothole_detection: 'Модуль детекции ям',
+    snow_pile_detection: 'Модуль детекции снежных накоплений',
+    camera_check: 'Модуль проверки камеры'
 }
