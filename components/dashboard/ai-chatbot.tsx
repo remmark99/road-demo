@@ -304,7 +304,8 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                 
                 if (!contentText || !contentText.trim()) continue;
 
-                const MCP_BASE_URL = process.env.NEXT_PUBLIC_MCP_SERVER_URL || "";
+                // Явный URL MCP-сервера для графиков
+                const MCP_BASE_URL = "http://89.124.74.27:8000";
                 const parts = contentText.split(/(\/plots\/plot_\d+\.png)/g);
                 
                 // Process each part of the message separately (text blocks and images)
@@ -448,7 +449,8 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
     const renderContentWithImages = (text: string) => {
         // Очищаем текст от служебных тегов перед рендерингом
         const cleanedText = cleanDisplayText(text);
-        const MCP_BASE_URL = process.env.NEXT_PUBLIC_MCP_SERVER_URL || "";
+        // Явный URL MCP-сервера для графиков
+        const MCP_BASE_URL = "http://89.124.74.27:8000";
         const parts = cleanedText.split(/(\/plots\/plot_\d+\.png)/g);
         
         return parts.map((part, i) => {
