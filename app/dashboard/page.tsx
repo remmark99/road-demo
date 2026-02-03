@@ -2,11 +2,11 @@
 
 import { useState } from "react"
 import { Navigation } from "@/components/navigation"
-import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2 } from "lucide-react"
+import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 
-type DashboardView = "general" | "cleaning" | "incidents" | "predictions"
+type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city"
 
 const DASHBOARDS = [
   {
@@ -77,6 +77,28 @@ export default function DashboardPage() {
                   <span>{dashboard.label}</span>
                 </Button>
               ))}
+
+              {/* Weather Monitoring Reference */}
+              <div className="hidden md:block mt-4 pt-4 border-t border-border">
+                <a
+                  href="https://meteor.admsurgut.ru/ru/meteogram"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block p-4 rounded-lg bg-gradient-to-br from-sky-500/10 via-blue-500/10 to-indigo-500/10 border border-sky-500/20 hover:border-sky-500/40 transition-all hover:shadow-lg hover:shadow-sky-500/10 group"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <Thermometer className="h-5 w-5 text-sky-400" />
+                    <span className="text-sm font-semibold text-foreground">Метеомониторинг</span>
+                    <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto group-hover:text-sky-400 transition-colors" />
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">
+                    Данные об осадках получены из системы метеомониторинга г. Сургут
+                  </p>
+                  <div className="mt-2 text-xs text-sky-400 font-medium">
+                    meteor.admsurgut.ru →
+                  </div>
+                </a>
+              </div>
             </div>
 
             {/* Dashboard Content */}
