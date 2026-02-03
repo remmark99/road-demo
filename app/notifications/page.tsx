@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
-import { fetchAlerts, fetchAlertTypes, ALERT_TYPE_CONFIG, MODULE_MAP } from "@/lib/api/alerts"
+import { fetchAlerts, fetchAlertTypes, ALERT_TYPE_CONFIG, ALERT_CATEGORIES, MODULE_MAP } from "@/lib/api/alerts"
 import { fetchCameras } from "@/lib/api/cameras"
 import type { Alert, Camera } from "@/lib/types"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -37,19 +37,36 @@ import {
   TriangleAlert,
   Mountain,
   MountainSnow,
-  CameraOff
+  CameraOff,
+  Cloud,
+  CircleDot,
+  Signpost,
+  LightbulbOff,
+  Minus,
+  Wrench,
+  Sparkles
 } from "lucide-react"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
 const alertIcons: Record<string, any> = {
+  // Спецтехника
   snowplow: Truck,
+  camera_obstruction: CameraOff,
+  // Уборка
+  snow_slush: Snowflake,
   canny: Snowflake,
-  puddle: Droplets,
-  pothole: TriangleAlert,
   snow_windrow: Mountain,
   snow_pile: MountainSnow,
-  camera_obstruction: CameraOff
+  puddle: Droplets,
+  dirt: Cloud,
+  // Ремонт
+  open_manhole: CircleDot,
+  tilted_sign: Signpost,
+  dirty_sign: Signpost,
+  broken_light: LightbulbOff,
+  worn_marking: Minus,
+  pothole: TriangleAlert
 }
 
 import { Suspense } from "react"
@@ -197,11 +214,76 @@ function NotificationsContent() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Type filter */}
+              {/* Type filter - Спецтехника */}
               <div>
-                <div className="text-sm text-muted-foreground mb-2">Тип события</div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <Truck className="h-4 w-4 text-blue-400" />
+                  Спецтехника
+                </div>
                 <div className="flex flex-wrap gap-2">
-                  {Object.entries(ALERT_TYPE_CONFIG).map(([type, config]) => {
+                  {ALERT_CATEGORIES.equipment.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || Snowflake
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Type filter - Уборка */}
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-cyan-400" />
+                  Уборка
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.cleaning.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || Snowflake
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Type filter - Ремонт */}
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <Wrench className="h-4 w-4 text-orange-400" />
+                  Ремонт
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.repair.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
                     const Icon = alertIcons[type] || Snowflake
                     const isSelected = selectedTypes.includes(type)
                     return (

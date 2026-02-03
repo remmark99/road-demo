@@ -82,42 +82,112 @@ export async function fetchAlertTypes(): Promise<string[]> {
     return Array.from(types)
 }
 
+// Категории типов инцидентов
+export type AlertCategory = 'equipment' | 'cleaning' | 'repair'
+
+export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: string[] }> = {
+    equipment: {
+        label: 'Спецтехника',
+        types: ['snowplow']
+    },
+    cleaning: {
+        label: 'Уборка',
+        types: ['snow_slush', 'snow_windrow', 'snow_pile', 'puddle', 'dirt']
+    },
+    repair: {
+        label: 'Ремонт',
+        types: ['open_manhole', 'tilted_sign', 'dirty_sign', 'broken_light', 'worn_marking', 'pothole']
+    }
+}
+
 // Alert type metadata for UI
-export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
+export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; color: string; category: AlertCategory }> = {
+    // Спецтехника
     snowplow: {
         label: 'Спецтехника',
         icon: 'truck',
-        color: 'text-blue-400 bg-blue-500/20 border-blue-500/30'
+        color: 'text-blue-400 bg-blue-500/20 border-blue-500/30',
+        category: 'equipment'
+    },
+    // Уборка
+    snow_slush: {
+        label: 'Снежная каша',
+        icon: 'snowflake',
+        color: 'text-cyan-400 bg-cyan-500/20 border-cyan-500/30',
+        category: 'cleaning'
     },
     canny: {
         label: 'Заснеженность',
         icon: 'snowflake',
-        color: 'text-cyan-400 bg-cyan-500/20 border-cyan-500/30'
-    },
-    puddle: {
-        label: 'Лужи',
-        icon: 'droplets',
-        color: 'text-indigo-400 bg-indigo-500/20 border-indigo-500/30'
-    },
-    pothole: {
-        label: 'Ямы',
-        icon: 'triangle-alert',
-        color: 'text-amber-400 bg-amber-500/20 border-amber-500/30'
+        color: 'text-cyan-400 bg-cyan-500/20 border-cyan-500/30',
+        category: 'cleaning'
     },
     snow_windrow: {
         label: 'Снежный вал',
         icon: 'mountain',
-        color: 'text-slate-400 bg-slate-500/20 border-slate-500/30'
+        color: 'text-slate-400 bg-slate-500/20 border-slate-500/30',
+        category: 'cleaning'
     },
     snow_pile: {
         label: 'Снежная гора',
         icon: 'mountain-snow',
-        color: 'text-white bg-white/10 border-white/20'
+        color: 'text-white bg-white/10 border-white/20',
+        category: 'cleaning'
+    },
+    puddle: {
+        label: 'Подтопление дороги',
+        icon: 'droplets',
+        color: 'text-indigo-400 bg-indigo-500/20 border-indigo-500/30',
+        category: 'cleaning'
+    },
+    dirt: {
+        label: 'Грязь на дороге',
+        icon: 'cloud',
+        color: 'text-amber-600 bg-amber-600/20 border-amber-600/30',
+        category: 'cleaning'
+    },
+    // Ремонт
+    open_manhole: {
+        label: 'Открытый люк',
+        icon: 'circle-dot',
+        color: 'text-red-400 bg-red-500/20 border-red-500/30',
+        category: 'repair'
+    },
+    tilted_sign: {
+        label: 'Покосившийся знак',
+        icon: 'signpost',
+        color: 'text-orange-400 bg-orange-500/20 border-orange-500/30',
+        category: 'repair'
+    },
+    dirty_sign: {
+        label: 'Загрязнённый знак',
+        icon: 'signpost',
+        color: 'text-yellow-400 bg-yellow-500/20 border-yellow-500/30',
+        category: 'repair'
+    },
+    broken_light: {
+        label: 'Неработающее освещение',
+        icon: 'lightbulb-off',
+        color: 'text-gray-400 bg-gray-500/20 border-gray-500/30',
+        category: 'repair'
+    },
+    worn_marking: {
+        label: 'Стёртая разметка',
+        icon: 'minus',
+        color: 'text-zinc-400 bg-zinc-500/20 border-zinc-500/30',
+        category: 'repair'
+    },
+    pothole: {
+        label: 'Ямы',
+        icon: 'triangle-alert',
+        color: 'text-amber-400 bg-amber-500/20 border-amber-500/30',
+        category: 'repair'
     },
     camera_obstruction: {
         label: 'Загрязнение камеры',
         icon: 'camera-off',
-        color: 'text-red-400 bg-red-500/20 border-red-500/30'
+        color: 'text-red-400 bg-red-500/20 border-red-500/30',
+        category: 'equipment'
     }
 }
 
