@@ -85,7 +85,7 @@ export async function fetchAlertTypes(): Promise<string[]> {
 // Alert type metadata for UI
 export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; color: string }> = {
     snowplow: {
-        label: 'Снегоуборщик',
+        label: 'Спецтехника',
         icon: 'truck',
         color: 'text-blue-400 bg-blue-500/20 border-blue-500/30'
     },
@@ -97,6 +97,6 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
 }
 
 export const MODULE_MAP: Record<string, string> = {
-    snowplow_detection: 'Модуль снегоуборочной техники',
+    snowplow_detection: 'Модуль спецтехники',
     snow_detection: 'Модуль заснеженности',
 }
