@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { Map, Bell, BarChart3, Camera, Settings, Bot } from "lucide-react"
+import { Map, Bell, BarChart3, Camera, Settings, Bot, ExternalLink, Thermometer } from "lucide-react"
 
 const navItems = [
   { href: "/", label: "Карта", icon: Map },
@@ -46,6 +46,26 @@ export function Navigation() {
               </Button>
             )
           })}
+
+          <Separator orientation="vertical" className="h-6 mx-2" />
+
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/30"
+            asChild
+          >
+            <a
+              href="https://meteor.admsurgut.ru/ru/meteogram"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2"
+            >
+              <Thermometer className="h-4 w-4" />
+              <span>Метеомониторинг</span>
+              <ExternalLink className="h-3 w-3 opacity-60" />
+            </a>
+          </Button>
         </div>
 
         <div className="ml-auto flex items-center gap-3">
