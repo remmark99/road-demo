@@ -18,6 +18,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
+import {
   Bell,
   Loader2,
   ChevronLeft,
@@ -224,16 +229,26 @@ function NotificationsContent() {
                   {onlineCameras.slice(0, 10).map(camera => {
                     const isSelected = selectedCameras.includes(camera.cameraIndex)
                     return (
-                      <Button
-                        key={camera.cameraIndex}
-                        variant={isSelected ? "default" : "outline"}
-                        size="sm"
-                        className="gap-1.5"
-                        onClick={() => toggleCamera(camera.cameraIndex)}
-                      >
-                        <CameraIcon className="h-3 w-3" />
-                        #{camera.cameraIndex}
-                      </Button>
+                      <Tooltip key={camera.cameraIndex}>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant={isSelected ? "default" : "outline"}
+                            size="sm"
+                            className="gap-1.5"
+                            onClick={() => toggleCamera(camera.cameraIndex)}
+                          >
+                            <CameraIcon className="h-3 w-3" />
+                            #{camera.cameraIndex}
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent side="bottom">
+                          {camera.description ? (
+                            <p className="text-xs opacity-80">{camera.description}</p>
+                          ) : (
+                            <p className="text-xs opacity-80">Без описания</p>
+                          )}
+                        </TooltipContent>
+                      </Tooltip>
                     )
                   })}
                   {onlineCameras.length > 10 && (
