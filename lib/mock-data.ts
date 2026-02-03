@@ -69,7 +69,7 @@ import roadsGeoJson from "../roads.json";
 const manualSegments: RoadSegment[] = [
   {
     id: "seg-1",
-    name: "Дорога 1",
+    name: "Участок 1",
     startCameraId: "cam-1",
     endCameraId: "cam-2",
     coordinates: [
@@ -120,7 +120,7 @@ const geoJsonSegments: RoadSegment[] = roadsGeoJson.features
   .filter(feature => feature.geometry.type === "LineString")
   .map((feature, index) => ({
     id: `road-${feature.id ?? index}`,
-    name: `Участок ${(feature.id as number ?? index) + 1}`,
+    name: `Участок ${(feature.id as number ?? index) + 2}`,
     startCameraId: null,
     endCameraId: null,
     coordinates: feature.geometry.coordinates as [number, number][],
