@@ -259,7 +259,7 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
     })
   }, [isDark, addRoadSegments, addCameraMarkers, mapLoaded])
 
-  // Initialize map
+  // Initialize map - this should only run once
   useEffect(() => {
     if (!mapContainer.current || map.current) return
 
@@ -276,8 +276,6 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
 
     map.current.on("load", () => {
       setMapLoaded(true)
-      addRoadSegments()
-      addCameraMarkers()
     })
 
     return () => {
@@ -285,13 +283,15 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
       map.current?.remove()
       map.current = null
     }
-  }, [addRoadSegments, addCameraMarkers])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
-  // Add camera markers when cameras load or showOffline changes
+  // Add road segments and camera markers when map loads
   useEffect(() => {
-    if (!mapLoaded || cameras.length === 0) return
+    if (!mapLoaded) return
+    addRoadSegments()
     addCameraMarkers()
-  }, [mapLoaded, cameras, showOffline, addCameraMarkers])
+  }, [mapLoaded, addRoadSegments, addCameraMarkers])
 
   // Update/show FOV when hovering
   useEffect(() => {
