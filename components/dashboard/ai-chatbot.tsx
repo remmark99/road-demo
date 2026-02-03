@@ -17,35 +17,35 @@ import { cn } from "@/lib/utils"
 
 // Маппинг вопросов к аналитическим инструментам MCP
 const QUESTIONS_WITH_TOOLS: Array<{ question: string; tool: string }> = [
-    { 
+    {
         question: "У каких подрядчиков и по каким типам инцидентов зафиксированы наиболее длительные задержки реакции за год?",
         tool: "analyze_reaction_tails"
     },
-    { 
+    {
         question: "Какие категории дорожных проблем вызывали наибольшие сложности с оперативным реагированием в течение года?",
         tool: "rate_problem_categories"
     },
-    { 
+    {
         question: "В какие часы суток чаще всего нарушаются регламенты реагирования по различным типам инцидентов?",
         tool: "analyze_hourly_violations"
     },
-    { 
+    {
         question: "В какие дни недели наблюдается снижение дисциплины при обработке дорожных инцидентов?",
         tool: "analyze_contractor_discipline_weekly"
     },
-    { 
+    {
         question: "Насколько эффективно спецтехника справлялась с устранением выявленных проблем в течение года?",
         tool: "analyze_machinery_efficiency"
     },
-    { 
+    {
         question: "Как работа спецтехники повлияла на реальное увеличение скорости движения транспорта за год?",
         tool: "analyze_cleaning_impact_on_traffic"
     },
-    { 
+    {
         question: "Какие камеры имели наибольшие пробелы в данных за год и требуют технического обслуживания?",
         tool: "monitor_camera_data_quality"
     },
-    { 
+    {
         question: "Как погодные условия влияли на долю нарушений регламента подрядными организациями в течение года?",
         tool: "analyze_sla_weather_dependency"
     }
@@ -77,7 +77,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
 
     // Создаём sessionId сразу при монтировании, чтобы useChat всегда работал с валидным id
     const [sessionId] = useState(() => Date.now().toString());
-    
+
     // Используем currentSessionId если есть (загрузка существующей сессии), иначе новый sessionId
     const activeSessionId = currentSessionId || sessionId;
 
@@ -125,7 +125,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
         if (messages.length > 0 && currentSessionId) {
             const firstMessage = messages[0];
             let text = "Новый чат";
-            
+
             if (typeof firstMessage.content === 'string' && firstMessage.content.length > 0) {
                 text = firstMessage.content;
             } else if (Array.isArray(firstMessage.parts)) {
@@ -138,7 +138,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             // Очищаем текст от служебных тегов перед сохранением заголовка
             const cleanedText = cleanDisplayText(text);
             const title = cleanedText.slice(0, 40) + (cleanedText.length > 40 ? "..." : "");
-            
+
             chatStorage.saveSession({
                 id: currentSessionId,
                 title: title,
@@ -167,7 +167,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             const content = 'content' in m ? m.content : (m as any).parts?.filter((p: any) => p.type === 'text').map((p: any) => p.text).join(' ');
             return `[${role}]:\n${content}\n`;
         }).join('\n---\n\n');
-        
+
         const blob = new Blob([text], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -181,7 +181,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
 
     const downloadPDF = async () => {
         if (messages.length === 0) return;
-        
+
         try {
             setIsExporting(true);
             const pdf = new jsPDF('p', 'mm', 'a4');
@@ -196,7 +196,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             const addImageToPDF = (canvas: HTMLCanvasElement, imgWidth: number) => {
                 const imgHeight = (canvas.height * imgWidth) / canvas.width;
                 const pageContentHeight = pdfHeight - (margin * 2);
-                
+
                 // If image fits on current page, add it directly
                 if (currentY + imgHeight <= pdfHeight - margin) {
                     const imgData = canvas.toDataURL('image/jpeg', 0.85);
@@ -204,7 +204,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                     currentY += imgHeight + 2;
                     return;
                 }
-                
+
                 // If image fits on a single page but not on current, start new page
                 if (imgHeight <= pageContentHeight) {
                     pdf.addPage();
@@ -214,52 +214,52 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                     currentY += imgHeight + 2;
                     return;
                 }
-                
+
                 // Image is taller than one page - need to slice it
                 const sourceWidth = canvas.width;
                 const sourceHeight = canvas.height;
                 const pixelsPerMM = sourceHeight / imgHeight;
-                
+
                 let remainingSourceHeight = sourceHeight;
                 let sourceY = 0;
-                
+
                 while (remainingSourceHeight > 0) {
                     // Calculate how much vertical space is available on current page
                     const availablePageHeight = pdfHeight - margin - currentY;
                     const availablePixels = availablePageHeight * pixelsPerMM;
-                    
+
                     // Determine slice height (in pixels)
                     const slicePixelHeight = Math.min(remainingSourceHeight, availablePixels);
                     const sliceMMHeight = slicePixelHeight / pixelsPerMM;
-                    
+
                     // Create a temporary canvas for this slice
                     const sliceCanvas = document.createElement('canvas');
                     sliceCanvas.width = sourceWidth;
                     sliceCanvas.height = slicePixelHeight;
                     const sliceCtx = sliceCanvas.getContext('2d');
-                    
+
                     if (sliceCtx) {
                         sliceCtx.drawImage(
                             canvas,
                             0, sourceY, sourceWidth, slicePixelHeight,  // source rect
                             0, 0, sourceWidth, slicePixelHeight          // dest rect
                         );
-                        
+
                         const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.85);
                         pdf.addImage(sliceImgData, 'JPEG', margin, currentY, imgWidth, sliceMMHeight);
                     }
-                    
+
                     sourceY += slicePixelHeight;
                     remainingSourceHeight -= slicePixelHeight;
                     currentY += sliceMMHeight;
-                    
+
                     // If there's more content, add a new page
                     if (remainingSourceHeight > 0) {
                         pdf.addPage();
                         currentY = margin;
                     }
                 }
-                
+
                 currentY += 2; // Small gap after the image
             };
 
@@ -291,6 +291,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             const headerCanvas = await htmlToImage.toCanvas(headerDiv, {
                 backgroundColor: '#f8fafc',
                 pixelRatio: 2,
+                skipFonts: true,
             });
             addImageToPDF(headerCanvas, contentWidth);
             tempContainer.removeChild(headerDiv);
@@ -298,60 +299,83 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             // Process each message
             for (const message of allMessages) {
                 // Skip empty messages
-                const contentText = "content" in message 
-                    ? message.content 
+                const contentText = "content" in message
+                    ? message.content
                     : (message as any).parts?.filter((p: any) => p.type === 'text').map((p: any) => p.text || '').join('\n');
-                
+
                 if (!contentText || !contentText.trim()) continue;
 
                 // Явный URL MCP-сервера для графиков
                 const MCP_BASE_URL = "http://89.124.74.27:8000";
                 const parts = contentText.split(/(\/plots\/plot_\d+\.png)/g);
-                
+
                 // Process each part of the message separately (text blocks and images)
                 let isFirstPart = true;
-                
+
                 for (const part of parts) {
                     if (!part.trim()) continue;
-                    
+
                     if (part.match(/\/plots\/plot_\d+\.png/)) {
-                        // This is an image - render it separately
-                        const imgDiv = document.createElement('div');
-                        imgDiv.style.padding = '8px';
-                        imgDiv.style.background = '#f9fafb';
-                        imgDiv.style.border = '1px solid #e5e7eb';
-                        imgDiv.style.borderRadius = '6px';
-                        imgDiv.style.textAlign = 'center';
-                        
-                        const img = document.createElement('img');
-                        img.src = `${MCP_BASE_URL}${part}`;
-                        img.style.maxWidth = '100%';
-                        img.style.height = 'auto';
-                        img.style.borderRadius = '8px';
-                        img.crossOrigin = 'anonymous';
-                        
-                        imgDiv.appendChild(img);
-                        tempContainer.appendChild(imgDiv);
-                        
-                        // Wait for image to load
-                        await new Promise<void>((resolve) => {
-                            img.onload = () => resolve();
-                            img.onerror = () => resolve();
-                            // Fallback timeout
-                            setTimeout(() => resolve(), 3000);
-                        });
-                        
-                        await new Promise(resolve => setTimeout(resolve, 50));
-                        
-                        const imgCanvas = await htmlToImage.toCanvas(imgDiv, {
-                            backgroundColor: '#ffffff',
-                            pixelRatio: 2,
-                        });
-                        
-                        addImageToPDF(imgCanvas, contentWidth);
-                        tempContainer.removeChild(imgDiv);
-                        isFirstPart = false;
-                        
+                        // This is an image - fetch it as base64 first to avoid CORS issues
+                        try {
+                            // Use API proxy to fetch image as base64
+                            const proxyUrl = `/api${part}`;
+                            const response = await fetch(proxyUrl);
+                            if (!response.ok) {
+                                console.warn('Failed to fetch image:', proxyUrl);
+                                continue;
+                            }
+                            const blob = await response.blob();
+                            const base64 = await new Promise<string>((resolve) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result as string);
+                                reader.readAsDataURL(blob);
+                            });
+
+                            // Create image element with base64 data
+                            const imgDiv = document.createElement('div');
+                            imgDiv.style.padding = '8px';
+                            imgDiv.style.background = '#f9fafb';
+                            imgDiv.style.border = '1px solid #e5e7eb';
+                            imgDiv.style.borderRadius = '6px';
+                            imgDiv.style.textAlign = 'center';
+
+                            const img = document.createElement('img');
+                            img.src = base64;
+                            img.style.maxWidth = '100%';
+                            img.style.height = 'auto';
+                            img.style.borderRadius = '8px';
+
+                            imgDiv.appendChild(img);
+                            tempContainer.appendChild(imgDiv);
+
+                            // Wait for image to load
+                            await new Promise<void>((resolve) => {
+                                if (img.complete) {
+                                    resolve();
+                                } else {
+                                    img.onload = () => resolve();
+                                    img.onerror = () => resolve();
+                                    setTimeout(() => resolve(), 2000);
+                                }
+                            });
+
+                            await new Promise(resolve => setTimeout(resolve, 50));
+
+                            const imgCanvas = await htmlToImage.toCanvas(imgDiv, {
+                                backgroundColor: '#ffffff',
+                                pixelRatio: 2,
+                                skipFonts: true,
+                            });
+
+                            addImageToPDF(imgCanvas, contentWidth);
+                            tempContainer.removeChild(imgDiv);
+                            isFirstPart = false;
+                        } catch (imgErr) {
+                            console.warn('Error processing image for PDF:', imgErr);
+                            // Skip this image and continue
+                        }
+
                     } else {
                         // This is a text block
                         const textDiv = document.createElement('div');
@@ -364,7 +388,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                         textDiv.style.fontSize = '12px';
                         textDiv.style.lineHeight = '1.5';
                         textDiv.style.color = '#1f2937';
-                        
+
                         // Add role label only for the first part of the message
                         if (isFirstPart) {
                             const roleLabel = document.createElement('div');
@@ -377,21 +401,22 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                             roleLabel.innerText = message.role === 'user' ? 'Пользователь' : 'AI-ассистент';
                             textDiv.appendChild(roleLabel);
                         }
-                        
+
                         const textContent = document.createElement('div');
                         textContent.style.whiteSpace = 'pre-wrap';
                         textContent.style.wordBreak = 'break-word';
                         textContent.innerText = part.trim();
                         textDiv.appendChild(textContent);
-                        
+
                         tempContainer.appendChild(textDiv);
                         await new Promise(resolve => setTimeout(resolve, 50));
-                        
+
                         const textCanvas = await htmlToImage.toCanvas(textDiv, {
                             backgroundColor: '#ffffff',
                             pixelRatio: 2,
+                            skipFonts: true,
                         });
-                        
+
                         addImageToPDF(textCanvas, contentWidth);
                         tempContainer.removeChild(textDiv);
                         isFirstPart = false;
@@ -451,31 +476,31 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
         const cleanedText = cleanDisplayText(text);
         // Используем API-прокси для решения проблемы Mixed Content (HTTPS -> HTTP)
         const parts = cleanedText.split(/(\/plots\/plot_\d+\.png)/g);
-        
+
         return parts.map((part, i) => {
             if (part.match(/\/plots\/plot_\d+\.png/)) {
                 // Проксируем через /api/plots для HTTPS
                 const fullUrl = `/api${part}`;
                 return (
                     <div key={i} className="my-2 relative group">
-                        <img 
-                            src={fullUrl} 
-                            alt="Road Analysis Chart" 
+                        <img
+                            src={fullUrl}
+                            alt="Road Analysis Chart"
                             className="rounded-lg border bg-white max-w-full h-auto shadow-sm"
                             crossOrigin="anonymous"
                         />
                         <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Button 
-                                variant="secondary" 
-                                size="icon" 
+                            <Button
+                                variant="secondary"
+                                size="icon"
                                 className="h-8 w-8 bg-white/90 backdrop-blur"
                                 onClick={() => window.open(fullUrl, '_blank')}
                             >
                                 <Maximize2 className="h-4 w-4" />
                             </Button>
-                            <Button 
-                                variant="secondary" 
-                                size="icon" 
+                            <Button
+                                variant="secondary"
+                                size="icon"
                                 className="h-8 w-8 bg-white/90 backdrop-blur"
                                 onClick={async () => {
                                     try {
@@ -538,7 +563,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
 
     const handleQuestionClick = async (question: string) => {
         if (isLoading) return;
-        
+
         // Создаём сессию ПЕРЕД отправкой, если её нет
         if (!currentSessionId) {
             const newId = Date.now().toString();
@@ -546,15 +571,15 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             // Даём React обработать setState перед отправкой
             await new Promise(resolve => setTimeout(resolve, 50));
         }
-        
+
         // Находим соответствующий инструмент для этого вопроса
         const questionWithTool = QUESTIONS_WITH_TOOLS.find(q => q.question === question);
-        
+
         // Формируем сообщение с явной инструкцией какой инструмент использовать
-        const messageText = questionWithTool 
+        const messageText = questionWithTool
             ? `[ИСПОЛЬЗУЙ: ${questionWithTool.tool}]\n\n${question}`
             : question;
-        
+
         await sendMessage({ text: messageText });
     };
 
@@ -565,8 +590,8 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             {/* Sidebar */}
             <Card className="w-64 flex flex-col shrink-0 bg-muted/30 overflow-hidden">
                 <CardHeader className="p-6 border-b flex items-center justify-center">
-                    <Button 
-                        onClick={createNewChat} 
+                    <Button
+                        onClick={createNewChat}
                         className="w-full flex items-center justify-center gap-2 bg-background border shadow-sm"
                         variant="ghost"
                     >
@@ -587,8 +612,8 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                                 onClick={() => loadSession(session)}
                                 className={cn(
                                     "group flex items-center justify-between p-2 rounded-lg cursor-pointer text-sm transition-colors",
-                                    currentSessionId === session.id 
-                                        ? "bg-primary text-primary-foreground" 
+                                    currentSessionId === session.id
+                                        ? "bg-primary text-primary-foreground"
                                         : "hover:bg-muted"
                                 )}
                             >
@@ -631,9 +656,9 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                     <div className="flex items-center gap-2">
                         {messages.length > 0 && (
                             <>
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
+                                <Button
+                                    variant="outline"
+                                    size="sm"
                                     className="h-8 gap-2"
                                     onClick={downloadPDF}
                                     disabled={isExporting}
@@ -641,9 +666,9 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                                     {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
                                     <span className="hidden sm:inline">PDF</span>
                                 </Button>
-                                <Button 
-                                    variant="outline" 
-                                    size="sm" 
+                                <Button
+                                    variant="outline"
+                                    size="sm"
                                     className="h-8 gap-2 text-muted-foreground"
                                     onClick={downloadHistory}
                                 >
@@ -656,172 +681,172 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                 </CardHeader>
 
                 <CardContent className="flex-1 flex flex-col p-0 min-h-0">
-                <ScrollArea className="flex-1 p-4 min-h-0">
-                    <div ref={chatRef} className="space-y-4 bg-background p-4">
-                        {allMessages.map((message) => {
-                            const hasContent = ("content" in message && message.content.trim().length > 0) || 
-                                              (message.parts && message.parts.some((p: any) => 
-                                                (p.type === 'text' && p.text.trim().length > 0) || 
-                                                p.type === 'tool-invocation' || 
-                                                p.type === 'tool-result'
-                                              ));
+                    <ScrollArea className="flex-1 p-4 min-h-0">
+                        <div ref={chatRef} className="space-y-4 bg-background p-4">
+                            {allMessages.map((message) => {
+                                const hasContent = ("content" in message && message.content.trim().length > 0) ||
+                                    (message.parts && message.parts.some((p: any) =>
+                                        (p.type === 'text' && p.text.trim().length > 0) ||
+                                        p.type === 'tool-invocation' ||
+                                        p.type === 'tool-result'
+                                    ));
 
-                            if (!hasContent) return null;
+                                if (!hasContent) return null;
 
-                            return (
-                            <div
-                                key={message.id}
-                                className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
-                            >
-                                <div
-                                    className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${message.role === "user"
-                                        ? "bg-primary text-primary-foreground"
-                                        : "bg-muted"
-                                        }`}
-                                >
-                                    {message.role === "user" ? (
-                                        <User className="h-4 w-4" />
-                                    ) : (
-                                        <Bot className="h-4 w-4" />
-                                    )}
-                                </div>
-                                <div
-                                    className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${message.role === "user"
-                                        ? "bg-primary text-primary-foreground"
-                                        : "bg-muted shadow-sm"
-                                        }`}
-                                >
-                                    <div className="text-sm markdown-content">
-                                        {"content" in message
-                                            ? renderContentWithImages(message.content)
-                                            : message.parts?.map((part: { type: string; text?: string; toolName?: string }, i: number) => {
-                                                if (part.type === "text") {
-                                                    return (
-                                                        <div key={i}>
-                                                            {renderContentWithImages(part.text || "")}
-                                                        </div>
-                                                    )
-                                                }
-                                                if (part.type === "tool-invocation") {
-                                                    return (
-                                                        <div key={i} className="flex items-center gap-2 text-[10px] text-blue-500/80 font-medium uppercase tracking-wider my-1 bg-blue-50/50 p-1.5 rounded border border-blue-100">
-                                                            <Loader2 className="h-3 w-3 animate-spin" />
-                                                            Запуск: {part.toolName}
-                                                        </div>
-                                                    )
-                                                }
-                                                if (part.type === "tool-result") {
-                                                    return (
-                                                        <div key={i} className="flex items-center gap-2 text-[10px] text-green-600/80 font-medium uppercase tracking-wider my-1 bg-green-50/50 p-1.5 rounded border border-green-100">
-                                                            <span>✓ Завершено: {part.toolName}</span>
-                                                        </div>
-                                                    )
-                                                }
-                                                return null
-                                            })}
-                                    </div>
-                                </div>
-                            </div>
-                            );
-                        })}
-
-                        {isLoading && (
-                            <div className="flex gap-3">
-                                <div className="flex-shrink-0 h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-                                    <Bot className="h-4 w-4" />
-                                </div>
-                                <div className="bg-muted rounded-2xl px-4 py-3 shadow-sm border border-border/50">
-                                    <div className="flex items-center gap-3">
-                                        <div className="relative">
-                                            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                                            {(() => {
-                                                const Icon = STATUS_STEPS[statusIndex].icon;
-                                                return <Icon className="h-2 w-2 absolute inset-0 m-auto" />
-                                            })()}
+                                return (
+                                    <div
+                                        key={message.id}
+                                        className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
+                                    >
+                                        <div
+                                            className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${message.role === "user"
+                                                ? "bg-primary text-primary-foreground"
+                                                : "bg-muted"
+                                                }`}
+                                        >
+                                            {message.role === "user" ? (
+                                                <User className="h-4 w-4" />
+                                            ) : (
+                                                <Bot className="h-4 w-4" />
+                                            )}
                                         </div>
-                                        <span className="text-sm font-medium animate-pulse text-muted-foreground">
-                                            {STATUS_STEPS[statusIndex].text}
-                                        </span>
+                                        <div
+                                            className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${message.role === "user"
+                                                ? "bg-primary text-primary-foreground"
+                                                : "bg-muted shadow-sm"
+                                                }`}
+                                        >
+                                            <div className="text-sm markdown-content">
+                                                {"content" in message
+                                                    ? renderContentWithImages(message.content)
+                                                    : message.parts?.map((part: { type: string; text?: string; toolName?: string }, i: number) => {
+                                                        if (part.type === "text") {
+                                                            return (
+                                                                <div key={i}>
+                                                                    {renderContentWithImages(part.text || "")}
+                                                                </div>
+                                                            )
+                                                        }
+                                                        if (part.type === "tool-invocation") {
+                                                            return (
+                                                                <div key={i} className="flex items-center gap-2 text-[10px] text-blue-500/80 font-medium uppercase tracking-wider my-1 bg-blue-50/50 p-1.5 rounded border border-blue-100">
+                                                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                                                    Запуск: {part.toolName}
+                                                                </div>
+                                                            )
+                                                        }
+                                                        if (part.type === "tool-result") {
+                                                            return (
+                                                                <div key={i} className="flex items-center gap-2 text-[10px] text-green-600/80 font-medium uppercase tracking-wider my-1 bg-green-50/50 p-1.5 rounded border border-green-100">
+                                                                    <span>✓ Завершено: {part.toolName}</span>
+                                                                </div>
+                                                            )
+                                                        }
+                                                        return null
+                                                    })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+
+                            {isLoading && (
+                                <div className="flex gap-3">
+                                    <div className="flex-shrink-0 h-8 w-8 rounded-full bg-muted flex items-center justify-center">
+                                        <Bot className="h-4 w-4" />
+                                    </div>
+                                    <div className="bg-muted rounded-2xl px-4 py-3 shadow-sm border border-border/50">
+                                        <div className="flex items-center gap-3">
+                                            <div className="relative">
+                                                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                                                {(() => {
+                                                    const Icon = STATUS_STEPS[statusIndex].icon;
+                                                    return <Icon className="h-2 w-2 absolute inset-0 m-auto" />
+                                                })()}
+                                            </div>
+                                            <span className="text-sm font-medium animate-pulse text-muted-foreground">
+                                                {STATUS_STEPS[statusIndex].text}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        {error && (
-                            <div className="text-sm text-destructive text-center p-2">
-                                Ошибка: {error.message}
-                            </div>
-                        )}
-                        <div ref={messagesEndRef} />
-                    </div>
-                </ScrollArea>
-
-                <div className="p-4 border-t bg-muted/20">
-                    <div 
-                        className="flex items-center justify-between cursor-pointer"
-                        onClick={() => setIsQuestionsCollapsed(!isQuestionsCollapsed)}
-                    >
-                        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Возможные вопросы</span>
-                        <div className="flex items-center gap-1">
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    refreshQuestions();
-                                }}
-                                disabled={isLoading}
-                            >
-                                <RefreshCw className={`h-3 w-3 ${isLoading ? 'opacity-50' : ''}`} />
-                            </Button>
-                            <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6"
-                            >
-                                {isQuestionsCollapsed ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                            </Button>
+                            {error && (
+                                <div className="text-sm text-destructive text-center p-2">
+                                    Ошибка: {error.message}
+                                </div>
+                            )}
+                            <div ref={messagesEndRef} />
                         </div>
-                    </div>
-                    {!isQuestionsCollapsed && (
-                        <div className="grid gap-2 mt-3">
-                            {suggestedQuestions.map((q, i) => (
-                                <button
-                                    key={i}
-                                    onClick={() => handleQuestionClick(q)}
-                                    disabled={isLoading}
-                                    className="text-left text-xs p-2 rounded-lg border bg-background hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {q}
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
+                    </ScrollArea>
 
-                <form onSubmit={handleFormSubmit} className="flex-shrink-0 p-4 border-t">
-                    <div className="flex gap-2">
-                        <input
-                            type="text"
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            placeholder="Задайте вопрос..."
-                            disabled={isLoading}
-                            className="flex-1 px-4 py-2.5 rounded-full border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
-                        />
-                        <Button
-                            type="submit"
-                            size="icon"
-                            disabled={!inputValue.trim() || isLoading}
-                            className="rounded-full h-10 w-10"
+                    <div className="p-4 border-t bg-muted/20">
+                        <div
+                            className="flex items-center justify-between cursor-pointer"
+                            onClick={() => setIsQuestionsCollapsed(!isQuestionsCollapsed)}
                         >
-                            <Send className="h-4 w-4" />
-                        </Button>
+                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Возможные вопросы</span>
+                            <div className="flex items-center gap-1">
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        refreshQuestions();
+                                    }}
+                                    disabled={isLoading}
+                                >
+                                    <RefreshCw className={`h-3 w-3 ${isLoading ? 'opacity-50' : ''}`} />
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6"
+                                >
+                                    {isQuestionsCollapsed ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                </Button>
+                            </div>
+                        </div>
+                        {!isQuestionsCollapsed && (
+                            <div className="grid gap-2 mt-3">
+                                {suggestedQuestions.map((q, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => handleQuestionClick(q)}
+                                        disabled={isLoading}
+                                        className="text-left text-xs p-2 rounded-lg border bg-background hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        {q}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                     </div>
-                </form>
-            </CardContent>
-        </Card>
+
+                    <form onSubmit={handleFormSubmit} className="flex-shrink-0 p-4 border-t">
+                        <div className="flex gap-2">
+                            <input
+                                type="text"
+                                value={inputValue}
+                                onChange={(e) => setInputValue(e.target.value)}
+                                placeholder="Задайте вопрос..."
+                                disabled={isLoading}
+                                className="flex-1 px-4 py-2.5 rounded-full border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                            />
+                            <Button
+                                type="submit"
+                                size="icon"
+                                disabled={!inputValue.trim() || isLoading}
+                                className="rounded-full h-10 w-10"
+                            >
+                                <Send className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </form>
+                </CardContent>
+            </Card>
         </div>
     )
 }
