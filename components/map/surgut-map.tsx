@@ -407,7 +407,7 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
               </>
             )}
           </svg>
-          {showOffline ? "Скрыть офлайн" : "Показать офлайн"}
+          {showOffline ? "Показать только активные камеры" : "Показать все камеры"}
         </button>
       </div>
 
