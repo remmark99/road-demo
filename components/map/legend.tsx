@@ -52,9 +52,14 @@ export function Legend({ statusOverride }: LegendProps) {
             Состояние дорог
           </div>
           <div className="space-y-1.5">
-            {(["clean", "dirty", "warning", "unknown"] as RoadStatus[]).map(status => (
+            {([
+              { status: "clean" as RoadStatus, color: "bg-road-clean" },
+              { status: "dirty" as RoadStatus, color: "bg-road-dirty" },
+              { status: "warning" as RoadStatus, color: "bg-road-warning" },
+              { status: "unknown" as RoadStatus, color: "bg-road-unknown" }
+            ]).map(({ status, color }) => (
               <div key={status} className="flex items-center gap-2 text-sm">
-                <div className={`w-4 h-1 rounded-full bg-road-${status}`} />
+                <div className={`w-4 h-1 rounded-full ${color}`} />
                 <span className="text-muted-foreground">{statusLabels[status]}</span>
               </div>
             ))}
@@ -86,20 +91,27 @@ export function Legend({ statusOverride }: LegendProps) {
         <Separator />
 
         <div>
-          <div className="text-sm font-medium mb-2">Участки</div>
-          <div className="space-y-2">
-            {roadSegments.map(segment => {
-              const status = statusOverride?.[segment.id] ?? segment.currentStatus
-              return (
-                <div key={segment.id} className="flex items-center justify-between text-sm gap-2">
-                  <span className="text-muted-foreground truncate">{segment.name}</span>
-                  <Badge variant={statusVariant[status]} className="shrink-0 text-xs">
-                    {statusLabels[status]}
-                  </Badge>
-                </div>
-              )
-            })}
+          <div className="text-sm font-medium mb-2 flex items-center gap-2">
+            Участки
+            <Badge variant="outline" className="ml-auto text-xs">
+              {roadSegments.length}
+            </Badge>
           </div>
+          <ScrollArea className="h-48">
+            <div className="space-y-2 pr-2">
+              {roadSegments.map(segment => {
+                const status = statusOverride?.[segment.id] ?? segment.currentStatus
+                return (
+                  <div key={segment.id} className="flex items-center justify-between text-sm gap-2">
+                    <span className="text-muted-foreground truncate">{segment.name}</span>
+                    <Badge variant={statusVariant[status]} className="shrink-0 text-xs">
+                      {statusLabels[status]}
+                    </Badge>
+                  </div>
+                )
+              })}
+            </div>
+          </ScrollArea>
         </div>
       </CardContent>
     </Card>

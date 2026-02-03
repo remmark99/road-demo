@@ -1,5 +1,6 @@
 import type { Camera, RoadSegment, Notification, RoadStatusHistory, RoadStatus } from "./types"
 import geojson from "../map.json";
+import roadsGeoJson from "../roads.json";
 
 // Камеры на перекрестках в Сургуте (район пр. Ленина и ул. 30 лет Победы)
 // export const cameras: Camera[] = [
@@ -64,7 +65,8 @@ import geojson from "../map.json";
 //   }
 // ]
 
-export const roadSegments: RoadSegment[] = [
+// Existing manual segment
+const manualSegments: RoadSegment[] = [
   {
     id: "seg-1",
     name: "Дорога 1",
@@ -111,6 +113,22 @@ export const roadSegments: RoadSegment[] = [
     currentStatus: "clean"
   }
 ]
+
+// Generate segments from roads.json GeoJSON
+const statuses: RoadStatus[] = ["clean", "dirty", "warning", "clean"]
+const geoJsonSegments: RoadSegment[] = roadsGeoJson.features
+  .filter(feature => feature.geometry.type === "LineString")
+  .map((feature, index) => ({
+    id: `road-${feature.id ?? index}`,
+    name: `Участок ${(feature.id as number ?? index) + 1}`,
+    startCameraId: null,
+    endCameraId: null,
+    coordinates: feature.geometry.coordinates as [number, number][],
+    currentStatus: statuses[index % statuses.length]
+  }))
+
+// Combine all road segments
+export const roadSegments: RoadSegment[] = [...manualSegments, ...geoJsonSegments]
 
 // Генерация истории статусов для таймлайна
 export function generateStatusHistory(hours: number = 24): RoadStatusHistory[] {

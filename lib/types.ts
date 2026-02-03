@@ -18,8 +18,8 @@ export interface Camera {
 export interface RoadSegment {
   id: string
   name: string
-  startCameraId: string
-  endCameraId: string
+  startCameraId?: string | null
+  endCameraId?: string | null
   coordinates: [number, number][]
   currentStatus: RoadStatus
 }

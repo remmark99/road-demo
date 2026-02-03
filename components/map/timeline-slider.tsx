@@ -4,7 +4,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import { Slider } from "@/components/ui/slider"
 import { Button } from "@/components/ui/button"
 import { Play, Pause, SkipBack, SkipForward, Clock } from "lucide-react"
-import { generateStatusHistory } from "@/lib/mock-data"
+import { generateStatusHistory, roadSegments } from "@/lib/mock-data"
 import type { RoadStatus } from "@/lib/types"
 
 interface TimelineSliderProps {
@@ -14,9 +14,9 @@ interface TimelineSliderProps {
 export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
   const [value, setValue] = useState([100])
   const [isPlaying, setIsPlaying] = useState(false)
-  
+
   const history = useMemo(() => generateStatusHistory(24), [])
-  
+
   const nowRef = useRef(new Date())
   const now = nowRef.current
   const startTime = useMemo(() => new Date(now.getTime() - 24 * 60 * 60 * 1000), [now])
@@ -28,16 +28,15 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
 
   const getStatusAtTime = useCallback((time: Date): Record<string, RoadStatus> => {
     const result: Record<string, RoadStatus> = {}
-    
-    const segments = ["seg-1", "seg-2"]
-    for (const segmentId of segments) {
+
+    for (const segment of roadSegments) {
       const segmentHistory = history
-        .filter(h => h.segmentId === segmentId && h.timestamp <= time)
+        .filter(h => h.segmentId === segment.id && h.timestamp <= time)
         .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-      
-      result[segmentId] = segmentHistory[0]?.status ?? "unknown"
+
+      result[segment.id] = segmentHistory[0]?.status ?? segment.currentStatus
     }
-    
+
     return result
   }, [history])
 
@@ -64,7 +63,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
   // Auto-play effect
   useEffect(() => {
     if (!isPlaying) return
-    
+
     const interval = setInterval(() => {
       setValue(prev => {
         const newValue = Math.min(100, prev[0] + 0.5)
@@ -112,7 +111,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
             <SkipForward className="h-4 w-4" />
           </Button>
         </div>
-        
+
         <div className="flex-1">
           <Slider
             value={value}
@@ -122,7 +121,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
             className="cursor-pointer"
           />
         </div>
-        
+
         <div className="flex items-center gap-2 min-w-[180px] justify-end">
           <Clock className="h-4 w-4 text-muted-foreground" />
           <span className="text-sm font-mono">
@@ -137,7 +136,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
           </span>
         </div>
       </div>
-      
+
       <div className="flex justify-between text-xs text-muted-foreground">
         <span>{formatTime(startTime)}</span>
         <span>{formatTime(now)}</span>
