@@ -111,6 +111,7 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
   const [showOffline, setShowOffline] = useState(false)
   const [cameras, setCameras] = useState<Camera[]>([])
   const [hoveredCamera, setHoveredCamera] = useState<Camera | null>(null)
+  const [showAllFov, setShowAllFov] = useState(false)
   const [mapLoaded, setMapLoaded] = useState(false)
 
   // Add road segments only once - no statusOverride dependency
@@ -291,76 +292,104 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
     addCameraMarkers()
   }, [mapLoaded, addRoadSegments, addCameraMarkers])
 
-  // Update/show FOV when hovering
+  // Update/show FOV
   useEffect(() => {
-    if (!map.current?.isStyleLoaded()) return
+    if (!map.current || !mapLoaded) return
 
-    const sourceId = "camera-fov"
-    const layerId = "camera-fov-layer"
+    const sourceId = "camera-fovs"
+    const layerId = "camera-fovs-layer"
 
-    const removeFov = () => {
-      if (map.current?.getLayer(`${layerId}-outline`)) {
-        map.current.removeLayer(`${layerId}-outline`)
-      }
-      if (map.current?.getLayer(layerId)) {
-        map.current.removeLayer(layerId)
-      }
-      if (map.current?.getSource(sourceId)) {
-        map.current.removeSource(sourceId)
-      }
-    }
+    const updateFovs = () => {
+      // Find cameras that should have FOV visible
+      const fovCameras = cameras.filter(camera => {
+        const isVisible = camera.status === "online" || showOffline
+        if (!isVisible) return false
 
-    // Always clean up existing layers/sources
-    removeFov()
+        return showAllFov || (hoveredCamera && camera.id === hoveredCamera.id)
+      })
 
-    if (!hoveredCamera) return
-
-    const fovCoords = generateFovPolygon(
-      hoveredCamera.lat,
-      hoveredCamera.lng,
-      hoveredCamera.fovDirection,
-      hoveredCamera.fovAngle,
-      hoveredCamera.fovDistance
-    )
-
-    map.current.addSource(sourceId, {
-      type: "geojson",
-      data: {
+      const features = fovCameras.map(camera => ({
         type: "Feature",
-        properties: {},
+        properties: {
+          id: camera.id,
+          isHovered: hoveredCamera?.id === camera.id,
+          status: camera.status
+        },
         geometry: {
           type: "Polygon",
-          coordinates: [fovCoords]
+          coordinates: [generateFovPolygon(
+            camera.lat,
+            camera.lng,
+            camera.fovDirection,
+            camera.fovAngle,
+            camera.fovDistance
+          )]
         }
-      }
-    })
+      }))
 
-    map.current.addLayer({
-      id: layerId,
-      type: "fill",
-      source: sourceId,
-      paint: {
-        "fill-color": hoveredCamera.status === "online" ? "#4ade80" : "#6b7280",
-        "fill-opacity": 0.3
+      const geojson: any = {
+        type: "FeatureCollection",
+        features: features
       }
-    })
 
-    // Add outline
-    map.current.addLayer({
-      id: `${layerId}-outline`,
-      type: "line",
-      source: sourceId,
-      paint: {
-        "line-color": hoveredCamera.status === "online" ? "#22c55e" : "#9ca3af",
-        "line-width": 2,
-        "line-opacity": 0.8
+      const source = map.current?.getSource(sourceId) as maplibregl.GeoJSONSource
+      if (source) {
+        source.setData(geojson)
+      } else {
+        map.current?.addSource(sourceId, {
+          type: "geojson",
+          data: geojson
+        })
+
+        map.current?.addLayer({
+          id: layerId,
+          type: "fill",
+          source: sourceId,
+          paint: {
+            "fill-color": [
+              "case",
+              ["==", ["get", "status"], "online"], "#4ade80",
+              "#6b7280"
+            ],
+            "fill-opacity": [
+              "case",
+              ["boolean", ["get", "isHovered"], false], 0.4,
+              0.15
+            ]
+          }
+        })
+
+        map.current?.addLayer({
+          id: `${layerId}-outline`,
+          type: "line",
+          source: sourceId,
+          paint: {
+            "line-color": [
+              "case",
+              ["==", ["get", "status"], "online"], "#22c55e",
+              "#9ca3af"
+            ],
+            "line-width": [
+              "case",
+              ["boolean", ["get", "isHovered"], false], 2,
+              0.5
+            ],
+            "line-opacity": 0.6
+          }
+        })
       }
-    })
+    }
+
+    if (map.current.isStyleLoaded()) {
+      updateFovs()
+    } else {
+      map.current.once("idle", updateFovs)
+    }
 
     return () => {
-      removeFov()
+      // No cleanup needed here as we reuse the source/layers
     }
-  }, [hoveredCamera])
+  }, [cameras, showOffline, showAllFov, hoveredCamera, mapLoaded])
 
   // Update road colors when statusOverride changes
   useEffect(() => {
@@ -383,8 +412,8 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
     <>
       <div ref={mapContainer} className="w-full h-full rounded-lg" />
 
-      {/* Offline cameras toggle */}
-      <div className="absolute top-4 left-4 z-10">
+      {/* Map Controls */}
+      <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
         <button
           onClick={() => setShowOffline(!showOffline)}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${showOffline
@@ -407,7 +436,29 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
               </>
             )}
           </svg>
-          {showOffline ? "Показать только активные камеры" : "Показать все камеры"}
+          {showOffline ? "Показать только активные" : "Показать все"}
+        </button>
+
+        <button
+          onClick={() => setShowAllFov(!showAllFov)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${showAllFov
+            ? "bg-primary text-primary-foreground"
+            : "bg-card text-card-foreground border border-border"
+            }`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="m16.24 7.76-1.42 1.42" />
+            <path d="m20.48 3.51-1.42 1.42" />
+            <circle cx="12" cy="12" r="1" />
+            <circle cx="12" cy="12" r="10" />
+            <path d="m16.24 16.24-1.42-1.42" />
+            <path d="m20.48 20.48-1.42-1.42" />
+            <path d="m7.76 16.24 1.42-1.42" />
+            <path d="m3.51 20.48 1.42-1.42" />
+            <path d="m7.76 7.76 1.42 1.42" />
+            <path d="m3.51 3.51 1.42 1.42" />
+          </svg>
+          {showAllFov ? "Скрыть азимуты" : "Показать азимуты"}
         </button>
       </div>
 
