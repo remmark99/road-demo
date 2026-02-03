@@ -182,6 +182,77 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             const contentWidth = pdfWidth - (margin * 2);
             let currentY = margin;
 
+            // Helper function to add image slice to PDF with proper page breaks
+            const addImageToPDF = (canvas: HTMLCanvasElement, imgWidth: number) => {
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                const pageContentHeight = pdfHeight - (margin * 2);
+                
+                // If image fits on current page, add it directly
+                if (currentY + imgHeight <= pdfHeight - margin) {
+                    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+                    pdf.addImage(imgData, 'JPEG', margin, currentY, imgWidth, imgHeight);
+                    currentY += imgHeight + 2;
+                    return;
+                }
+                
+                // If image fits on a single page but not on current, start new page
+                if (imgHeight <= pageContentHeight) {
+                    pdf.addPage();
+                    currentY = margin;
+                    const imgData = canvas.toDataURL('image/jpeg', 0.85);
+                    pdf.addImage(imgData, 'JPEG', margin, currentY, imgWidth, imgHeight);
+                    currentY += imgHeight + 2;
+                    return;
+                }
+                
+                // Image is taller than one page - need to slice it
+                const sourceWidth = canvas.width;
+                const sourceHeight = canvas.height;
+                const pixelsPerMM = sourceHeight / imgHeight;
+                
+                let remainingSourceHeight = sourceHeight;
+                let sourceY = 0;
+                
+                while (remainingSourceHeight > 0) {
+                    // Calculate how much vertical space is available on current page
+                    const availablePageHeight = pdfHeight - margin - currentY;
+                    const availablePixels = availablePageHeight * pixelsPerMM;
+                    
+                    // Determine slice height (in pixels)
+                    const slicePixelHeight = Math.min(remainingSourceHeight, availablePixels);
+                    const sliceMMHeight = slicePixelHeight / pixelsPerMM;
+                    
+                    // Create a temporary canvas for this slice
+                    const sliceCanvas = document.createElement('canvas');
+                    sliceCanvas.width = sourceWidth;
+                    sliceCanvas.height = slicePixelHeight;
+                    const sliceCtx = sliceCanvas.getContext('2d');
+                    
+                    if (sliceCtx) {
+                        sliceCtx.drawImage(
+                            canvas,
+                            0, sourceY, sourceWidth, slicePixelHeight,  // source rect
+                            0, 0, sourceWidth, slicePixelHeight          // dest rect
+                        );
+                        
+                        const sliceImgData = sliceCanvas.toDataURL('image/jpeg', 0.85);
+                        pdf.addImage(sliceImgData, 'JPEG', margin, currentY, imgWidth, sliceMMHeight);
+                    }
+                    
+                    sourceY += slicePixelHeight;
+                    remainingSourceHeight -= slicePixelHeight;
+                    currentY += sliceMMHeight;
+                    
+                    // If there's more content, add a new page
+                    if (remainingSourceHeight > 0) {
+                        pdf.addPage();
+                        currentY = margin;
+                    }
+                }
+                
+                currentY += 2; // Small gap after the image
+            };
+
             // Temporary container to render messages one by one
             const tempContainer = document.createElement('div');
             tempContainer.style.width = `800px`; // Wider for better text flow
@@ -211,10 +282,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                 backgroundColor: '#f8fafc',
                 pixelRatio: 2,
             });
-            const headerImgData = headerCanvas.toDataURL('image/jpeg', 0.9);
-            const headerHeight = (headerCanvas.height * contentWidth) / headerCanvas.width;
-            pdf.addImage(headerImgData, 'JPEG', margin, currentY, contentWidth, headerHeight);
-            currentY += headerHeight + 2;
+            addImageToPDF(headerCanvas, contentWidth);
             tempContainer.removeChild(headerDiv);
 
             // Process each message
@@ -226,111 +294,98 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                 
                 if (!contentText || !contentText.trim()) continue;
 
-                // Create a temporary div for this message
-                const msgDiv = document.createElement('div');
-                msgDiv.style.padding = '10px 12px';
-                msgDiv.style.marginBottom = '4px';
-                msgDiv.style.borderRadius = '6px';
-                msgDiv.style.background = message.role === 'user' ? '#eff6ff' : '#f9fafb';
-                msgDiv.style.border = message.role === 'user' ? '1px solid #bfdbfe' : '1px solid #e5e7eb';
-                msgDiv.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-                msgDiv.style.fontSize = '12px';
-                msgDiv.style.lineHeight = '1.5';
-                msgDiv.style.color = '#1f2937';
-                
-                // Role label
-                const roleLabel = document.createElement('div');
-                roleLabel.style.fontWeight = '600';
-                roleLabel.style.marginBottom = '4px';
-                roleLabel.style.fontSize = '10px';
-                roleLabel.style.textTransform = 'uppercase';
-                roleLabel.style.letterSpacing = '0.5px';
-                roleLabel.style.color = message.role === 'user' ? '#2563eb' : '#6b7280';
-                roleLabel.innerText = message.role === 'user' ? 'Пользователь' : 'AI-ассистент';
-                msgDiv.appendChild(roleLabel);
-
-                // Content with images
-                const contentDiv = document.createElement('div');
                 const MCP_BASE_URL = process.env.NEXT_PUBLIC_MCP_SERVER_URL || "";
                 const parts = contentText.split(/(\/plots\/plot_\d+\.png)/g);
                 
-                // Pre-load images
-                const imagePromises: Promise<void>[] = [];
+                // Process each part of the message separately (text blocks and images)
+                let isFirstPart = true;
                 
                 for (const part of parts) {
+                    if (!part.trim()) continue;
+                    
                     if (part.match(/\/plots\/plot_\d+\.png/)) {
-                        const imgContainer = document.createElement('div');
-                        imgContainer.style.margin = '8px 0';
-                        imgContainer.style.textAlign = 'center';
+                        // This is an image - render it separately
+                        const imgDiv = document.createElement('div');
+                        imgDiv.style.padding = '8px';
+                        imgDiv.style.background = '#f9fafb';
+                        imgDiv.style.border = '1px solid #e5e7eb';
+                        imgDiv.style.borderRadius = '6px';
+                        imgDiv.style.textAlign = 'center';
                         
                         const img = document.createElement('img');
                         img.src = `${MCP_BASE_URL}${part}`;
                         img.style.maxWidth = '100%';
                         img.style.height = 'auto';
                         img.style.borderRadius = '8px';
-                        img.style.border = '1px solid #e5e7eb';
                         img.crossOrigin = 'anonymous';
                         
-                        // Wait for image to load
-                        const loadPromise = new Promise<void>((resolve) => {
-                            img.onload = () => resolve();
-                            img.onerror = () => resolve(); // Continue even if image fails
-                        });
-                        imagePromises.push(loadPromise);
+                        imgDiv.appendChild(img);
+                        tempContainer.appendChild(imgDiv);
                         
-                        imgContainer.appendChild(img);
-                        contentDiv.appendChild(imgContainer);
-                    } else if (part.trim()) {
-                        const textBlock = document.createElement('div');
-                        textBlock.style.whiteSpace = 'pre-wrap';
-                        textBlock.style.wordBreak = 'break-word';
-                        textBlock.innerText = part.trim();
-                        contentDiv.appendChild(textBlock);
+                        // Wait for image to load
+                        await new Promise<void>((resolve) => {
+                            img.onload = () => resolve();
+                            img.onerror = () => resolve();
+                            // Fallback timeout
+                            setTimeout(() => resolve(), 3000);
+                        });
+                        
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                        
+                        const imgCanvas = await htmlToImage.toCanvas(imgDiv, {
+                            backgroundColor: '#ffffff',
+                            pixelRatio: 2,
+                        });
+                        
+                        addImageToPDF(imgCanvas, contentWidth);
+                        tempContainer.removeChild(imgDiv);
+                        isFirstPart = false;
+                        
+                    } else {
+                        // This is a text block
+                        const textDiv = document.createElement('div');
+                        textDiv.style.padding = '10px 12px';
+                        textDiv.style.marginBottom = '2px';
+                        textDiv.style.borderRadius = '6px';
+                        textDiv.style.background = message.role === 'user' ? '#eff6ff' : '#f9fafb';
+                        textDiv.style.border = message.role === 'user' ? '1px solid #bfdbfe' : '1px solid #e5e7eb';
+                        textDiv.style.fontFamily = 'system-ui, -apple-system, sans-serif';
+                        textDiv.style.fontSize = '12px';
+                        textDiv.style.lineHeight = '1.5';
+                        textDiv.style.color = '#1f2937';
+                        
+                        // Add role label only for the first part of the message
+                        if (isFirstPart) {
+                            const roleLabel = document.createElement('div');
+                            roleLabel.style.fontWeight = '600';
+                            roleLabel.style.marginBottom = '4px';
+                            roleLabel.style.fontSize = '10px';
+                            roleLabel.style.textTransform = 'uppercase';
+                            roleLabel.style.letterSpacing = '0.5px';
+                            roleLabel.style.color = message.role === 'user' ? '#2563eb' : '#6b7280';
+                            roleLabel.innerText = message.role === 'user' ? 'Пользователь' : 'AI-ассистент';
+                            textDiv.appendChild(roleLabel);
+                        }
+                        
+                        const textContent = document.createElement('div');
+                        textContent.style.whiteSpace = 'pre-wrap';
+                        textContent.style.wordBreak = 'break-word';
+                        textContent.innerText = part.trim();
+                        textDiv.appendChild(textContent);
+                        
+                        tempContainer.appendChild(textDiv);
+                        await new Promise(resolve => setTimeout(resolve, 50));
+                        
+                        const textCanvas = await htmlToImage.toCanvas(textDiv, {
+                            backgroundColor: '#ffffff',
+                            pixelRatio: 2,
+                        });
+                        
+                        addImageToPDF(textCanvas, contentWidth);
+                        tempContainer.removeChild(textDiv);
+                        isFirstPart = false;
                     }
                 }
-                
-                msgDiv.appendChild(contentDiv);
-                tempContainer.appendChild(msgDiv);
-
-                // Wait for all images in this message to load
-                await Promise.all(imagePromises);
-                
-                // Small delay for rendering
-                await new Promise(resolve => setTimeout(resolve, 100));
-
-                // Capture this message
-                const canvas = await htmlToImage.toCanvas(msgDiv, {
-                    backgroundColor: '#ffffff',
-                    pixelRatio: 2,
-                });
-
-                const msgImgData = canvas.toDataURL('image/jpeg', 0.85);
-                const msgImgWidth = contentWidth;
-                const msgImgHeight = (canvas.height * msgImgWidth) / canvas.width;
-
-                // Check if we need a new page
-                if (currentY + msgImgHeight > pdfHeight - margin) {
-                    pdf.addPage();
-                    currentY = margin;
-                }
-
-                // If message is taller than page, we need to split it
-                if (msgImgHeight > pdfHeight - (margin * 2)) {
-                    // For very tall messages, just add it and let it overflow to next pages
-                    pdf.addImage(msgImgData, 'JPEG', margin, currentY, msgImgWidth, msgImgHeight);
-                    const pagesNeeded = Math.ceil(msgImgHeight / (pdfHeight - margin * 2));
-                    for (let i = 1; i < pagesNeeded; i++) {
-                        pdf.addPage();
-                    }
-                    currentY = margin + (msgImgHeight % (pdfHeight - margin * 2));
-                    if (currentY < margin + 10) currentY = margin;
-                } else {
-                pdf.addImage(msgImgData, 'JPEG', margin, currentY, msgImgWidth, msgImgHeight);
-                currentY += msgImgHeight + 2;
-                }
-
-                // Clean up
-                tempContainer.removeChild(msgDiv);
             }
 
             document.body.removeChild(tempContainer);
@@ -458,12 +513,27 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
         const message = inputValue.trim()
         setInputValue("")
 
+        // Создаём сессию ПЕРЕД отправкой, если её нет
+        if (!currentSessionId) {
+            const newId = Date.now().toString();
+            setCurrentSessionId(newId);
+            // Даём React обработать setState перед отправкой
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+
         await sendMessage({ text: message })
     }
 
     const handleQuestionClick = async (question: string) => {
         if (isLoading) return;
-        if (!currentSessionId) createNewChat();
+        
+        // Создаём сессию ПЕРЕД отправкой, если её нет
+        if (!currentSessionId) {
+            const newId = Date.now().toString();
+            setCurrentSessionId(newId);
+            // Даём React обработать setState перед отправкой
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
         
         // Находим соответствующий инструмент для этого вопроса
         const questionWithTool = QUESTIONS_WITH_TOOLS.find(q => q.question === question);
@@ -718,10 +788,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                     )}
                 </div>
 
-                <form onSubmit={(e) => {
-                    if (!currentSessionId) createNewChat();
-                    handleFormSubmit(e);
-                }} className="flex-shrink-0 p-4 border-t">
+                <form onSubmit={handleFormSubmit} className="flex-shrink-0 p-4 border-t">
                     <div className="flex gap-2">
                         <input
                             type="text"
