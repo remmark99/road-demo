@@ -75,6 +75,12 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
     const [isExporting, setIsExporting] = useState(false)
     const [isQuestionsCollapsed, setIsQuestionsCollapsed] = useState(false)
 
+    // Создаём sessionId сразу при монтировании, чтобы useChat всегда работал с валидным id
+    const [sessionId] = useState(() => Date.now().toString());
+    
+    // Используем currentSessionId если есть (загрузка существующей сессии), иначе новый sessionId
+    const activeSessionId = currentSessionId || sessionId;
+
     // Получаем initialMessages из localStorage при смене сессии
     const getInitialMessages = useCallback(() => {
         if (!currentSessionId) return [];
@@ -84,14 +90,18 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
     }, [currentSessionId]);
 
     const { messages, sendMessage, status, error, setMessages } = useChat({
-        id: currentSessionId || 'default',
+        id: activeSessionId,
         transport: new DefaultChatTransport({ api: "/api/chat" }),
         initialMessages: getInitialMessages(),
     })
 
-    // Load sessions on mount
+    // Load sessions on mount и устанавливаем начальный sessionId
     useEffect(() => {
         setSessions(chatStorage.getSessions());
+        // Устанавливаем currentSessionId сразу при монтировании
+        if (!currentSessionId) {
+            setCurrentSessionId(sessionId);
+        }
     }, []);
 
     // Загружаем сообщения при смене сессии
