@@ -416,7 +416,7 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
       <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
         <button
           onClick={() => setShowOffline(!showOffline)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${showOffline
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-60 ${showOffline
             ? "bg-primary text-primary-foreground"
             : "bg-card text-card-foreground border border-border"
             }`}
@@ -436,12 +436,14 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
               </>
             )}
           </svg>
-          {showOffline ? "Показать только активные" : "Показать все"}
+          <span className="truncate">
+            {showOffline ? "Показать только активные" : "Показать все"}
+          </span>
         </button>
 
         <button
           onClick={() => setShowAllFov(!showAllFov)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${showAllFov
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-60 ${showAllFov
             ? "bg-primary text-primary-foreground"
             : "bg-card text-card-foreground border border-border"
             }`}
@@ -458,7 +460,9 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
             <path d="m7.76 7.76 1.42 1.42" />
             <path d="m3.51 3.51 1.42 1.42" />
           </svg>
-          {showAllFov ? "Скрыть азимуты" : "Показать азимуты"}
+          <span className="truncate">
+            {showAllFov ? "Скрыть азимуты" : "Показать азимуты"}
+          </span>
         </button>
       </div>
 
