@@ -10,6 +10,7 @@ import type { RoadStatus } from "@/lib/types"
 export default function MapPage() {
   const [selectedTime, setSelectedTime] = useState<Date>(new Date())
   const [statusOverride, setStatusOverride] = useState<Record<string, RoadStatus>>({})
+  const [hoveredSegmentId, setHoveredSegmentId] = useState<string | null>(null)
 
   const handleTimeChange = useCallback((time: Date, statuses: Record<string, RoadStatus>) => {
     setSelectedTime(time)
@@ -27,12 +28,18 @@ export default function MapPage() {
             <SurgutMap
               selectedTime={selectedTime}
               statusOverride={statusOverride}
+              hoveredSegmentId={hoveredSegmentId}
+              onHoverSegment={setHoveredSegmentId}
             />
           </div>
 
           {/* Sidebar */}
-          <div className="w-72 p-4 border-l border-border overflow-y-auto">
-            <Legend statusOverride={statusOverride} />
+          <div className="w-80 p-4 border-l border-border overflow-y-auto">
+            <Legend 
+              statusOverride={statusOverride} 
+              hoveredSegmentId={hoveredSegmentId}
+              onHoverSegment={setHoveredSegmentId}
+            />
           </div>
         </div>
 

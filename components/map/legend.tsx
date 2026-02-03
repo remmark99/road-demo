@@ -17,18 +17,27 @@ const statusLabels: Record<RoadStatus, string> = {
   unknown: "Нет данных"
 }
 
-const statusVariant: Record<RoadStatus, "default" | "destructive" | "secondary" | "outline"> = {
-  clean: "default",
-  dirty: "destructive",
-  warning: "secondary",
-  unknown: "outline"
+const statusBadgeColors: Record<RoadStatus, string> = {
+  clean: "bg-green-600 text-white border-green-700 hover:bg-green-500",
+  dirty: "bg-rose-700 text-white border-rose-800 hover:bg-rose-600",
+  warning: "bg-amber-600 text-white border-amber-700 hover:bg-amber-500",
+  unknown: "bg-gray-600 text-white border-gray-700 hover:bg-gray-500"
+}
+
+const statusTextColors: Record<RoadStatus, string> = {
+  clean: "text-green-500",
+  dirty: "text-red-500",
+  warning: "text-yellow-500",
+  unknown: "text-gray-500"
 }
 
 interface LegendProps {
   statusOverride?: Record<string, RoadStatus>
+  hoveredSegmentId?: string | null
+  onHoverSegment?: (segmentId: string | null) => void
 }
 
-export function Legend({ statusOverride }: LegendProps) {
+export function Legend({ statusOverride, hoveredSegmentId, onHoverSegment }: LegendProps) {
   const [cameras, setCameras] = useState<Camera[]>([])
 
   useEffect(() => {
@@ -98,13 +107,27 @@ export function Legend({ statusOverride }: LegendProps) {
             </Badge>
           </div>
           <ScrollArea className="h-48">
-            <div className="space-y-2 pr-2">
+            <div className="space-y-1 pr-2">
               {roadSegments.map(segment => {
                 const status = statusOverride?.[segment.id] ?? segment.currentStatus
+                const isHovered = hoveredSegmentId === segment.id
                 return (
-                  <div key={segment.id} className="flex items-center justify-between text-sm gap-2">
-                    <span className="text-muted-foreground truncate">{segment.name}</span>
-                    <Badge variant={statusVariant[status]} className="shrink-0 text-xs">
+                  <div 
+                    key={segment.id} 
+                    className={`flex items-center justify-between text-sm gap-2 p-1.5 rounded-md cursor-pointer transition-all duration-200 ${
+                      isHovered ? 'bg-accent scale-[1.02]' : 'hover:bg-accent/50'
+                    }`}
+                    onMouseEnter={() => onHoverSegment?.(segment.id)}
+                    onMouseLeave={() => onHoverSegment?.(null)}
+                  >
+                    <span className={`truncate transition-colors ${isHovered ? statusTextColors[status] : 'text-muted-foreground'}`}>
+                      {segment.name}
+                    </span>
+                    <Badge 
+                      className={`shrink-0 text-xs border transition-all duration-200 ${statusBadgeColors[status]} ${
+                        isHovered ? 'scale-105 shadow-md' : ''
+                      }`}
+                    >
                       {statusLabels[status]}
                     </Badge>
                   </div>

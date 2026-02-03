@@ -99,9 +99,11 @@ function generateFovPolygon(
 interface SurgutMapProps {
   selectedTime?: Date
   statusOverride?: Record<string, RoadStatus>
+  hoveredSegmentId?: string | null
+  onHoverSegment?: (segmentId: string | null) => void
 }
 
-export function SurgutMap({ statusOverride }: SurgutMapProps) {
+export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: SurgutMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
@@ -170,8 +172,19 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
           "line-width": 6
         }
       })
+
+      // Add hover handlers for road segments
+      map.current!.on("mouseenter", mainLayerId, () => {
+        map.current!.getCanvas().style.cursor = "pointer"
+        onHoverSegment?.(segment.id)
+      })
+
+      map.current!.on("mouseleave", mainLayerId, () => {
+        map.current!.getCanvas().style.cursor = ""
+        onHoverSegment?.(null)
+      })
     })
-  }, [])
+  }, [onHoverSegment])
 
   const addCameraMarkers = useCallback(() => {
     if (!map.current) return
@@ -407,6 +420,25 @@ export function SurgutMap({ statusOverride }: SurgutMapProps) {
       }
     })
   }, [statusOverride, mapLoaded])
+
+  // Highlight hovered segment on map
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+
+    roadSegments.forEach(segment => {
+      const isHovered = hoveredSegmentId === segment.id
+      const mainLayerId = `road-${segment.id}`
+      const glowLayerId = `road-${segment.id}-glow`
+
+      if (map.current?.getLayer(mainLayerId)) {
+        map.current.setPaintProperty(mainLayerId, "line-width", isHovered ? 10 : 6)
+      }
+      if (map.current?.getLayer(glowLayerId)) {
+        map.current.setPaintProperty(glowLayerId, "line-width", isHovered ? 20 : 12)
+        map.current.setPaintProperty(glowLayerId, "line-opacity", isHovered ? 0.6 : 0.3)
+      }
+    })
+  }, [hoveredSegmentId, mapLoaded])
 
   return (
     <>
