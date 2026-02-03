@@ -29,7 +29,7 @@ export function StatusTimeChart() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Состояние дорог по дням</CardTitle>
+        <CardTitle>Состояние участков по дням</CardTitle>
         <CardDescription>
           Время (в часах) в каждом статусе за последние 7 дней
         </CardDescription>
@@ -38,11 +38,11 @@ export function StatusTimeChart() {
         <ChartContainer
           config={{
             cleanHours: {
-              label: "Чистая",
+              label: "Чистый",
               color: "#4ade80",
             },
             dirtyHours: {
-              label: "Загрязнена",
+              label: "Загрязнён",
               color: "#ef4444",
             },
             warningHours: {
@@ -58,12 +58,12 @@ export function StatusTimeChart() {
               margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
             >
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-              <XAxis 
-                dataKey="date" 
+              <XAxis
+                dataKey="date"
                 stroke="hsl(var(--muted-foreground))"
                 fontSize={12}
               />
-              <YAxis 
+              <YAxis
                 stroke="hsl(var(--muted-foreground))"
                 fontSize={12}
                 tickFormatter={(value) => `${value}ч`}
@@ -76,7 +76,7 @@ export function StatusTimeChart() {
                 stroke="#4ade80"
                 fill="#4ade80"
                 fillOpacity={0.6}
-                name="Чистая"
+                name="Чистый"
               />
               <Area
                 type="monotone"
@@ -94,7 +94,7 @@ export function StatusTimeChart() {
                 stroke="#ef4444"
                 fill="#ef4444"
                 fillOpacity={0.6}
-                name="Загрязнена"
+                name="Загрязнён"
               />
             </AreaChart>
           </ResponsiveContainer>

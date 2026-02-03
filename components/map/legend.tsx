@@ -11,8 +11,8 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Camera as CameraIcon, Route, MapPin } from "lucide-react"
 
 const statusLabels: Record<RoadStatus, string> = {
-  clean: "Чистая",
-  dirty: "Загрязнена",
+  clean: "Чистый",
+  dirty: "Загрязнён",
   warning: "Требует внимания",
   unknown: "Нет данных"
 }
@@ -49,7 +49,7 @@ export function Legend({ statusOverride }: LegendProps) {
         <div>
           <div className="text-sm font-medium mb-2 flex items-center gap-2">
             <Route className="h-4 w-4 text-muted-foreground" />
-            Состояние дорог
+            Состояние участков
           </div>
           <div className="space-y-1.5">
             {([
