@@ -449,13 +449,13 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
     const renderContentWithImages = (text: string) => {
         // Очищаем текст от служебных тегов перед рендерингом
         const cleanedText = cleanDisplayText(text);
-        // Явный URL MCP-сервера для графиков
-        const MCP_BASE_URL = "http://89.124.74.27:8000";
+        // Используем API-прокси для решения проблемы Mixed Content (HTTPS -> HTTP)
         const parts = cleanedText.split(/(\/plots\/plot_\d+\.png)/g);
         
         return parts.map((part, i) => {
             if (part.match(/\/plots\/plot_\d+\.png/)) {
-                const fullUrl = `${MCP_BASE_URL}${part}`;
+                // Проксируем через /api/plots для HTTPS
+                const fullUrl = `/api${part}`;
                 return (
                     <div key={i} className="my-2 relative group">
                         <img 
