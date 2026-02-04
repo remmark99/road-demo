@@ -6,10 +6,10 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL || "http://89.124.74.27:8000/sse"
 
 // Таймауты (в мс)
-const MCP_CONNECT_TIMEOUT = 15000    // 15 сек на подключение
-const MCP_PING_TIMEOUT = 5000        // 5 сек на проверку соединения
-const MCP_LIST_TOOLS_TIMEOUT = 10000 // 10 сек на получение списка инструментов
-const MCP_CALL_TOOL_TIMEOUT = 120000 // 120 сек на вызов инструмента (сложные SQL)
+const MCP_CONNECT_TIMEOUT = 20000    // 20 сек на подключение
+const MCP_PING_TIMEOUT = 7000        // 7 сек на проверку соединения
+const MCP_LIST_TOOLS_TIMEOUT = 20000 // 20 сек на получение списка инструментов
+const MCP_CALL_TOOL_TIMEOUT = 240000 // 240 сек на вызов инструмента (сложные SQL)
 
 // Cache the MCP client
 let mcpClient: Client | null = null

@@ -469,7 +469,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
             )}
           </svg>
           <span className="truncate">
-            {showOffline ? "Показать только активные" : "Показать все"}
+            {showOffline ? "Только активные камеры" : "Показать все камеры"}
           </span>
         </button>
 
