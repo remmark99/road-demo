@@ -243,7 +243,7 @@ export async function POST(req: Request) {
         messages: await convertToModelMessages(messages),
         tools,
         toolChoice: "auto", // или 'auto', если хочешь включить вызовы
-        stopWhen: stepCountIs(10),
+        stopWhen: stepCountIs(20),
     });
 
     return result.toUIMessageStreamResponse();
