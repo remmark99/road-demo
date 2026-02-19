@@ -53,6 +53,7 @@ interface NotificationCardProps {
 export function NotificationCard({ alert, isExpanded, onToggle }: NotificationCardProps) {
   const config = typeConfig[alert.alert_type] || typeConfig.default
   const Icon = config.icon
+  const isImage = alert.clip_path?.toLowerCase().match(/\.(jpg|jpeg|png)$/)
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr)
@@ -122,14 +123,23 @@ export function NotificationCard({ alert, isExpanded, onToggle }: NotificationCa
             {/* Video clip */}
             <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
               {alert.clip_path ? (
-                <video
-                  className="w-full h-full object-cover"
-                  controls
-                  preload="metadata"
-                >
-                  <source src={alert.clip_path} type="video/mp4" />
-                  Ваш браузер не поддерживает видео
-                </video>
+                isImage ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={alert.clip_path}
+                    alt={config.label}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <video
+                    className="w-full h-full object-cover"
+                    controls
+                    preload="metadata"
+                  >
+                    <source src={alert.clip_path} type="video/mp4" />
+                    Ваш браузер не поддерживает видео
+                  </video>
+                )
               ) : (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
                   <div className="relative w-full h-full bg-black/80">
@@ -155,7 +165,7 @@ export function NotificationCard({ alert, isExpanded, onToggle }: NotificationCa
                   asChild
                 >
                   <a href={alert.clip_path} download target="_blank" rel="noopener noreferrer">
-                    Скачать видео
+                    {isImage ? "Скачать фото" : "Скачать видео"}
                   </a>
                 </Button>
               )}
