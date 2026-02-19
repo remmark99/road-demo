@@ -472,14 +472,27 @@ function NotificationsContent() {
                             {/* Video */}
                             <div className="aspect-video bg-muted rounded-lg overflow-hidden">
                               {alert.clip_path ? (
-                                <video
-                                  className="w-full h-full object-cover"
-                                  controls
-                                  preload="metadata"
-                                  onClick={e => e.stopPropagation()}
-                                >
-                                  <source src={alert.clip_path} type="video/mp4" />
-                                </video>
+                                (() => {
+                                  const isImage = alert.clip_path && alert.clip_path.toLowerCase().match(/\.(jpg|jpeg|png)$/);
+                                  return isImage ? (
+                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                    <img
+                                      src={alert.clip_path}
+                                      alt={config.label}
+                                      className="w-full h-full object-cover"
+                                      onClick={e => e.stopPropagation()}
+                                    />
+                                  ) : (
+                                    <video
+                                      className="w-full h-full object-cover"
+                                      controls
+                                      preload="metadata"
+                                      onClick={e => e.stopPropagation()}
+                                    >
+                                      <source src={alert.clip_path} type="video/mp4" />
+                                    </video>
+                                  )
+                                })()
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center">
                                   <p className="text-muted-foreground text-sm">Видео недоступно</p>
@@ -509,7 +522,7 @@ function NotificationsContent() {
                                   onClick={e => e.stopPropagation()}
                                 >
                                   <a href={alert.clip_path} download target="_blank" rel="noopener noreferrer">
-                                    Скачать видео
+                                    {alert.clip_path.toLowerCase().match(/\.(jpg|jpeg|png)$/) ? "Скачать фото" : "Скачать видео"}
                                   </a>
                                 </Button>
                               )}
