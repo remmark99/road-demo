@@ -54,6 +54,7 @@ export function NotificationCard({ alert, isExpanded, onToggle }: NotificationCa
   const config = typeConfig[alert.alert_type] || typeConfig.default
   const Icon = config.icon
   const isImage = alert.clip_path?.toLowerCase().match(/\.(jpg|jpeg|png)$/)
+  console.log(alert.clip_path, isImage)
 
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr)
