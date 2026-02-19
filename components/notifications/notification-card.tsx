@@ -76,7 +76,7 @@ export function NotificationCard({ alert, isExpanded, onToggle }: NotificationCa
   const severityLabel = alert.severity >= 0.7
     ? "Высокая"
     : alert.severity >= 0.4
-      ? "Средняя"
+      ? "СРЕДНЯЯ2"
       : "Низкая"
 
   return (
