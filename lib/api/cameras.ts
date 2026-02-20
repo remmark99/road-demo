@@ -1,7 +1,7 @@
 import { supabase } from '../supabase'
 import type { Camera } from '../types'
 
-interface CameraRow {
+export interface CameraRow {
     id: number
     camera_index: number
     name: string
@@ -31,6 +31,20 @@ function mapCameraRow(row: CameraRow): Camera {
         rtspUrl: row.rtsp_url,
         hlsUrl: row.hls_url,
     }
+}
+
+export async function fetchCameraRows(): Promise<CameraRow[]> {
+    const { data, error } = await supabase
+        .from('cameras')
+        .select('*')
+        .order('camera_index')
+
+    if (error) {
+        console.error('Error fetching camera rows:', error)
+        return []
+    }
+
+    return data as CameraRow[]
 }
 
 export async function fetchCameras(): Promise<Camera[]> {
@@ -80,6 +94,26 @@ export async function updateCameraFov(
 
     if (error) {
         console.error('Error updating camera FOV:', error)
+        return false
+    }
+
+    return true
+}
+
+export async function updateCamera(
+    cameraIndex: number,
+    updates: Partial<Omit<CameraRow, 'id' | 'created_at'>>
+): Promise<boolean> {
+    const { error } = await supabase
+        .from('cameras')
+        .update({
+            ...updates,
+            updated_at: new Date().toISOString(),
+        })
+        .eq('camera_index', cameraIndex)
+
+    if (error) {
+        console.error('Error updating camera:', error)
         return false
     }
 
