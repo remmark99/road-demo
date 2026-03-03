@@ -35,8 +35,8 @@ export default function MapPage() {
 
           {/* Sidebar */}
           <div className="w-80 p-4 border-l border-border overflow-y-auto">
-            <Legend 
-              statusOverride={statusOverride} 
+            <Legend
+              statusOverride={statusOverride}
               hoveredSegmentId={hoveredSegmentId}
               onHoverSegment={setHoveredSegmentId}
             />

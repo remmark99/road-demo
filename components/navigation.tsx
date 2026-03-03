@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Map, Bell, BarChart3, Camera, Settings, Bot, ExternalLink, Thermometer } from "lucide-react"
+import { SensorPopover } from "@/components/sensors/sensor-readings"
 
 const navItems = [
   { href: "/", label: "Карта", icon: Map },
@@ -67,6 +68,8 @@ export function Navigation() {
               <ExternalLink className="h-3 w-3 opacity-60" />
             </a>
           </Button>
+
+          <SensorPopover />
         </div>
 
         <div className="ml-auto flex items-center gap-3">
