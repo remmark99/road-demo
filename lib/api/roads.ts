@@ -51,7 +51,8 @@ export async function fetchRoadsGeoJSON(): Promise<RoadsGeoJSON> {
     if (cachedGeoJSON) return cachedGeoJSON
 
     try {
-        const res = await fetch('/api/roads')
+        // v=2 busts the browser cache, refresh=true busts the server in-memory cache
+        const res = await fetch('/api/roads?v=2&refresh=true', { cache: 'no-store' })
         if (!res.ok) throw new Error(`Failed to fetch roads: ${res.status}`)
         cachedGeoJSON = await res.json()
         return cachedGeoJSON!

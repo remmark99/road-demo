@@ -3,25 +3,18 @@
 import { useEffect, useState } from "react"
 import { fetchCameras } from "@/lib/api/cameras"
 import { HIGHWAY_CONFIG } from "@/lib/api/roads"
-import type { Camera, RoadStatus } from "@/lib/types"
+import type { Camera } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Camera as CameraIcon, Route, MapPin } from "lucide-react"
+import { Camera as CameraIcon, Route, MapPin, Snowflake } from "lucide-react"
 
-const statusLabels: Record<RoadStatus, string> = {
-  clean: "Чистый",
-  dirty: "Загрязнён",
-  warning: "Требует внимания",
-  unknown: "Нет данных"
-}
-
-interface LegendProps {
-  statusOverride?: Record<string, RoadStatus>
-  hoveredSegmentId?: string | null
-  onHoverSegment?: (segmentId: string | null) => void
-}
+const snowStatusItems = [
+  { label: "Чисто", color: "#4ade80" },
+  { label: "Требует внимания", color: "#f59e0b" },
+  { label: "Заснежено", color: "#ef4444" },
+]
 
 // Show the road types we display on the map
 const LEGEND_HIGHWAYS = [
@@ -31,7 +24,7 @@ const LEGEND_HIGHWAYS = [
   "tertiary",
 ]
 
-export function Legend({ statusOverride, hoveredSegmentId, onHoverSegment }: LegendProps) {
+export function Legend() {
   const [cameras, setCameras] = useState<Camera[]>([])
 
   useEffect(() => {
@@ -49,21 +42,20 @@ export function Legend({ statusOverride, hoveredSegmentId, onHoverSegment }: Leg
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Snow status legend */}
         <div>
           <div className="text-sm font-medium mb-2 flex items-center gap-2">
-            <Route className="h-4 w-4 text-muted-foreground" />
-            Состояние участков
+            <Snowflake className="h-4 w-4 text-muted-foreground" />
+            Состояние дорог
           </div>
           <div className="space-y-1.5">
-            {([
-              { status: "clean" as RoadStatus, color: "bg-road-clean" },
-              { status: "dirty" as RoadStatus, color: "bg-road-dirty" },
-              { status: "warning" as RoadStatus, color: "bg-road-warning" },
-              { status: "unknown" as RoadStatus, color: "bg-road-unknown" }
-            ]).map(({ status, color }) => (
-              <div key={status} className="flex items-center gap-2 text-sm">
-                <div className={`w-4 h-1 rounded-full ${color}`} />
-                <span className="text-muted-foreground">{statusLabels[status]}</span>
+            {snowStatusItems.map(({ label, color }) => (
+              <div key={label} className="flex items-center gap-2 text-sm">
+                <div
+                  className="w-6 h-1.5 rounded-full"
+                  style={{ backgroundColor: color }}
+                />
+                <span className="text-muted-foreground">{label}</span>
               </div>
             ))}
           </div>
@@ -93,7 +85,7 @@ export function Legend({ statusOverride, hoveredSegmentId, onHoverSegment }: Leg
 
         <Separator />
 
-        {/* Road types legend */}
+        {/* Road types by width */}
         <div>
           <div className="text-sm font-medium mb-2 flex items-center gap-2">
             <Route className="h-4 w-4 text-muted-foreground" />
@@ -106,12 +98,11 @@ export function Legend({ statusOverride, hoveredSegmentId, onHoverSegment }: Leg
               return (
                 <div key={highway} className="flex items-center gap-2 text-sm">
                   <div
-                    className="rounded-full"
+                    className="rounded-full bg-muted-foreground"
                     style={{
                       width: `${Math.max(cfg.width * 4, 8)}px`,
                       height: `${Math.max(cfg.width, 2)}px`,
-                      backgroundColor: cfg.color,
-                      opacity: cfg.opacity,
+                      opacity: 0.5,
                     }}
                   />
                   <span className="text-muted-foreground">{cfg.label}</span>

@@ -112,20 +112,25 @@ function buildWidthExpression(): any {
   return ["case", ...cases, 1.5] // default width
 }
 
-function buildColorExpression(isDark: boolean): any {
-  const cases: any[] = []
-  for (const [highway, cfg] of Object.entries(HIGHWAY_CONFIG)) {
-    cases.push(["==", ["get", "highway"], highway], cfg.color)
-  }
-  return ["case", ...cases, isDark ? "#4b5563" : "#9ca3af"] // default color
+// Color roads by snow status: clean = green, warning = amber, dirty = red
+function buildStatusColorExpression(): any {
+  return [
+    "case",
+    ["==", ["get", "status"], "clean"], "#4ade80",
+    ["==", ["get", "status"], "warning"], "#f59e0b",
+    ["==", ["get", "status"], "dirty"], "#ef4444",
+    "#6b7280" // unknown
+  ]
 }
 
-function buildOpacityExpression(): any {
-  const cases: any[] = []
-  for (const [highway, cfg] of Object.entries(HIGHWAY_CONFIG)) {
-    cases.push(["==", ["get", "highway"], highway], cfg.opacity)
-  }
-  return ["case", ...cases, 0.4] // default opacity
+function buildStatusOpacityExpression(): any {
+  return [
+    "case",
+    ["==", ["get", "status"], "clean"], 0.7,
+    ["==", ["get", "status"], "warning"], 0.8,
+    ["==", ["get", "status"], "dirty"], 0.85,
+    0.5
+  ]
 }
 
 export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: SurgutMapProps) {
@@ -159,7 +164,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       data: roadsData as any,
     })
 
-    const currentDark = document.documentElement.classList.contains("dark")
+
 
     // Glow layer (wider, blurred effect)
     map.current.addLayer({
@@ -171,14 +176,14 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         "line-cap": "round",
       },
       paint: {
-        "line-color": buildColorExpression(currentDark),
+        "line-color": buildStatusColorExpression(),
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           10, ["*", buildWidthExpression(), 0.5],
           14, ["*", buildWidthExpression(), 2],
           18, ["*", buildWidthExpression(), 3],
         ],
-        "line-opacity": ["*", buildOpacityExpression(), 0.3],
+        "line-opacity": ["*", buildStatusOpacityExpression(), 0.3],
       },
     })
 
@@ -192,14 +197,14 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         "line-cap": "round",
       },
       paint: {
-        "line-color": buildColorExpression(currentDark),
+        "line-color": buildStatusColorExpression(),
         "line-width": [
           "interpolate", ["linear"], ["zoom"],
           10, ["*", buildWidthExpression(), 0.3],
           14, buildWidthExpression(),
           18, ["*", buildWidthExpression(), 1.8],
         ],
-        "line-opacity": buildOpacityExpression(),
+        "line-opacity": buildStatusOpacityExpression(),
       },
     })
 
@@ -219,8 +224,8 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         "text-max-angle": 30,
       },
       paint: {
-        "text-color": currentDark ? "#d1d5db" : "#374151",
-        "text-halo-color": currentDark ? "#1f2937" : "#ffffff",
+        "text-color": isDark ? "#d1d5db" : "#374151",
+        "text-halo-color": isDark ? "#1f2937" : "#ffffff",
         "text-halo-width": 1.5,
         "text-opacity": 0.8,
       },
@@ -237,13 +242,24 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       const feature = e.features?.[0]
       if (feature && feature.properties?.name) {
         const highway = feature.properties.highway
+        const status = feature.properties.status
         const cfg = HIGHWAY_CONFIG[highway]
+        const statusLabels: Record<string, { label: string; color: string }> = {
+          clean: { label: 'Чисто', color: '#4ade80' },
+          warning: { label: 'Требует внимания', color: '#f59e0b' },
+          dirty: { label: 'Заснежено', color: '#ef4444' },
+        }
+        const statusInfo = statusLabels[status] || { label: 'Нет данных', color: '#6b7280' }
         popup
           .setLngLat(e.lngLat)
           .setHTML(
             `<div class="p-2 text-sm">
               <div class="font-semibold">${feature.properties.name}</div>
               <div class="text-muted-foreground text-xs">${cfg?.label ?? highway}</div>
+              <div class="flex items-center gap-1.5 mt-1">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusInfo.color}"></span>
+                <span class="text-xs">${statusInfo.label}</span>
+              </div>
             </div>`
           )
           .addTo(map.current!)
