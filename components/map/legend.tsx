@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { roadSegments } from "@/lib/mock-data"
 import { fetchCameras } from "@/lib/api/cameras"
+import { HIGHWAY_CONFIG } from "@/lib/api/roads"
 import type { Camera, RoadStatus } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -17,25 +17,19 @@ const statusLabels: Record<RoadStatus, string> = {
   unknown: "Нет данных"
 }
 
-const statusBadgeColors: Record<RoadStatus, string> = {
-  clean: "bg-green-600 text-white border-green-700 hover:bg-green-500",
-  dirty: "bg-rose-700 text-white border-rose-800 hover:bg-rose-600",
-  warning: "bg-amber-600 text-white border-amber-700 hover:bg-amber-500",
-  unknown: "bg-gray-600 text-white border-gray-700 hover:bg-gray-500"
-}
-
-const statusTextColors: Record<RoadStatus, string> = {
-  clean: "text-green-500",
-  dirty: "text-red-500",
-  warning: "text-yellow-500",
-  unknown: "text-gray-500"
-}
-
 interface LegendProps {
   statusOverride?: Record<string, RoadStatus>
   hoveredSegmentId?: string | null
   onHoverSegment?: (segmentId: string | null) => void
 }
+
+// Show the road types we display on the map
+const LEGEND_HIGHWAYS = [
+  "trunk",
+  "primary",
+  "secondary",
+  "tertiary",
+]
 
 export function Legend({ statusOverride, hoveredSegmentId, onHoverSegment }: LegendProps) {
   const [cameras, setCameras] = useState<Camera[]>([])
@@ -99,42 +93,32 @@ export function Legend({ statusOverride, hoveredSegmentId, onHoverSegment }: Leg
 
         <Separator />
 
+        {/* Road types legend */}
         <div>
           <div className="text-sm font-medium mb-2 flex items-center gap-2">
-            Участки
-            <Badge variant="outline" className="ml-auto text-xs">
-              {roadSegments.length}
-            </Badge>
+            <Route className="h-4 w-4 text-muted-foreground" />
+            Типы дорог
           </div>
-          <ScrollArea className="h-48">
-            <div className="space-y-1 pr-2">
-              {roadSegments.map(segment => {
-                const status = statusOverride?.[segment.id] ?? segment.currentStatus
-                const isHovered = hoveredSegmentId === segment.id
-                return (
-                  <div 
-                    key={segment.id} 
-                    className={`flex items-center justify-between text-sm gap-2 p-1.5 rounded-md cursor-pointer transition-all duration-200 ${
-                      isHovered ? 'bg-accent scale-[1.02]' : 'hover:bg-accent/50'
-                    }`}
-                    onMouseEnter={() => onHoverSegment?.(segment.id)}
-                    onMouseLeave={() => onHoverSegment?.(null)}
-                  >
-                    <span className={`truncate transition-colors ${isHovered ? statusTextColors[status] : 'text-muted-foreground'}`}>
-                      {segment.name}
-                    </span>
-                    <Badge 
-                      className={`shrink-0 text-xs border transition-all duration-200 ${statusBadgeColors[status]} ${
-                        isHovered ? 'scale-105 shadow-md' : ''
-                      }`}
-                    >
-                      {statusLabels[status]}
-                    </Badge>
-                  </div>
-                )
-              })}
-            </div>
-          </ScrollArea>
+          <div className="space-y-1.5">
+            {LEGEND_HIGHWAYS.map(highway => {
+              const cfg = HIGHWAY_CONFIG[highway]
+              if (!cfg) return null
+              return (
+                <div key={highway} className="flex items-center gap-2 text-sm">
+                  <div
+                    className="rounded-full"
+                    style={{
+                      width: `${Math.max(cfg.width * 4, 8)}px`,
+                      height: `${Math.max(cfg.width, 2)}px`,
+                      backgroundColor: cfg.color,
+                      opacity: cfg.opacity,
+                    }}
+                  />
+                  <span className="text-muted-foreground">{cfg.label}</span>
+                </div>
+              )
+            })}
+          </div>
         </div>
       </CardContent>
     </Card>

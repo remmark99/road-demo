@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { roadSegments, notifications } from "@/lib/mock-data"
+import { notifications } from "@/lib/mock-data"
 import { fetchCameras } from "@/lib/api/cameras"
 import type { Camera } from "@/lib/types"
 import { Camera as CameraIcon, Route, AlertTriangle, Clock } from "lucide-react"
@@ -14,18 +14,10 @@ export function StatsCards() {
     fetchCameras().then(setCameras)
   }, [])
 
-  const cleanSegments = roadSegments.filter(s => s.currentStatus === "clean").length
   const onlineCameras = cameras.filter(c => c.status === "online").length
   const recentAlerts = notifications.filter(n => n.type === "alert").length
 
   const stats = [
-    {
-      title: "Всего участков",
-      value: roadSegments.length,
-      description: `${cleanSegments} из ${roadSegments.length} чистые`,
-      icon: Route,
-      color: "text-chart-1"
-    },
     {
       title: "Камеры онлайн",
       value: `${onlineCameras}/${cameras.length}`,

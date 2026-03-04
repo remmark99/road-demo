@@ -11,7 +11,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Play, Pause, SkipBack, SkipForward, Clock, CalendarIcon } from "lucide-react"
-import { generateStatusHistory, roadSegments } from "@/lib/mock-data"
+import { generateStatusHistory } from "@/lib/mock-data"
+
+const DEMO_SEGMENT_IDS = ["demo-1", "demo-2", "demo-3"]
 import type { RoadStatus } from "@/lib/types"
 import { format, addDays, differenceInHours } from "date-fns"
 import { ru } from "date-fns/locale"
@@ -58,12 +60,12 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
   const getStatusAtTime = useCallback((time: Date): Record<string, RoadStatus> => {
     const result: Record<string, RoadStatus> = {}
 
-    for (const segment of roadSegments) {
+    for (const segmentId of DEMO_SEGMENT_IDS) {
       const segmentHistory = history
-        .filter(h => h.segmentId === segment.id && h.timestamp <= time)
+        .filter(h => h.segmentId === segmentId && h.timestamp <= time)
         .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
 
-      result[segment.id] = segmentHistory[0]?.status ?? segment.currentStatus
+      result[segmentId] = segmentHistory[0]?.status ?? "unknown"
     }
 
     return result

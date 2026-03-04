@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
-import { roadSegments } from "@/lib/mock-data"
 import { fetchCameras } from "@/lib/api/cameras"
+import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
 import type { Camera, RoadStatus } from "@/lib/types"
 import { VideoModal } from "./video-modal"
 
@@ -103,6 +103,31 @@ interface SurgutMapProps {
   onHoverSegment?: (segmentId: string | null) => void
 }
 
+// Build MapLibre expressions for road styling based on highway type
+function buildWidthExpression(): any {
+  const cases: any[] = []
+  for (const [highway, cfg] of Object.entries(HIGHWAY_CONFIG)) {
+    cases.push(["==", ["get", "highway"], highway], cfg.width)
+  }
+  return ["case", ...cases, 1.5] // default width
+}
+
+function buildColorExpression(isDark: boolean): any {
+  const cases: any[] = []
+  for (const [highway, cfg] of Object.entries(HIGHWAY_CONFIG)) {
+    cases.push(["==", ["get", "highway"], highway], cfg.color)
+  }
+  return ["case", ...cases, isDark ? "#4b5563" : "#9ca3af"] // default color
+}
+
+function buildOpacityExpression(): any {
+  const cases: any[] = []
+  for (const [highway, cfg] of Object.entries(HIGHWAY_CONFIG)) {
+    cases.push(["==", ["get", "highway"], highway], cfg.opacity)
+  }
+  return ["case", ...cases, 0.4] // default opacity
+}
+
 export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: SurgutMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
@@ -115,76 +140,127 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   const [hoveredCamera, setHoveredCamera] = useState<Camera | null>(null)
   const [showAllFov, setShowAllFov] = useState(false)
   const [mapLoaded, setMapLoaded] = useState(false)
+  const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
 
-  // Add road segments only once - no statusOverride dependency
-  const addRoadSegments = useCallback(() => {
-    if (!map.current) return
+  // Add roads as a single GeoJSON source with styled layers
+  const addRoads = useCallback(() => {
+    if (!map.current || !roadsData) return
 
-    roadSegments.forEach(segment => {
-      const color = statusColors[segment.currentStatus]
+    const sourceId = "roads"
+    const glowLayerId = "roads-glow"
+    const mainLayerId = "roads-main"
+    const labelLayerId = "roads-labels"
 
-      const sourceId = `road-${segment.id}`
-      const glowLayerId = `road-${segment.id}-glow`
-      const mainLayerId = `road-${segment.id}`
+    // Skip if already exists
+    if (map.current.getSource(sourceId)) return
 
-      // Skip if already exists
-      if (map.current!.getSource(sourceId)) return
-
-      map.current!.addSource(sourceId, {
-        type: "geojson",
-        data: {
-          type: "Feature",
-          properties: { name: segment.name },
-          geometry: {
-            type: "LineString",
-            coordinates: segment.coordinates
-          }
-        }
-      })
-
-      // Background line (wider, for glow effect)
-      map.current!.addLayer({
-        id: glowLayerId,
-        type: "line",
-        source: sourceId,
-        layout: {
-          "line-join": "round",
-          "line-cap": "round"
-        },
-        paint: {
-          "line-color": color,
-          "line-width": 12,
-          "line-opacity": 0.3
-        }
-      })
-
-      // Main line
-      map.current!.addLayer({
-        id: mainLayerId,
-        type: "line",
-        source: sourceId,
-        layout: {
-          "line-join": "round",
-          "line-cap": "round"
-        },
-        paint: {
-          "line-color": color,
-          "line-width": 6
-        }
-      })
-
-      // Add hover handlers for road segments
-      map.current!.on("mouseenter", mainLayerId, () => {
-        map.current!.getCanvas().style.cursor = "pointer"
-        onHoverSegment?.(segment.id)
-      })
-
-      map.current!.on("mouseleave", mainLayerId, () => {
-        map.current!.getCanvas().style.cursor = ""
-        onHoverSegment?.(null)
-      })
+    map.current.addSource(sourceId, {
+      type: "geojson",
+      data: roadsData as any,
     })
-  }, [onHoverSegment])
+
+    const currentDark = document.documentElement.classList.contains("dark")
+
+    // Glow layer (wider, blurred effect)
+    map.current.addLayer({
+      id: glowLayerId,
+      type: "line",
+      source: sourceId,
+      layout: {
+        "line-join": "round",
+        "line-cap": "round",
+      },
+      paint: {
+        "line-color": buildColorExpression(currentDark),
+        "line-width": [
+          "interpolate", ["linear"], ["zoom"],
+          10, ["*", buildWidthExpression(), 0.5],
+          14, ["*", buildWidthExpression(), 2],
+          18, ["*", buildWidthExpression(), 3],
+        ],
+        "line-opacity": ["*", buildOpacityExpression(), 0.3],
+      },
+    })
+
+    // Main road layer
+    map.current.addLayer({
+      id: mainLayerId,
+      type: "line",
+      source: sourceId,
+      layout: {
+        "line-join": "round",
+        "line-cap": "round",
+      },
+      paint: {
+        "line-color": buildColorExpression(currentDark),
+        "line-width": [
+          "interpolate", ["linear"], ["zoom"],
+          10, ["*", buildWidthExpression(), 0.3],
+          14, buildWidthExpression(),
+          18, ["*", buildWidthExpression(), 1.8],
+        ],
+        "line-opacity": buildOpacityExpression(),
+      },
+    })
+
+    // Road name labels at higher zoom
+    map.current.addLayer({
+      id: labelLayerId,
+      type: "symbol",
+      source: sourceId,
+      minzoom: 15,
+      layout: {
+        "symbol-placement": "line",
+        "text-field": ["coalesce", ["get", "name"], ""],
+        "text-size": 11,
+        "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
+        "text-offset": [0, -0.8],
+        "text-anchor": "center",
+        "text-max-angle": 30,
+      },
+      paint: {
+        "text-color": currentDark ? "#d1d5db" : "#374151",
+        "text-halo-color": currentDark ? "#1f2937" : "#ffffff",
+        "text-halo-width": 1.5,
+        "text-opacity": 0.8,
+      },
+    })
+
+    // Hover popup for road names
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+    })
+
+    map.current.on("mouseenter", mainLayerId, (e) => {
+      map.current!.getCanvas().style.cursor = "pointer"
+      const feature = e.features?.[0]
+      if (feature && feature.properties?.name) {
+        const highway = feature.properties.highway
+        const cfg = HIGHWAY_CONFIG[highway]
+        popup
+          .setLngLat(e.lngLat)
+          .setHTML(
+            `<div class="p-2 text-sm">
+              <div class="font-semibold">${feature.properties.name}</div>
+              <div class="text-muted-foreground text-xs">${cfg?.label ?? highway}</div>
+            </div>`
+          )
+          .addTo(map.current!)
+      }
+    })
+
+    map.current.on("mouseleave", mainLayerId, () => {
+      map.current!.getCanvas().style.cursor = ""
+      popup.remove()
+    })
+
+    map.current.on("mousemove", mainLayerId, (e) => {
+      if (e.features?.[0]?.properties?.name) {
+        popup.setLngLat(e.lngLat)
+      }
+    })
+  }, [roadsData])
 
   const addCameraMarkers = useCallback(() => {
     if (!map.current) return
@@ -234,9 +310,10 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     })
   }, [cameras, showOffline])
 
-  // Fetch cameras from Supabase
+  // Fetch cameras and roads from Supabase
   useEffect(() => {
     fetchCameras().then(setCameras)
+    fetchRoadsGeoJSON().then(setRoadsData)
   }, [])
 
   // Watch for theme changes
@@ -266,10 +343,10 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     map.current.setStyle(getMapStyle(isDark))
 
     map.current.once("style.load", () => {
-      addRoadSegments()
+      addRoads()
       addCameraMarkers()
     })
-  }, [isDark, addRoadSegments, addCameraMarkers, mapLoaded])
+  }, [isDark, addRoads, addCameraMarkers, mapLoaded])
 
   // Initialize map - this should only run once
   useEffect(() => {
@@ -298,12 +375,12 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Add road segments and camera markers when map loads
+  // Add roads and camera markers when map loads
   useEffect(() => {
     if (!mapLoaded) return
-    addRoadSegments()
+    addRoads()
     addCameraMarkers()
-  }, [mapLoaded, addRoadSegments, addCameraMarkers])
+  }, [mapLoaded, addRoads, addCameraMarkers])
 
   // Update/show FOV
   useEffect(() => {
@@ -403,42 +480,6 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       // No cleanup needed here as we reuse the source/layers
     }
   }, [cameras, showOffline, showAllFov, hoveredCamera, mapLoaded])
-
-  // Update road colors when statusOverride changes
-  useEffect(() => {
-    if (!map.current || !mapLoaded) return
-
-    roadSegments.forEach(segment => {
-      const status = statusOverride?.[segment.id] ?? segment.currentStatus
-      const color = statusColors[status]
-
-      if (map.current?.getLayer(`road-${segment.id}`)) {
-        map.current.setPaintProperty(`road-${segment.id}`, "line-color", color)
-      }
-      if (map.current?.getLayer(`road-${segment.id}-glow`)) {
-        map.current.setPaintProperty(`road-${segment.id}-glow`, "line-color", color)
-      }
-    })
-  }, [statusOverride, mapLoaded])
-
-  // Highlight hovered segment on map
-  useEffect(() => {
-    if (!map.current || !mapLoaded) return
-
-    roadSegments.forEach(segment => {
-      const isHovered = hoveredSegmentId === segment.id
-      const mainLayerId = `road-${segment.id}`
-      const glowLayerId = `road-${segment.id}-glow`
-
-      if (map.current?.getLayer(mainLayerId)) {
-        map.current.setPaintProperty(mainLayerId, "line-width", isHovered ? 10 : 6)
-      }
-      if (map.current?.getLayer(glowLayerId)) {
-        map.current.setPaintProperty(glowLayerId, "line-width", isHovered ? 20 : 12)
-        map.current.setPaintProperty(glowLayerId, "line-opacity", isHovered ? 0.6 : 0.3)
-      }
-    })
-  }, [hoveredSegmentId, mapLoaded])
 
   return (
     <>
