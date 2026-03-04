@@ -5,6 +5,7 @@ import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
 import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
+import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import type { Camera, RoadStatus } from "@/lib/types"
 import { VideoModal } from "./video-modal"
 
@@ -146,6 +147,8 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   const [showAllFov, setShowAllFov] = useState(false)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
+  const [busStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
+  const [showBusStops, setShowBusStops] = useState(true)
 
   // Add roads as a single GeoJSON source with styled layers
   const addRoads = useCallback(() => {
@@ -278,6 +281,69 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     })
   }, [roadsData])
 
+
+  const addBusStops = useCallback(() => {
+    if (!map.current || !busStopsData) return
+
+    const sourceId = "bus-stops"
+    const layerId = "bus-stops-layer"
+
+    if (map.current.getSource(sourceId)) return
+
+    map.current.addSource(sourceId, {
+      type: "geojson",
+      data: busStopsData as any,
+    })
+
+    map.current.addLayer({
+      id: layerId,
+      type: "circle",
+      source: sourceId,
+      paint: {
+        "circle-radius": 5,
+        "circle-color": "#3b82f6", // Blue
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff",
+      },
+      layout: {
+        "visibility": showBusStops ? "visible" : "none"
+      }
+    })
+
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 10,
+    })
+
+    map.current.on("mouseenter", layerId, (e) => {
+      map.current!.getCanvas().style.cursor = "pointer"
+      const feature = e.features?.[0]
+      if (feature) {
+        const props = feature.properties as any
+        popup
+          .setLngLat((e as unknown as { lngLat: any }).lngLat)
+          .setHTML(
+            `<div class="p-2 text-sm min-w-40">
+              <div class="font-semibold mb-1 text-[#3b82f6] flex items-center gap-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+                ${props.name || 'Остановка'}
+              </div>
+              <div class="text-muted-foreground text-xs px-1">
+                ${props.address ? `<div class="mt-1.5 font-medium flex items-start gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 opacity-70"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg> ${props.address}</div>` : ''}
+              </div>
+            </div>`
+          )
+          .addTo(map.current!)
+      }
+    })
+
+    map.current.on("mouseleave", layerId, () => {
+      map.current!.getCanvas().style.cursor = ""
+      popup.remove()
+    })
+  }, [busStopsData, showBusStops])
+
   const addCameraMarkers = useCallback(() => {
     if (!map.current) return
 
@@ -326,10 +392,11 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     })
   }, [cameras, showOffline])
 
-  // Fetch cameras and roads from Supabase
+  // Fetch cameras, roads, and bus stops from Supabase
   useEffect(() => {
     fetchCameras().then(setCameras)
     fetchRoadsGeoJSON().then(setRoadsData)
+    fetchBusStopsGeoJSON().then(setBusStopsData)
   }, [])
 
   // Watch for theme changes
@@ -360,9 +427,10 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
 
     map.current.once("style.load", () => {
       addRoads()
+      addBusStops()
       addCameraMarkers()
     })
-  }, [isDark, addRoads, addCameraMarkers, mapLoaded])
+  }, [isDark, addRoads, addBusStops, addCameraMarkers, mapLoaded])
 
   // Initialize map - this should only run once
   useEffect(() => {
@@ -395,8 +463,17 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   useEffect(() => {
     if (!mapLoaded) return
     addRoads()
+    addBusStops()
     addCameraMarkers()
-  }, [mapLoaded, addRoads, addCameraMarkers])
+  }, [mapLoaded, addRoads, addBusStops, addCameraMarkers])
+
+  // Update bus stops visibility independently of full re-add
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+    if (map.current.getLayer("bus-stops-layer")) {
+      map.current.setLayoutProperty("bus-stops-layer", "visibility", showBusStops ? "visible" : "none")
+    }
+  }, [showBusStops, mapLoaded, busStopsData])
 
   // Update/show FOV
   useEffect(() => {
@@ -527,6 +604,26 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
           </svg>
           <span className="truncate">
             {showOffline ? "Только активные камеры" : "Показать все камеры"}
+          </span>
+        </button>
+
+        <button
+          onClick={() => setShowBusStops(!showBusStops)}
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-60 ${showBusStops
+            ? "bg-primary text-primary-foreground"
+            : "bg-card text-card-foreground border border-border"
+            }`}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M8 6v6" />
+            <path d="M15 6v6" />
+            <path d="M2 12h19.6" />
+            <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3" />
+            <circle cx="7" cy="18" r="2" />
+            <circle cx="17" cy="18" r="2" />
+          </svg>
+          <span className="truncate">
+            {showBusStops ? "Скрыть остановки" : "Показать остановки"}
           </span>
         </button>
 

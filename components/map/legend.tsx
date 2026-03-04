@@ -85,6 +85,22 @@ export function Legend() {
 
         <Separator />
 
+        {/* Bus Stops legend */}
+        <div>
+          <div className="flex items-center gap-2 text-sm font-medium mb-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground"><path d="M8 6v6" /><path d="M15 6v6" /><path d="M2 12h19.6" /><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></svg>
+            Общественный транспорт
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-2.5 h-2.5 rounded-full bg-[#3b82f6]" />
+              <span className="text-muted-foreground">Автобусная остановка</span>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+
         {/* Road types by width */}
         <div>
           <div className="text-sm font-medium mb-2 flex items-center gap-2">
