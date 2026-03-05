@@ -138,7 +138,6 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
-  const markersRef = useRef<maplibregl.Marker[]>([])
   const [isDark, setIsDark] = useState(true)
   const lastThemeRef = useRef(isDark)
   const [showOffline, setShowOffline] = useState(false)
@@ -293,21 +292,91 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     map.current.addSource(sourceId, {
       type: "geojson",
       data: busStopsData as any,
+      cluster: true,
+      clusterMaxZoom: 18,
+      clusterRadius: 50
     })
 
+    // Cluster circles
     map.current.addLayer({
-      id: layerId,
+      id: `${sourceId}-clusters`,
       type: "circle",
       source: sourceId,
+      filter: ["has", "point_count"],
       paint: {
-        "circle-radius": 5,
-        "circle-color": "#3b82f6", // Blue
+        "circle-radius": [
+          "step",
+          ["get", "point_count"],
+          15,    // 15px radius for small clusters
+          10, 20, // 20px radius when count >= 10
+          50, 25  // 25px radius when count >= 50
+        ],
+        "circle-color": "#2563eb",
         "circle-stroke-width": 2,
         "circle-stroke-color": "#ffffff",
       },
       layout: {
         "visibility": showBusStops ? "visible" : "none"
       }
+    })
+
+    // Cluster counts
+    map.current.addLayer({
+      id: `${sourceId}-cluster-count`,
+      type: "symbol",
+      source: sourceId,
+      filter: ["has", "point_count"],
+      layout: {
+        "text-field": "{point_count_abbreviated}",
+        "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        "text-size": 12,
+        "visibility": showBusStops ? "visible" : "none"
+      },
+      paint: {
+        "text-color": "#ffffff"
+      }
+    })
+
+    // Unclustered single points
+    map.current.addLayer({
+      id: layerId,
+      type: "circle",
+      source: sourceId,
+      filter: ["!", ["has", "point_count"]],
+      paint: {
+        "circle-radius": 6,
+        "circle-color": "#60a5fa",
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff",
+      },
+      layout: {
+        "visibility": showBusStops ? "visible" : "none"
+      }
+    })
+
+    // Click on a cluster to zoom in
+    map.current.on("click", `${sourceId}-clusters`, (e) => {
+      const features = map.current?.queryRenderedFeatures(e.point, {
+        layers: [`${sourceId}-clusters`]
+      })
+      if (!features?.length) return
+
+      const clusterId = features[0].properties.cluster_id
+      const source = map.current?.getSource(sourceId) as maplibregl.GeoJSONSource
+
+      source.getClusterExpansionZoom(clusterId).then(zoom => {
+        map.current?.easeTo({
+          center: (features[0].geometry as any).coordinates,
+          zoom: Math.min(zoom, 18),
+        })
+      }).catch((err) => console.error(err))
+    })
+
+    map.current.on("mouseenter", `${sourceId}-clusters`, () => {
+      map.current!.getCanvas().style.cursor = "pointer"
+    })
+    map.current.on("mouseleave", `${sourceId}-clusters`, () => {
+      map.current!.getCanvas().style.cursor = ""
     })
 
     const popup = new maplibregl.Popup({
@@ -344,53 +413,198 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     })
   }, [busStopsData, showBusStops])
 
-  const addCameraMarkers = useCallback(() => {
+  const addCameraLayers = useCallback(() => {
     if (!map.current) return
 
-    // Clear existing markers
-    markersRef.current.forEach(marker => marker.remove())
-    markersRef.current = []
+    const sourceId = "cameras"
+    const layerId = "cameras-layer"
 
-    const visibleCameras = cameras.filter(camera =>
-      camera.status === "online" || showOffline
-    )
+    if (map.current.getSource(sourceId)) return
 
-    visibleCameras.forEach(camera => {
-      const el = document.createElement("div")
-      el.className = "camera-marker"
-      el.innerHTML = `
-        <div class="relative cursor-pointer group">
-          <div class="w-10 h-10 rounded-full bg-background border-2 ${camera.status === "online" ? "border-primary" : "border-muted"
-        } flex items-center justify-center shadow-lg transition-transform group-hover:scale-110">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${camera.status === "online" ? "text-primary" : "text-muted"
-        }">
-              <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>
-              <circle cx="12" cy="13" r="3"/>
-            </svg>
-          </div>
-          ${camera.status === "online" ? '<div class="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-road-clean animate-pulse"></div>' : ''}
-        </div>
-      `
-
-      el.addEventListener("click", () => setSelectedCamera(camera))
-      el.addEventListener("mouseenter", () => setHoveredCamera(camera))
-      el.addEventListener("mouseleave", () => setHoveredCamera(null))
-
-      const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([camera.lng, camera.lat])
-        .setPopup(
-          new maplibregl.Popup({ offset: 25, closeButton: false }).setHTML(`
-            <div class="p-2 text-sm">
-              <div class="font-semibold">${camera.name}</div>
-              <div class="text-muted-foreground">${camera.description}</div>
-            </div>
-          `)
-        )
-        .addTo(map.current!)
-
-      markersRef.current.push(marker)
+    map.current.addSource(sourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+      cluster: true,
+      clusterMaxZoom: 18,
+      clusterRadius: 50
     })
-  }, [cameras, showOffline])
+
+    // Camera Cluster circles
+    map.current.addLayer({
+      id: `${sourceId}-clusters`,
+      type: "circle",
+      source: sourceId,
+      filter: ["has", "point_count"],
+      paint: {
+        "circle-radius": [
+          "step",
+          ["get", "point_count"],
+          15,
+          10, 20,
+          50, 25
+        ],
+        "circle-color": "#9333ea", // Purple
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff",
+      }
+    })
+
+    // Camera Cluster counts
+    map.current.addLayer({
+      id: `${sourceId}-cluster-count`,
+      type: "symbol",
+      source: sourceId,
+      filter: ["has", "point_count"],
+      layout: {
+        "text-field": "{point_count_abbreviated}",
+        "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        "text-size": 12,
+      },
+      paint: {
+        "text-color": "#ffffff"
+      }
+    })
+
+    // Unclustered cameras (Circle)
+    map.current.addLayer({
+      id: layerId,
+      type: "circle",
+      source: sourceId,
+      filter: ["!", ["has", "point_count"]],
+      paint: {
+        "circle-radius": 8,
+        "circle-color": [
+          "case",
+          ["==", ["get", "status"], "online"], "#22c55e",
+          "#9ca3af" // offline gray
+        ],
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff",
+      }
+    })
+
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 12,
+    })
+
+    // Hover on unclustered cameras
+    map.current.on("mouseenter", layerId, (e) => {
+      map.current!.getCanvas().style.cursor = "pointer"
+      const feature = e.features?.[0]
+      if (feature) {
+        const props = feature.properties as any
+        setHoveredCamera({ id: props.id } as Camera) // Minimal info for FOV highlighting
+
+        popup
+          .setLngLat((e as unknown as { lngLat: any }).lngLat)
+          .setHTML(
+            `<div class="p-2 text-sm">
+              <div class="font-semibold">${props.name}</div>
+              <div class="text-muted-foreground">${props.description}</div>
+            </div>`
+          )
+          .addTo(map.current!)
+      }
+    })
+
+    map.current.on("mouseleave", layerId, () => {
+      map.current!.getCanvas().style.cursor = ""
+      setHoveredCamera(null)
+      popup.remove()
+    })
+
+    // Click on unclustered camera
+    map.current.on("click", layerId, (e) => {
+      const feature = e.features?.[0]
+      if (feature) {
+        const props = feature.properties as any
+        setSelectedCamera({
+          id: props.id,
+          name: props.name,
+          description: props.description,
+          status: props.status,
+          url: props.url,
+          lat: (feature.geometry as any).coordinates[1],
+          lng: (feature.geometry as any).coordinates[0],
+          fovAngle: props.fovAngle,
+          fovDirection: props.fovDirection,
+          fovDistance: props.fovDistance
+        } as Camera)
+      }
+    })
+
+    // Click on camera cluster -> zoom or spiderify if max zoom
+    map.current.on("click", `${sourceId}-clusters`, (e) => {
+      const features = map.current?.queryRenderedFeatures(e.point, {
+        layers: [`${sourceId}-clusters`]
+      })
+      if (!features?.length) return
+
+      const clusterId = features[0].properties.cluster_id
+      const source = map.current?.getSource(sourceId) as maplibregl.GeoJSONSource
+
+      source.getClusterExpansionZoom(clusterId).then(async zoom => {
+        if (zoom > 18 || map.current!.getZoom() >= 18) {
+          // Max zoom reached, spiderify cameras inside popup
+          const leaves = await source.getClusterLeaves(clusterId, 100, 0)
+
+          let html = `<div class="p-2 min-w-48"><div class="font-bold mb-2 text-sm border-b pb-1">Камеры (${leaves.length}):</div><div class="space-y-1">`
+          leaves.forEach((f: any, index: number) => {
+            const props = f.properties
+            html += `<div class="camera-cluster-row flex items-center gap-2 text-xs p-1.5 hover:bg-muted cursor-pointer rounded" data-index="${index}">
+               <div class="w-2 h-2 rounded-full ${props.status === 'online' ? 'bg-[#22c55e]' : 'bg-gray-400'}"></div>
+               <span class="truncate max-w-[150px] font-medium">${props.name}</span>
+             </div>`
+          })
+          html += `</div></div>`
+
+          const popupContent = document.createElement("div")
+          popupContent.innerHTML = html
+
+          // Safely bind React state clicks without globals
+          const rows = popupContent.querySelectorAll('.camera-cluster-row')
+          rows.forEach((row, i) => {
+            row.addEventListener('click', () => {
+              const props = leaves[i].properties as any
+              setSelectedCamera({
+                id: props.id,
+                name: props.name,
+                description: props.description,
+                status: props.status,
+                url: props.url,
+                lat: (leaves[i].geometry as any).coordinates[1],
+                lng: (leaves[i].geometry as any).coordinates[0],
+                fovAngle: props.fovAngle,
+                fovDirection: props.fovDirection,
+                fovDistance: props.fovDistance
+              } as Camera)
+            })
+          })
+
+          new maplibregl.Popup({ closeOnClick: true, maxWidth: '250px' })
+            .setDOMContent(popupContent)
+            .setLngLat((features[0].geometry as any).coordinates)
+            .addTo(map.current!)
+
+        } else {
+          map.current?.easeTo({
+            center: (features[0].geometry as any).coordinates,
+            zoom: Math.min(zoom, 18),
+          })
+        }
+      }).catch((err) => console.error(err))
+    })
+
+    map.current.on("mouseenter", `${sourceId}-clusters`, () => {
+      map.current!.getCanvas().style.cursor = "pointer"
+    })
+    map.current.on("mouseleave", `${sourceId}-clusters`, () => {
+      map.current!.getCanvas().style.cursor = ""
+    })
+
+  }, [])
 
   // Fetch cameras, roads, and bus stops from Supabase
   useEffect(() => {
@@ -428,9 +642,9 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     map.current.once("style.load", () => {
       addRoads()
       addBusStops()
-      addCameraMarkers()
+      addCameraLayers()
     })
-  }, [isDark, addRoads, addBusStops, addCameraMarkers, mapLoaded])
+  }, [isDark, addRoads, addBusStops, addCameraLayers, mapLoaded])
 
   // Initialize map - this should only run once
   useEffect(() => {
@@ -452,27 +666,63 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     })
 
     return () => {
-      markersRef.current.forEach(marker => marker.remove())
       map.current?.remove()
       map.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Add roads and camera markers when map loads
+  // Add base map layers when map loads
   useEffect(() => {
     if (!mapLoaded) return
     addRoads()
     addBusStops()
-    addCameraMarkers()
-  }, [mapLoaded, addRoads, addBusStops, addCameraMarkers])
+    addCameraLayers()
+  }, [mapLoaded, addRoads, addBusStops, addCameraLayers])
+
+  // Sync camera data to the GeoJSON source
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+
+    const source = map.current.getSource("cameras") as maplibregl.GeoJSONSource
+    if (!source) return
+
+    const visibleCameras = cameras.filter(camera =>
+      camera.status === "online" || showOffline
+    )
+
+    const geojson: any = {
+      type: "FeatureCollection",
+      features: visibleCameras.map(camera => ({
+        type: "Feature",
+        properties: {
+          id: camera.id,
+          name: camera.name,
+          description: camera.description,
+          status: camera.status,
+          url: camera.url,
+          fovAngle: camera.fovAngle,
+          fovDirection: camera.fovDirection,
+          fovDistance: camera.fovDistance
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [camera.lng, camera.lat]
+        }
+      }))
+    }
+    source.setData(geojson)
+  }, [cameras, showOffline, mapLoaded, addCameraLayers])
 
   // Update bus stops visibility independently of full re-add
   useEffect(() => {
     if (!map.current || !mapLoaded) return
-    if (map.current.getLayer("bus-stops-layer")) {
-      map.current.setLayoutProperty("bus-stops-layer", "visibility", showBusStops ? "visible" : "none")
-    }
+    const layers = ["bus-stops-layer", "bus-stops-clusters", "bus-stops-cluster-count"]
+    layers.forEach(l => {
+      if (map.current!.getLayer(l)) {
+        map.current!.setLayoutProperty(l, "visibility", showBusStops ? "visible" : "none")
+      }
+    })
   }, [showBusStops, mapLoaded, busStopsData])
 
   // Update/show FOV
