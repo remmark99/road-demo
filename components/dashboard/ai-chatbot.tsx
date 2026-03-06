@@ -93,7 +93,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
         id: activeSessionId,
         transport: new DefaultChatTransport({ api: "/api/chat" }),
         initialMessages: getInitialMessages(),
-    })
+    } as any)
 
     // Load sessions on mount и устанавливаем начальный sessionId
     useEffect(() => {
@@ -126,10 +126,10 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             const firstMessage = messages[0];
             let text = "Новый чат";
 
-            if (typeof firstMessage.content === 'string' && firstMessage.content.length > 0) {
+            if ('content' in firstMessage && typeof firstMessage.content === 'string' && firstMessage.content.length > 0) {
                 text = firstMessage.content;
-            } else if (Array.isArray(firstMessage.parts)) {
-                const textPart = firstMessage.parts.find(p => p.type === 'text');
+            } else if ('parts' in firstMessage && Array.isArray((firstMessage as any).parts)) {
+                const textPart = (firstMessage as any).parts.find((p: any) => p.type === 'text');
                 if (textPart && 'text' in textPart) {
                     text = textPart.text;
                 }
@@ -688,8 +688,8 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                     <ScrollArea className="flex-1 p-4 min-h-0">
                         <div ref={chatRef} className="space-y-4 bg-background p-4">
                             {allMessages.map((message) => {
-                                const hasContent = ("content" in message && message.content.trim().length > 0) ||
-                                    (message.parts && message.parts.some((p: any) =>
+                                const hasContent = ("content" in message && typeof message.content === 'string' && message.content.trim().length > 0) ||
+                                    ((message as any).parts && (message as any).parts.some((p: any) =>
                                         (p.type === 'text' && p.text.trim().length > 0) ||
                                         p.type === 'tool-invocation' ||
                                         p.type === 'tool-result'

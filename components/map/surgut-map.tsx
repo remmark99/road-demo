@@ -151,7 +151,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
 
   // Add roads as a single GeoJSON source with styled layers
   const addRoads = useCallback(() => {
-    if (!map.current || !roadsData) return
+    if (!map.current) return
 
     const sourceId = "roads"
     const glowLayerId = "roads-glow"
@@ -163,7 +163,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
 
     map.current.addSource(sourceId, {
       type: "geojson",
-      data: roadsData as any,
+      data: { type: "FeatureCollection", features: [] },
     })
 
 
@@ -278,11 +278,11 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         popup.setLngLat(e.lngLat)
       }
     })
-  }, [roadsData])
+  }, [isDark])
 
 
   const addBusStops = useCallback(() => {
-    if (!map.current || !busStopsData) return
+    if (!map.current) return
 
     const sourceId = "bus-stops"
     const layerId = "bus-stops-layer"
@@ -291,7 +291,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
 
     map.current.addSource(sourceId, {
       type: "geojson",
-      data: busStopsData as any,
+      data: { type: "FeatureCollection", features: [] },
       cluster: true,
       clusterMaxZoom: 18,
       clusterRadius: 50
@@ -411,7 +411,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       map.current!.getCanvas().style.cursor = ""
       popup.remove()
     })
-  }, [busStopsData, showBusStops])
+  }, [isDark, showBusStops])
 
   const addCameraLayers = useCallback(() => {
     if (!map.current) return
@@ -525,7 +525,9 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
           name: props.name,
           description: props.description,
           status: props.status,
-          url: props.url,
+          hlsUrl: props.hlsUrl,
+          rtspUrl: props.rtspUrl,
+          cameraIndex: props.cameraIndex,
           lat: (feature.geometry as any).coordinates[1],
           lng: (feature.geometry as any).coordinates[0],
           fovAngle: props.fovAngle,
@@ -573,7 +575,9 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
                 name: props.name,
                 description: props.description,
                 status: props.status,
-                url: props.url,
+                hlsUrl: props.hlsUrl,
+                rtspUrl: props.rtspUrl,
+                cameraIndex: props.cameraIndex,
                 lat: (leaves[i].geometry as any).coordinates[1],
                 lng: (leaves[i].geometry as any).coordinates[0],
                 fovAngle: props.fovAngle,
@@ -697,10 +701,12 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         type: "Feature",
         properties: {
           id: camera.id,
+          cameraIndex: camera.cameraIndex,
           name: camera.name,
           description: camera.description,
           status: camera.status,
-          url: camera.url,
+          hlsUrl: camera.hlsUrl,
+          rtspUrl: camera.rtspUrl,
           fovAngle: camera.fovAngle,
           fovDirection: camera.fovDirection,
           fovDistance: camera.fovDistance
@@ -713,6 +719,24 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     }
     source.setData(geojson)
   }, [cameras, showOffline, mapLoaded, addCameraLayers])
+
+  // Sync roads data to the GeoJSON source
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !roadsData) return
+    const source = map.current.getSource("roads") as maplibregl.GeoJSONSource
+    if (source) {
+      source.setData(roadsData as any)
+    }
+  }, [roadsData, mapLoaded, addRoads])
+
+  // Sync bus stops data to the GeoJSON source
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !busStopsData) return
+    const source = map.current.getSource("bus-stops") as maplibregl.GeoJSONSource
+    if (source) {
+      source.setData(busStopsData as any)
+    }
+  }, [busStopsData, mapLoaded, addBusStops])
 
   // Update bus stops visibility independently of full re-add
   useEffect(() => {
