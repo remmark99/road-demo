@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Thermometer, Droplets, AlertTriangle, Activity } from "lucide-react"
+import { Thermometer, Droplets, AlertTriangle, Activity, Zap } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
     Popover,
@@ -67,7 +67,12 @@ function MeasurementLine({
 function SensorRow({ reading }: { reading: SensorReading }) {
     const hasWarning =
         reading.temperatureAlarm === "warning" ||
-        reading.humidityAlarm === "warning"
+        reading.temperatureAlarm === "critical" ||
+        reading.humidityAlarm === "warning" ||
+        reading.humidityAlarm === "critical" ||
+        reading.digitalAlarm === "warning" ||
+        reading.digitalAlarm === "critical" ||
+        reading.digitalState === false; // Usually false = not OK for sensors like DIO
 
     return (
         <div className="space-y-2">
@@ -108,6 +113,19 @@ function SensorRow({ reading }: { reading: SensorReading }) {
                         normalColor="text-indigo-500"
                     />
                 )}
+                {reading.digitalState !== null && (
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                            <Zap className={`h-3.5 w-3.5 ${reading.digitalState ? "text-emerald-500" : "text-amber-500"}`} />
+                            <span className={`text-sm font-bold ${reading.digitalState ? "text-emerald-500" : "text-amber-500"}`}>
+                                {reading.digitalState ? "ОК" : "Авария"}
+                            </span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground/60 tabular-nums">
+                            {formatTime(reading.digitalUpdatedAt)}
+                        </span>
+                    </div>
+                )}
             </div>
         </div>
     )
@@ -139,7 +157,11 @@ export function SensorPopover() {
     }, [loadData])
 
     const hasAnyWarning = readings.some(
-        (r) => r.temperatureAlarm === "warning" || r.humidityAlarm === "warning"
+        (r) =>
+            r.temperatureAlarm === "warning" || r.temperatureAlarm === "critical" ||
+            r.humidityAlarm === "warning" || r.humidityAlarm === "critical" ||
+            r.digitalAlarm === "warning" || r.digitalAlarm === "critical" ||
+            r.digitalState === false
     )
 
     return (
@@ -149,8 +171,8 @@ export function SensorPopover() {
                     variant="ghost"
                     size="sm"
                     className={`gap-1.5 ${hasAnyWarning
-                            ? "text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30"
-                            : "text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                        ? "text-amber-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                        : "text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                         }`}
                 >
                     {hasAnyWarning ? (

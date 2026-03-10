@@ -15,18 +15,23 @@ export interface SensorReading {
     label: string
     temperature: number | null
     humidity: number | null
+    digitalState: boolean | null
     temperatureAlarm: string | null
     humidityAlarm: string | null
+    digitalAlarm: string | null
     temperatureUpdatedAt: string | null
     humidityUpdatedAt: string | null
+    digitalUpdatedAt: string | null
 }
 
 const SENSOR_LABELS: Record<number, string> = {
+    1: 'Датчик DIO1',
     13: 'Датчик 1',
     14: 'Датчик 2',
 }
 
 const SENSOR_DESCRIPTIONS: Record<number, string> = {
+    1: 'Цифровой вход',
     13: 'Датчик влажности и температуры',
     14: 'Датчик температуры',
 }
@@ -59,7 +64,8 @@ async function fetchLatestForElementCategory(
  * Queries per element+category to guarantee we always get the latest of each.
  */
 export async function fetchLatestMeasurements(): Promise<SensorReading[]> {
-    const [temp13, hum13, temp14] = await Promise.all([
+    const [dio1, temp13, hum13, temp14] = await Promise.all([
+        fetchLatestForElementCategory(1, 'digital input'),
         fetchLatestForElementCategory(13, 'temperature'),
         fetchLatestForElementCategory(13, 'humidity'),
         fetchLatestForElementCategory(14, 'temperature'),
@@ -67,24 +73,43 @@ export async function fetchLatestMeasurements(): Promise<SensorReading[]> {
 
     const readings: SensorReading[] = [
         {
+            element: 1,
+            label: SENSOR_LABELS[1],
+            temperature: null,
+            humidity: null,
+            digitalState: dio1 ? Boolean(dio1.value) : null,
+            temperatureAlarm: null,
+            humidityAlarm: null,
+            digitalAlarm: dio1?.alarm ?? null,
+            temperatureUpdatedAt: null,
+            humidityUpdatedAt: null,
+            digitalUpdatedAt: dio1?.created_at ?? null,
+        },
+        {
             element: 13,
             label: SENSOR_LABELS[13],
             temperature: temp13?.value ?? null,
             humidity: hum13?.value ?? null,
+            digitalState: null,
             temperatureAlarm: temp13?.alarm ?? null,
             humidityAlarm: hum13?.alarm ?? null,
+            digitalAlarm: null,
             temperatureUpdatedAt: temp13?.created_at ?? null,
             humidityUpdatedAt: hum13?.created_at ?? null,
+            digitalUpdatedAt: null,
         },
         {
             element: 14,
             label: SENSOR_LABELS[14],
             temperature: temp14?.value ?? null,
             humidity: null,
+            digitalState: null,
             temperatureAlarm: temp14?.alarm ?? null,
             humidityAlarm: null,
+            digitalAlarm: null,
             temperatureUpdatedAt: temp14?.created_at ?? null,
             humidityUpdatedAt: null,
+            digitalUpdatedAt: null,
         },
     ]
 
