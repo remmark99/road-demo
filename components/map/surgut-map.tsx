@@ -8,6 +8,7 @@ import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import type { Camera, RoadStatus } from "@/lib/types"
 import { VideoModal } from "./video-modal"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 const statusColors: Record<RoadStatus, string> = {
   clean: "#4ade80",
@@ -148,6 +149,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
   const [busStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
   const [showBusStops, setShowBusStops] = useState(true)
+  const [selectedContractor, setSelectedContractor] = useState<string>("all")
 
   // Add roads as a single GeoJSON source with styled layers
   const addRoads = useCallback(() => {
@@ -242,7 +244,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     map.current.on("mouseenter", mainLayerId, (e) => {
       map.current!.getCanvas().style.cursor = "pointer"
       const feature = e.features?.[0]
-      if (feature && feature.properties?.name) {
+      if (feature && feature.properties) {
         const highway = feature.properties.highway
         const status = feature.properties.status
         const cfg = HIGHWAY_CONFIG[highway]
@@ -255,12 +257,16 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         popup
           .setLngLat(e.lngLat)
           .setHTML(
-            `<div class="p-2 text-sm">
-              <div class="font-semibold">${feature.properties.name}</div>
+            `<div class="p-2 text-sm whitespace-nowrap">
+              <div class="font-semibold">${feature.properties.name || "Без названия"}</div>
               <div class="text-muted-foreground text-xs">${cfg?.label ?? highway}</div>
-              <div class="flex items-center gap-1.5 mt-1">
+              <div class="mt-1.5 flex items-center gap-1.5 border-t pt-1.5">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                <span class="text-xs font-medium">${feature.properties.contractor || "Не назначен"}</span>
+              </div>
+              <div class="flex items-center gap-1.5 mt-1.5">
                 <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusInfo.color}"></span>
-                <span class="text-xs">${statusInfo.label}</span>
+                <span class="text-xs text-muted-foreground">${statusInfo.label}</span>
               </div>
             </div>`
           )
@@ -274,7 +280,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     })
 
     map.current.on("mousemove", mainLayerId, (e) => {
-      if (e.features?.[0]?.properties?.name) {
+      if (e.features?.[0]?.properties) {
         popup.setLngLat(e.lngLat)
       }
     })
@@ -725,9 +731,37 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     if (!map.current || !mapLoaded || !roadsData) return
     const source = map.current.getSource("roads") as maplibregl.GeoJSONSource
     if (source) {
-      source.setData(roadsData as any)
+      let features = roadsData.features;
+
+      // Apply external status override locally (from Timeline)
+      if (statusOverride && Object.keys(statusOverride).length > 0) {
+        features = features.map((f: any) => {
+          const override = statusOverride[f.properties.osm_id.toString()];
+          if (override) {
+            return {
+              ...f,
+              properties: {
+                ...f.properties,
+                status: override
+              }
+            }
+          }
+          return f;
+        })
+      }
+
+      // Apply contractor filter
+      if (selectedContractor !== "all") {
+        features = features.filter((f: any) => f.properties.contractor === selectedContractor)
+      }
+
+      const dataToSet: any = {
+        type: "FeatureCollection",
+        features: features
+      }
+      source.setData(dataToSet)
     }
-  }, [roadsData, mapLoaded, addRoads])
+  }, [roadsData, mapLoaded, addRoads, statusOverride, selectedContractor])
 
   // Sync bus stops data to the GeoJSON source
   useEffect(() => {
@@ -854,6 +888,20 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
 
       {/* Map Controls */}
       <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+        <Select value={selectedContractor} onValueChange={setSelectedContractor}>
+          <SelectTrigger className="w-60 bg-card text-card-foreground border border-border rounded-lg h-10 shadow-sm font-medium">
+            <SelectValue placeholder="Выберите подрядчика" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все подрядчики</SelectItem>
+            <SelectItem value="Подрядчик 1">Подрядчик 1</SelectItem>
+            <SelectItem value="Подрядчик 2">Подрядчик 2</SelectItem>
+            <SelectItem value="Подрядчик 3">Подрядчик 3</SelectItem>
+            <SelectItem value="Подрядчик 4">Подрядчик 4</SelectItem>
+            <SelectItem value="Подрядчик 5">Подрядчик 5</SelectItem>
+          </SelectContent>
+        </Select>
+
         <button
           onClick={() => setShowOffline(!showOffline)}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-60 ${showOffline

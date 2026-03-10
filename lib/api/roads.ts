@@ -6,6 +6,7 @@ export interface RoadProperties {
     maxspeed: string | null
     surface: string | null
     oneway: boolean | null
+    contractor?: string
 }
 
 export interface RoadsGeoJSON {

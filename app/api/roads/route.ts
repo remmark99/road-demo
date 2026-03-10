@@ -14,6 +14,12 @@ function getSimulatedStatus(osmId: number): string {
     return 'dirty'                    // 20% dirty/snowed
 }
 
+// Deterministic pseudo-random assigning of a contractor (1 to 5)
+function getContractor(osmId: number): string {
+    const hash = Math.abs(((osmId * 198491317) >>> 0) % 5) + 1
+    return `Подрядчик ${hash}`
+}
+
 export async function GET(request: Request) {
     // Force refresh if query param ?refresh is present, otherwise use cache
     const url = new URL(request.url)
@@ -48,6 +54,7 @@ export async function GET(request: Request) {
                 properties: {
                     ...f.properties,
                     status: getSimulatedStatus(f.properties.osm_id),
+                    contractor: getContractor(f.properties.osm_id),
                 },
             })),
     }
