@@ -22,8 +22,8 @@ export interface SensorReading {
 }
 
 const SENSOR_LABELS: Record<number, string> = {
-    13: 'SNR-ERS-HTS',
-    14: 'SNR-ERS-TS',
+    13: 'Датчик 1',
+    14: 'Датчик 2',
 }
 
 const SENSOR_DESCRIPTIONS: Record<number, string> = {

@@ -28,8 +28,8 @@ export interface ControllerAlertsResult {
 }
 
 const SENSOR_LABELS: Record<number, string> = {
-    13: 'SNR-ERS-HTS (влажность и температура)',
-    14: 'SNR-ERS-TS (температура)',
+    13: 'Датчик 1 (влажность и температура)',
+    14: 'Датчик 2 (температура)',
 }
 
 export function getSensorLabel(element: number): string {
