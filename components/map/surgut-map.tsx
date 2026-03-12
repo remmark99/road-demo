@@ -8,7 +8,11 @@ import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import type { Camera, RoadStatus } from "@/lib/types"
 import { VideoModal } from "./video-modal"
+import { BusStopModal, type SelectedBusStop } from "./bus-stop-modal"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Card, CardContent } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
 
 const statusColors: Record<RoadStatus, string> = {
   clean: "#4ade80",
@@ -139,16 +143,21 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
+  const [selectedBusStop, setSelectedBusStop] = useState<SelectedBusStop | null>(null)
   const [isDark, setIsDark] = useState(true)
   const lastThemeRef = useRef(isDark)
-  const [showOffline, setShowOffline] = useState(false)
   const [cameras, setCameras] = useState<Camera[]>([])
   const [hoveredCamera, setHoveredCamera] = useState<Camera | null>(null)
   const [showAllFov, setShowAllFov] = useState(false)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
   const [busStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
-  const [showBusStops, setShowBusStops] = useState(true)
+
+  // Filter States
+  const [cameraFilters, setCameraFilters] = useState({ online: true, offline: false })
+  const [busStopFilters, setBusStopFilters] = useState({ online: true, offline: false, incidents: true, unequipped: true })
+  const [showClusters, setShowClusters] = useState(true)
+
   const [selectedContractor, setSelectedContractor] = useState<string>("all")
 
   // Add roads as a single GeoJSON source with styled layers
@@ -303,6 +312,11 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       clusterRadius: 50
     })
 
+    map.current.addSource(`${sourceId}-raw`, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    })
+
     // Cluster circles
     map.current.addLayer({
       id: `${sourceId}-clusters`,
@@ -322,7 +336,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         "circle-stroke-color": "#ffffff",
       },
       layout: {
-        "visibility": showBusStops ? "visible" : "none"
+        "visibility": showClusters ? "visible" : "none"
       }
     })
 
@@ -336,28 +350,67 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         "text-field": "{point_count_abbreviated}",
         "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
         "text-size": 12,
-        "visibility": showBusStops ? "visible" : "none"
+        "visibility": showClusters ? "visible" : "none"
       },
       paint: {
         "text-color": "#ffffff"
       }
     })
 
-    // Unclustered single points
+    const paintConfig = {
+      "circle-radius": 10,
+      "circle-color": [
+        "case",
+        ["==", ["has", "has_equipment"], false], "#3b82f6",
+        ["all", ["==", ["get", "has_equipment"], false], ["==", ["get", "is_partly_equipped"], false]], "#3b82f6",
+        ["==", ["get", "is_online"], false], "#9ca3af",
+        ["==", ["get", "glass_broken"], true], "#ef4444",
+        ["==", ["get", "heater_working"], false], "#f59e0b",
+        "#22c55e"
+      ] as any,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#ffffff",
+    }
+
+    const symbolLayout = {
+      "icon-image": "bus-icon",
+      "icon-allow-overlap": true,
+      "visibility": "visible"
+    } as any
+
+    // Unclustered single points (when clustering is OFF or max zoom)
     map.current.addLayer({
       id: layerId,
       type: "circle",
       source: sourceId,
       filter: ["!", ["has", "point_count"]],
-      paint: {
-        "circle-radius": 6,
-        "circle-color": "#60a5fa",
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#ffffff",
-      },
-      layout: {
-        "visibility": showBusStops ? "visible" : "none"
-      }
+      paint: paintConfig,
+      layout: { "visibility": "visible" }
+    })
+
+    // Add Bus Stop icon layer on top of circles
+    map.current.addLayer({
+      id: `${layerId}-symbol`,
+      type: "symbol",
+      source: sourceId,
+      filter: ["!", ["has", "point_count"]],
+      layout: symbolLayout
+    })
+
+    // Raw points (for when clustering is disabled)
+    map.current.addLayer({
+      id: `${layerId}-raw`,
+      type: "circle",
+      source: `${sourceId}-raw`,
+      paint: paintConfig,
+      layout: { "visibility": "none" }
+    })
+
+    map.current.addLayer({
+      id: `${layerId}-raw-symbol`,
+      type: "symbol",
+      source: `${sourceId}-raw`,
+      layout: { ...symbolLayout, "visibility": "none" }
     })
 
     // Click on a cluster to zoom in
@@ -370,11 +423,52 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       const clusterId = features[0].properties.cluster_id
       const source = map.current?.getSource(sourceId) as maplibregl.GeoJSONSource
 
-      source.getClusterExpansionZoom(clusterId).then(zoom => {
-        map.current?.easeTo({
-          center: (features[0].geometry as any).coordinates,
-          zoom: Math.min(zoom, 18),
-        })
+      source.getClusterExpansionZoom(clusterId).then(async zoom => {
+        if (zoom > 18 || map.current!.getZoom() >= 18) {
+          // Max zoom reached, spiderify bus stops inside popup
+          const leaves = await source.getClusterLeaves(clusterId, 100, 0)
+
+          let html = `<div class="p-2 min-w-48"><div class="font-bold mb-2 text-sm border-b pb-1">Остановки (${leaves.length}):</div><div class="space-y-1">`
+          leaves.forEach((f: any, index: number) => {
+            const props = f.properties
+            const colorClass = props.is_online ? (props.glass_broken ? 'bg-red-500' : 'bg-green-500') : (props.has_equipment === false ? 'bg-blue-500' : 'bg-gray-400')
+            html += `<div class="bus-stop-cluster-row flex items-center gap-2 text-xs p-1.5 hover:bg-muted cursor-pointer rounded" data-index="\${index}">
+               <div class="w-2 h-2 rounded-full \${colorClass}"></div>
+               <span class="truncate max-w-[150px] font-medium">\${props.name || 'Остановка'}</span>
+             </div>`
+          })
+          html += `</div></div>`
+
+          const popupContent = document.createElement("div")
+          popupContent.innerHTML = html
+
+          const rows = popupContent.querySelectorAll('.bus-stop-cluster-row')
+          rows.forEach((row, i) => {
+            row.addEventListener('click', () => {
+              const props = leaves[i].properties as any
+              setSelectedBusStop({
+                id: props.id,
+                name: props.name,
+                description: props.description,
+                address: props.address,
+                sensor_data: {
+                  ...props
+                }
+              })
+            })
+          })
+
+          new maplibregl.Popup({ closeOnClick: true, maxWidth: '250px' })
+            .setDOMContent(popupContent)
+            .setLngLat((features[0].geometry as any).coordinates)
+            .addTo(map.current!)
+
+        } else {
+          map.current?.easeTo({
+            center: (features[0].geometry as any).coordinates,
+            zoom: Math.min(zoom, 18),
+          })
+        }
       }).catch((err) => console.error(err))
     })
 
@@ -391,33 +485,49 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       offset: 10,
     })
 
-    map.current.on("mouseenter", layerId, (e) => {
-      map.current!.getCanvas().style.cursor = "pointer"
-      const feature = e.features?.[0]
-      if (feature) {
-        const props = feature.properties as any
-        popup
-          .setLngLat((e as unknown as { lngLat: any }).lngLat)
-          .setHTML(
-            `<div class="p-2 text-sm min-w-40">
-              <div class="font-semibold mb-1 text-[#3b82f6] flex items-center gap-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
-                ${props.name || 'Остановка'}
-              </div>
-              <div class="text-muted-foreground text-xs px-1">
-                ${props.address ? `<div class="mt-1.5 font-medium flex items-start gap-1"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 opacity-70"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg> ${props.address}</div>` : ''}
-              </div>
-            </div>`
-          )
-          .addTo(map.current!)
-      }
-    })
+      ;[layerId, `${layerId}-raw`].forEach((id: string) => {
+        map.current!.on("mouseenter", id, (e) => {
+          map.current!.getCanvas().style.cursor = "pointer"
+          const feature = e.features?.[0]
+          if (feature) {
+            const props = feature.properties as any
+            popup
+              .setLngLat((e as unknown as { lngLat: any }).lngLat)
+              .setHTML(
+                `<div class="p-2 text-sm">
+                <div class="font-semibold flex items-center gap-1.5 mb-1 ${props.is_online ? (props.glass_broken ? 'text-red-500' : 'text-green-500') : 'text-[#3b82f6]'}">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+                  ${props.name || 'Остановка'}
+                </div>
+                ${props.address ? `<div class="text-muted-foreground text-xs">${props.address}</div>` : ''}
+              </div>`
+              )
+              .addTo(map.current!)
+          }
+        })
 
-    map.current.on("mouseleave", layerId, () => {
-      map.current!.getCanvas().style.cursor = ""
-      popup.remove()
-    })
-  }, [isDark, showBusStops])
+        map.current!.on("mouseleave", id, () => {
+          map.current!.getCanvas().style.cursor = ""
+          popup.remove()
+        })
+
+        map.current!.on("click", id, (e) => {
+          const feature = e.features?.[0]
+          if (feature) {
+            const props = feature.properties as any
+            setSelectedBusStop({
+              id: props.id,
+              name: props.name,
+              description: props.description,
+              address: props.address,
+              sensor_data: {
+                ...props // since we flattened sensor_data into properties in the source
+              }
+            })
+          }
+        })
+      })
+  }, [isDark])
 
   const addCameraLayers = useCallback(() => {
     if (!map.current) return
@@ -433,6 +543,11 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       cluster: true,
       clusterMaxZoom: 18,
       clusterRadius: 50
+    })
+
+    map.current.addSource(`${sourceId}-raw`, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
     })
 
     // Camera Cluster circles
@@ -452,6 +567,9 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         "circle-color": "#9333ea", // Purple
         "circle-stroke-width": 2,
         "circle-stroke-color": "#ffffff",
+      },
+      layout: {
+        "visibility": showClusters ? "visible" : "none"
       }
     })
 
@@ -465,11 +583,29 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         "text-field": "{point_count_abbreviated}",
         "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
         "text-size": 12,
+        "visibility": showClusters ? "visible" : "none"
       },
       paint: {
         "text-color": "#ffffff"
       }
     })
+
+    const paintConfig = {
+      "circle-radius": 10,
+      "circle-color": [
+        "case",
+        ["==", ["get", "status"], "online"], "#22c55e",
+        "#9ca3af" // offline gray
+      ] as any,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#ffffff",
+    }
+
+    const symbolLayout = {
+      "icon-image": "cam-icon",
+      "icon-allow-overlap": true,
+      "visibility": "visible"
+    } as any
 
     // Unclustered cameras (Circle)
     map.current.addLayer({
@@ -477,16 +613,33 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       type: "circle",
       source: sourceId,
       filter: ["!", ["has", "point_count"]],
-      paint: {
-        "circle-radius": 8,
-        "circle-color": [
-          "case",
-          ["==", ["get", "status"], "online"], "#22c55e",
-          "#9ca3af" // offline gray
-        ],
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#ffffff",
-      }
+      paint: paintConfig,
+      layout: { "visibility": "visible" }
+    })
+
+    // Add Camera icon layer on top of circles
+    map.current.addLayer({
+      id: `${layerId}-symbol`,
+      type: "symbol",
+      source: sourceId,
+      filter: ["!", ["has", "point_count"]],
+      layout: symbolLayout
+    })
+
+    // Raw cameras (Circle)
+    map.current.addLayer({
+      id: `${layerId}-raw`,
+      type: "circle",
+      source: `${sourceId}-raw`,
+      paint: paintConfig,
+      layout: { "visibility": "none" }
+    })
+
+    map.current.addLayer({
+      id: `${layerId}-raw-symbol`,
+      type: "symbol",
+      source: `${sourceId}-raw`,
+      layout: { ...symbolLayout, "visibility": "none" }
     })
 
     const popup = new maplibregl.Popup({
@@ -495,53 +648,53 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       offset: 12,
     })
 
-    // Hover on unclustered cameras
-    map.current.on("mouseenter", layerId, (e) => {
-      map.current!.getCanvas().style.cursor = "pointer"
-      const feature = e.features?.[0]
-      if (feature) {
-        const props = feature.properties as any
-        setHoveredCamera({ id: props.id } as Camera) // Minimal info for FOV highlighting
+      ;[layerId, `${layerId}-raw`].forEach((id: string) => {
+        map.current!.on("mouseenter", id, (e) => {
+          map.current!.getCanvas().style.cursor = "pointer"
+          const feature = e.features?.[0]
+          if (feature) {
+            const props = feature.properties as any
+            setHoveredCamera({ id: props.id } as Camera) // Minimal info for FOV highlighting
 
-        popup
-          .setLngLat((e as unknown as { lngLat: any }).lngLat)
-          .setHTML(
-            `<div class="p-2 text-sm">
-              <div class="font-semibold">${props.name}</div>
-              <div class="text-muted-foreground">${props.description}</div>
-            </div>`
-          )
-          .addTo(map.current!)
-      }
-    })
+            popup
+              .setLngLat((e as unknown as { lngLat: any }).lngLat)
+              .setHTML(
+                `<div class="p-2 text-sm">
+                <div class="font-semibold">${props.name}</div>
+                <div class="text-muted-foreground">${props.description}</div>
+              </div>`
+              )
+              .addTo(map.current!)
+          }
+        })
 
-    map.current.on("mouseleave", layerId, () => {
-      map.current!.getCanvas().style.cursor = ""
-      setHoveredCamera(null)
-      popup.remove()
-    })
+        map.current!.on("mouseleave", id, () => {
+          map.current!.getCanvas().style.cursor = ""
+          setHoveredCamera(null)
+          popup.remove()
+        })
 
-    // Click on unclustered camera
-    map.current.on("click", layerId, (e) => {
-      const feature = e.features?.[0]
-      if (feature) {
-        const props = feature.properties as any
-        setSelectedCamera({
-          id: props.id,
-          name: props.name,
-          description: props.description,
-          status: props.status,
-          hlsUrl: props.hlsUrl,
-          rtspUrl: props.rtspUrl,
-          cameraIndex: props.cameraIndex,
-          lat: (feature.geometry as any).coordinates[1],
-          lng: (feature.geometry as any).coordinates[0],
-          fovAngle: props.fovAngle,
-          fovDirection: props.fovDirection,
-          fovDistance: props.fovDistance
-        } as Camera)
-      }
-    })
+        map.current!.on("click", id, (e) => {
+          const feature = e.features?.[0]
+          if (feature) {
+            const props = feature.properties as any
+            setSelectedCamera({
+              id: props.id,
+              name: props.name,
+              description: props.description,
+              status: props.status,
+              hlsUrl: props.hlsUrl,
+              rtspUrl: props.rtspUrl,
+              cameraIndex: props.cameraIndex,
+              lat: (feature.geometry as any).coordinates[1],
+              lng: (feature.geometry as any).coordinates[0],
+              fovAngle: props.fovAngle,
+              fovDirection: props.fovDirection,
+              fovDistance: props.fovDistance
+            } as Camera)
+          }
+        })
+      })
 
     // Click on camera cluster -> zoom or spiderify if max zoom
     map.current.on("click", `${sourceId}-clusters`, (e) => {
@@ -672,6 +825,19 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     map.current.addControl(new maplibregl.NavigationControl(), "top-right")
 
     map.current.on("load", () => {
+      // Add custom SVG icons
+      if (map.current) {
+        const camSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`
+        const busSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>`
+
+        const camImg = new window.Image(14, 14)
+        camImg.onload = () => map.current?.addImage('cam-icon', camImg)
+        camImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(camSvg)
+
+        const busImg = new window.Image(14, 14)
+        busImg.onload = () => map.current?.addImage('bus-icon', busImg)
+        busImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(busSvg)
+      }
       setMapLoaded(true)
     })
 
@@ -695,11 +861,14 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     if (!map.current || !mapLoaded) return
 
     const source = map.current.getSource("cameras") as maplibregl.GeoJSONSource
-    if (!source) return
+    const rawSource = map.current.getSource("cameras-raw") as maplibregl.GeoJSONSource
+    if (!source || !rawSource) return
 
-    const visibleCameras = cameras.filter(camera =>
-      camera.status === "online" || showOffline
-    )
+    const visibleCameras = cameras.filter(camera => {
+      if (camera.status === "online" && !cameraFilters.online) return false
+      if (camera.status !== "online" && !cameraFilters.offline) return false
+      return true
+    })
 
     const geojson: any = {
       type: "FeatureCollection",
@@ -724,7 +893,24 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       }))
     }
     source.setData(geojson)
-  }, [cameras, showOffline, mapLoaded, addCameraLayers])
+    rawSource.setData(geojson)
+
+    const clusterLayers = ["cameras-clusters", "cameras-cluster-count", "cameras-layer", "cameras-layer-symbol"]
+    const rawLayers = ["cameras-layer-raw", "cameras-layer-raw-symbol"]
+
+    clusterLayers.forEach(l => {
+      if (map.current!.getLayer(l)) {
+        map.current!.setLayoutProperty(l, "visibility", showClusters ? "visible" : "none")
+      }
+    })
+
+    rawLayers.forEach(l => {
+      if (map.current!.getLayer(l)) {
+        map.current!.setLayoutProperty(l, "visibility", showClusters ? "none" : "visible")
+      }
+    })
+
+  }, [cameras, cameraFilters, mapLoaded, addCameraLayers, showClusters])
 
   // Sync roads data to the GeoJSON source
   useEffect(() => {
@@ -767,21 +953,61 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   useEffect(() => {
     if (!map.current || !mapLoaded || !busStopsData) return
     const source = map.current.getSource("bus-stops") as maplibregl.GeoJSONSource
-    if (source) {
-      source.setData(busStopsData as any)
+    const rawSource = map.current.getSource("bus-stops-raw") as maplibregl.GeoJSONSource
+    if (source && rawSource) {
+      // Filter bus stops based on state
+      const filteredFeatures = busStopsData.features.filter(f => {
+        const sd: any = f.properties.sensor_data || {}
+
+        if (!sd.has_equipment && !sd.is_partly_equipped) {
+          return busStopFilters.unequipped
+        }
+
+        if (sd.heater_working === false || sd.glass_broken) {
+          return busStopFilters.incidents
+        }
+
+        if (sd.is_online) {
+          return busStopFilters.online
+        } else {
+          return busStopFilters.offline
+        }
+      })
+
+      // Flatten sensor_data for MapLibre expressions
+      const flatData = {
+        ...busStopsData,
+        features: filteredFeatures.map(f => ({
+          ...f,
+          properties: {
+            ...f.properties,
+            ...(f.properties.sensor_data || {})
+          }
+        }))
+      }
+      source.setData(flatData as any)
+      rawSource.setData(flatData as any)
     }
-  }, [busStopsData, mapLoaded, addBusStops])
+  }, [busStopsData, mapLoaded, addBusStops, busStopFilters])
 
   // Update bus stops visibility independently of full re-add
   useEffect(() => {
     if (!map.current || !mapLoaded) return
-    const layers = ["bus-stops-layer", "bus-stops-clusters", "bus-stops-cluster-count"]
-    layers.forEach(l => {
+    const clusterLayers = ["bus-stops-clusters", "bus-stops-cluster-count", "bus-stops-layer", "bus-stops-layer-symbol"]
+    const rawLayers = ["bus-stops-layer-raw", "bus-stops-layer-raw-symbol"]
+
+    clusterLayers.forEach(l => {
       if (map.current!.getLayer(l)) {
-        map.current!.setLayoutProperty(l, "visibility", showBusStops ? "visible" : "none")
+        map.current!.setLayoutProperty(l, "visibility", showClusters ? "visible" : "none")
       }
     })
-  }, [showBusStops, mapLoaded, busStopsData])
+
+    rawLayers.forEach(l => {
+      if (map.current!.getLayer(l)) {
+        map.current!.setLayoutProperty(l, "visibility", showClusters ? "none" : "visible")
+      }
+    })
+  }, [showClusters, mapLoaded, busStopsData])
 
   // Update/show FOV
   useEffect(() => {
@@ -793,7 +1019,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     const updateFovs = () => {
       // Find cameras that should have FOV visible
       const fovCameras = cameras.filter(camera => {
-        const isVisible = camera.status === "online" || showOffline
+        const isVisible = (camera.status === "online" && cameraFilters.online) || (camera.status !== "online" && cameraFilters.offline)
         if (!isVisible) return false
 
         return showAllFov || (hoveredCamera && camera.id === hoveredCamera.id)
@@ -880,16 +1106,16 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     return () => {
       // No cleanup needed here as we reuse the source/layers
     }
-  }, [cameras, showOffline, showAllFov, hoveredCamera, mapLoaded])
+  }, [cameras, cameraFilters, showAllFov, hoveredCamera, mapLoaded])
 
   return (
     <>
       <div ref={mapContainer} className="w-full h-full rounded-lg" />
 
       {/* Map Controls */}
-      <div className="absolute top-4 left-4 z-10 flex flex-col gap-2">
+      <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 w-72">
         <Select value={selectedContractor} onValueChange={setSelectedContractor}>
-          <SelectTrigger className="w-60 bg-card text-card-foreground border border-border rounded-lg h-10 shadow-sm font-medium">
+          <SelectTrigger className="w-full bg-card text-card-foreground border border-border rounded-lg h-10 shadow-sm font-medium">
             <SelectValue placeholder="Выберите подрядчика" />
           </SelectTrigger>
           <SelectContent>
@@ -902,81 +1128,66 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
           </SelectContent>
         </Select>
 
-        <button
-          onClick={() => setShowOffline(!showOffline)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-60 ${showOffline
-            ? "bg-primary text-primary-foreground"
-            : "bg-card text-card-foreground border border-border"
-            }`}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            {showOffline ? (
-              <>
-                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-                <circle cx="12" cy="12" r="3" />
-              </>
-            ) : (
-              <>
-                <path d="M9.88 9.88a3 3 0 1 0 4.24 4.24" />
-                <path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" />
-                <path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" />
-                <line x1="2" x2="22" y1="2" y2="22" />
-              </>
-            )}
-          </svg>
-          <span className="truncate">
-            {showOffline ? "Только активные камеры" : "Показать все камеры"}
-          </span>
-        </button>
+        <Card className="shadow-sm">
+          <CardContent className="p-4 space-y-4">
+            {/* Display Toggles */}
+            <div className="space-y-3">
+              <div className="font-medium text-sm border-b pb-1 mb-2">Отображение</div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="clusters" checked={showClusters} onCheckedChange={(checked) => setShowClusters(!!checked)} />
+                <Label htmlFor="clusters" className="text-sm font-medium leading-none cursor-pointer">Кластеризация маркеров</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="fovs" checked={showAllFov} onCheckedChange={(checked) => setShowAllFov(!!checked)} />
+                <Label htmlFor="fovs" className="text-sm font-medium leading-none cursor-pointer">Азимуты камер</Label>
+              </div>
+            </div>
 
-        <button
-          onClick={() => setShowBusStops(!showBusStops)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-60 ${showBusStops
-            ? "bg-primary text-primary-foreground"
-            : "bg-card text-card-foreground border border-border"
-            }`}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M8 6v6" />
-            <path d="M15 6v6" />
-            <path d="M2 12h19.6" />
-            <path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3" />
-            <circle cx="7" cy="18" r="2" />
-            <circle cx="17" cy="18" r="2" />
-          </svg>
-          <span className="truncate">
-            {showBusStops ? "Скрыть остановки" : "Показать остановки"}
-          </span>
-        </button>
+            {/* Camera Filters */}
+            <div className="space-y-3">
+              <div className="font-medium text-sm border-b pb-1 mb-2">Камеры (📷)</div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="cam-online" checked={cameraFilters.online} onCheckedChange={(checked) => setCameraFilters(prev => ({ ...prev, online: !!checked }))} />
+                <Label htmlFor="cam-online" className="text-sm cursor-pointer">Показывать рабочие</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="cam-offline" checked={cameraFilters.offline} onCheckedChange={(checked) => setCameraFilters(prev => ({ ...prev, offline: !!checked }))} />
+                <Label htmlFor="cam-offline" className="text-sm cursor-pointer">Показывать не в сети</Label>
+              </div>
+            </div>
 
-        <button
-          onClick={() => setShowAllFov(!showAllFov)}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors w-60 ${showAllFov
-            ? "bg-primary text-primary-foreground"
-            : "bg-card text-card-foreground border border-border"
-            }`}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m16.24 7.76-1.42 1.42" />
-            <path d="m20.48 3.51-1.42 1.42" />
-            <circle cx="12" cy="12" r="1" />
-            <circle cx="12" cy="12" r="10" />
-            <path d="m16.24 16.24-1.42-1.42" />
-            <path d="m20.48 20.48-1.42-1.42" />
-            <path d="m7.76 16.24 1.42-1.42" />
-            <path d="m3.51 20.48 1.42-1.42" />
-            <path d="m7.76 7.76 1.42 1.42" />
-            <path d="m3.51 3.51 1.42 1.42" />
-          </svg>
-          <span className="truncate">
-            {showAllFov ? "Скрыть азимуты" : "Показать азимуты"}
-          </span>
-        </button>
+            {/* Bus Stop Filters */}
+            <div className="space-y-3">
+              <div className="font-medium text-sm border-b pb-1 mb-2">Остановки (🚌)</div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="bus-online" checked={busStopFilters.online} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, online: !!checked }))} />
+                <Label htmlFor="bus-online" className="text-sm cursor-pointer">В сети</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="bus-offline" checked={busStopFilters.offline} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, offline: !!checked }))} />
+                <Label htmlFor="bus-offline" className="text-sm cursor-pointer">Не в сети</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="bus-incidents" checked={busStopFilters.incidents} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, incidents: !!checked }))} />
+                <Label htmlFor="bus-incidents" className="text-sm cursor-pointer">Инциденты/Поломки</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Checkbox id="bus-unequipped" checked={busStopFilters.unequipped} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, unequipped: !!checked }))} />
+                <Label htmlFor="bus-unequipped" className="text-sm cursor-pointer">Без оборудования</Label>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <VideoModal
         camera={selectedCamera}
         onClose={() => setSelectedCamera(null)}
+      />
+
+      <BusStopModal
+        busStop={selectedBusStop}
+        onClose={() => setSelectedBusStop(null)}
       />
     </>
   )

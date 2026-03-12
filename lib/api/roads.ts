@@ -42,23 +42,42 @@ export function getHighwayConfig(highway: string) {
     return HIGHWAY_CONFIG[highway] ?? DEFAULT_HIGHWAY
 }
 
+import { toast } from "sonner"
+
 let cachedGeoJSON: RoadsGeoJSON | null = null
 
 /**
  * Fetch roads GeoJSON from the cached API route.
  * The API route fetches from Supabase once and caches the result server-side.
  */
-export async function fetchRoadsGeoJSON(): Promise<RoadsGeoJSON> {
+export async function fetchRoadsGeoJSON(retries = 3): Promise<RoadsGeoJSON> {
     if (cachedGeoJSON) return cachedGeoJSON
 
-    try {
-        // v=2 busts the browser cache, refresh=true busts the server in-memory cache
-        const res = await fetch('/api/roads?v=2&refresh=true', { cache: 'no-store' })
-        if (!res.ok) throw new Error(`Failed to fetch roads: ${res.status}`)
-        cachedGeoJSON = await res.json()
-        return cachedGeoJSON!
-    } catch (error) {
-        console.error('Error fetching roads GeoJSON:', error)
-        return { type: 'FeatureCollection', features: [] }
+    const fetchAttempt = async (attempt: number): Promise<RoadsGeoJSON> => {
+        try {
+            if (attempt === 1) {
+                toast.loading("Загрузка данных о дорогах...", { id: "fetch-roads" })
+            } else {
+                toast.loading(`Загрузка дорог (попытка ${attempt}/${retries})...`, { id: "fetch-roads" })
+            }
+            // v=2 busts the browser cache, refresh=true busts the server in-memory cache
+            const res = await fetch('/api/roads?v=2&refresh=true', { cache: 'no-store' })
+            if (!res.ok) throw new Error(`Failed to fetch roads: ${res.status}`)
+            cachedGeoJSON = await res.json()
+            toast.success("Данные о дорогах загружены", { id: "fetch-roads", duration: 2500 })
+            return cachedGeoJSON!
+        } catch (error) {
+            if (attempt < retries) {
+                // Wait 2 seconds before retrying
+                await new Promise(r => setTimeout(r, 2000))
+                return fetchAttempt(attempt + 1)
+            } else {
+                console.error('Error fetching roads GeoJSON:', error)
+                toast.error("Не удалось загрузить данные о дорогах", { id: "fetch-roads", duration: 5000 })
+                return { type: 'FeatureCollection', features: [] }
+            }
+        }
     }
+
+    return fetchAttempt(1)
 }
