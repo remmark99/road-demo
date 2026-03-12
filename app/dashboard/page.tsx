@@ -14,31 +14,31 @@ const DASHBOARDS = [
     id: "general" as const,
     label: "Текущее состояние",
     icon: Activity,
-    url: "https://smnt.dabdi.online/superset/dashboard/3?standalone=2&expand_filters=0"
+    url: "https://superset.board-coding.ru/superset/dashboard/3?standalone=2&expand_filters=0"
   },
   {
     id: "cleaning" as const,
     label: "Матрица эффективности",
     icon: Grid3X3,
-    url: "https://smnt.dabdi.online/superset/dashboard/4?standalone=2&expand_filters=0"
+    url: "https://superset.board-coding.ru/superset/dashboard/4?standalone=2&expand_filters=0"
   },
   {
     id: "incidents" as const,
     label: "Подрядчики",
     icon: Users,
-    url: "https://smnt.dabdi.online/superset/dashboard/5?standalone=2&expand_filters=0"
+    url: "https://superset.board-coding.ru/superset/dashboard/5?standalone=2&expand_filters=0"
   },
   {
     id: "predictions" as const,
     label: "Влияние осадков",
     icon: CloudRain,
-    url: "https://smnt.dabdi.online/superset/dashboard/6?standalone=2&expand_filters=0"
+    url: "https://superset.board-coding.ru/superset/dashboard/6?standalone=2&expand_filters=0"
   },
   {
     id: "city" as const,
     label: "Город",
     icon: Building2,
-    url: "https://smnt.dabdi.online/superset/dashboard/7?standalone=2&expand_filters=0"
+    url: "https://superset.board-coding.ru/superset/dashboard/7?standalone=2&expand_filters=0"
   }
 ]
 
