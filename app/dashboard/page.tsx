@@ -2,12 +2,12 @@
 
 import { useState } from "react"
 import { Navigation } from "@/components/navigation"
-import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer } from "lucide-react"
+import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
 
-type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city"
+type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts"
 
 const DASHBOARDS = [
   {
@@ -39,6 +39,18 @@ const DASHBOARDS = [
     label: "Город",
     icon: Building2,
     url: "https://superset.board-coding.ru/superset/dashboard/7?standalone=2&expand_filters=0"
+  },
+  {
+    id: "kpi_bus_stops" as const,
+    label: "KPI Остановки",
+    icon: BusFront,
+    url: "https://superset.board-coding.ru/superset/dashboard/8?standalone=2&expand_filters=0"
+  },
+  {
+    id: "districts" as const,
+    label: "Районы",
+    icon: Map,
+    url: "https://superset.board-coding.ru/superset/dashboard/9?standalone=2&expand_filters=0"
   }
 ]
 

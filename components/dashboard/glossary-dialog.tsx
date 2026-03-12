@@ -41,7 +41,7 @@ const glossaryItems: GlossaryItem[] = [
     content: (
       <div className="space-y-3 text-sm text-muted-foreground">
         <p>Нарушение — это Инцидент, который не был устранён в установленный нормативный срок.</p>
-        <p>Проще говоря:<br/>Инцидент — это сама проблема,<br/>Нарушение — это проблема, которая существует слишком долго.</p>
+        <p>Проще говоря:<br />Инцидент — это сама проблема,<br />Нарушение — это проблема, которая существует слишком долго.</p>
         <p>Нарушения являются основным управленческим индикатором качества работы подрядчиков.</p>
       </div>
     )
@@ -220,6 +220,55 @@ const glossaryItems: GlossaryItem[] = [
         <p>Позволяет быстро выявить сильных и проблемных подрядчиков.</p>
       </div>
     )
+  },
+  {
+    title: "ИНДЕКС ЗДОРОВЬЯ ОСТАНОВКИ",
+    content: (
+      <div className="space-y-4 text-sm text-muted-foreground">
+        <p>
+          <span className="font-medium text-foreground">Индекс здоровья остановки</span> — это интегральный индекс состояния остановки. Он не измеряет какой-то один физический параметр. Это сводная оценка «насколько здорова инфраструктура», собранная из нескольких показателей.
+        </p>
+        <p>Проще говоря: это процент нормального состояния остановки.</p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-2 p-3 bg-green-500/10 rounded-md border border-green-500/20">
+            <p className="font-medium text-green-700 dark:text-green-400">Индекс высокий, если:</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>связь работает</li>
+              <li>температура нормальная</li>
+              <li>инцидентов мало</li>
+              <li>оборудование исправно</li>
+            </ul>
+          </div>
+          <div className="space-y-2 p-3 bg-red-500/10 rounded-md border border-red-500/20">
+            <p className="font-medium text-red-700 dark:text-red-400">Индекс падает, если:</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>часто ломается</li>
+              <li>пропадает связь</li>
+              <li>холодно внутри</li>
+              <li>много инцидентов</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    )
+  },
+  {
+    title: "КОМФОРТНАЯ ТЕМПЕРАТУРНАЯ ЗОНА (ОСТАНОВКА)",
+    content: (
+      <div className="space-y-4 text-sm text-muted-foreground">
+        <p>
+          Этот показатель — средний уровень комфорта остановок в сети. Он означает, какой процент времени остановки находились в комфортном температурном диапазоне.
+        </p>
+        <div className="space-y-2">
+          <p className="font-medium text-foreground">В данном проекте температура внутри остановки комфортна, если:</p>
+          <ul className="list-disc list-inside space-y-1">
+            <li>&ge; 15&deg;C</li>
+            <li>&le; 22&deg;C</li>
+          </ul>
+        </div>
+      </div>
+    )
   }
 ]
 
@@ -269,8 +318,8 @@ export function GlossaryDialog() {
                 </button>
                 <div
                   className={cn(
-                    "overflow-hidden transition-all duration-200",
-                    openItem === item.title ? "max-h-[500px]" : "max-h-0"
+                    "overflow-hidden transition-all duration-300",
+                    openItem === item.title ? "max-h-[2000px]" : "max-h-0"
                   )}
                 >
                   <div className="px-4 pb-4 pt-2 border-t bg-muted/20">
