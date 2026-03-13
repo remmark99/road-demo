@@ -2,15 +2,16 @@
 
 import { useState } from "react"
 import { Navigation } from "@/components/navigation"
-import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map, Users2, ShieldAlert, Hammer } from "lucide-react"
+import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map, Users2, ShieldAlert, Hammer, ClipboardCheck } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
 import { PassengerAnalytics } from "@/components/dashboard/passenger-analytics"
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
 import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
+import { ConditionAnalytics } from "@/components/dashboard/condition-analytics"
 
-type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger" | "security" | "vandalism"
+type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger" | "security" | "vandalism" | "condition"
 
 const DASHBOARDS = [
   {
@@ -72,6 +73,12 @@ const DASHBOARDS = [
     label: "Вандализм",
     icon: Hammer,
     component: VandalismAnalytics,
+  },
+  {
+    id: "condition" as const,
+    label: "Состояние остановки",
+    icon: ClipboardCheck,
+    component: ConditionAnalytics,
   }
 ] as const
 
