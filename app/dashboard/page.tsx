@@ -2,12 +2,13 @@
 
 import { useState } from "react"
 import { Navigation } from "@/components/navigation"
-import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map } from "lucide-react"
+import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map, Users2 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
+import { PassengerAnalytics } from "@/components/dashboard/passenger-analytics"
 
-type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts"
+type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger"
 
 const DASHBOARDS = [
   {
@@ -51,8 +52,14 @@ const DASHBOARDS = [
     label: "Районы",
     icon: Map,
     url: "https://superset.board-coding.ru/superset/dashboard/9?standalone=2&expand_filters=0"
+  },
+  {
+    id: "passenger" as const,
+    label: "Пассажирская аналитика",
+    icon: Users2,
+    component: PassengerAnalytics,
   }
-]
+] as const
 
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<DashboardView>("general")
@@ -121,18 +128,35 @@ export default function DashboardPage() {
 
             {/* Dashboard Content */}
             <div className="flex-1 rounded-lg border overflow-hidden bg-background shadow-sm relative">
-              {DASHBOARDS.map((dashboard) => (
-                <iframe
-                  key={dashboard.id}
-                  src={dashboard.url}
-                  className={cn(
-                    "w-full h-full border-0 absolute inset-0",
-                    activeView === dashboard.id ? "z-10" : "z-0 invisible"
-                  )}
-                  title={dashboard.label}
-                  loading="lazy"
-                />
-              ))}
+              {DASHBOARDS.map((dashboard) => {
+                const isActive = activeView === dashboard.id
+                if ('component' in dashboard && dashboard.component) {
+                  const Component = dashboard.component
+                  return (
+                    <div
+                      key={dashboard.id}
+                      className={cn(
+                        "w-full h-full absolute inset-0 overflow-auto",
+                        isActive ? "z-10" : "z-0 invisible"
+                      )}
+                    >
+                      {isActive && <Component />}
+                    </div>
+                  )
+                }
+                return (
+                  <iframe
+                    key={dashboard.id}
+                    src={'url' in dashboard ? dashboard.url : ''}
+                    className={cn(
+                      "w-full h-full border-0 absolute inset-0",
+                      isActive ? "z-10" : "z-0 invisible"
+                    )}
+                    title={dashboard.label}
+                    loading="lazy"
+                  />
+                )
+              })}
             </div>
           </div>
         </div>
