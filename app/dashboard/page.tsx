@@ -5,6 +5,7 @@ import { Navigation } from "@/components/navigation"
 import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map, Users2, ShieldAlert, Hammer, ClipboardCheck, Heater } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
 import { PassengerAnalytics } from "@/components/dashboard/passenger-analytics"
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
@@ -110,24 +111,28 @@ export default function DashboardPage() {
 
           <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-6">
             {/* Dashboard Sidebar */}
-            <div className="w-full md:w-64 flex-shrink-0 flex md:flex-col gap-2 overflow-x-auto md:overflow-y-auto pb-2 md:pb-0">
-              {DASHBOARDS.map((dashboard) => (
-                <Button
-                  key={dashboard.id}
-                  variant={activeView === dashboard.id ? "default" : "ghost"}
-                  className={cn(
-                    "justify-start gap-3 h-auto py-3",
-                    activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
-                  )}
-                  onClick={() => setActiveView(dashboard.id)}
-                >
-                  <dashboard.icon className="h-4 w-4" />
-                  <span>{dashboard.label}</span>
-                </Button>
-              ))}
+            <div className="w-full md:w-64 flex-shrink-0 flex md:flex-col gap-0 pb-2 md:pb-0 min-h-0">
+              <ScrollArea className="flex-1 min-h-0">
+                <div className="flex md:flex-col gap-2 pr-3">
+                  {DASHBOARDS.map((dashboard) => (
+                    <Button
+                      key={dashboard.id}
+                      variant={activeView === dashboard.id ? "default" : "ghost"}
+                      className={cn(
+                        "justify-start gap-3 h-auto py-3",
+                        activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                      )}
+                      onClick={() => setActiveView(dashboard.id)}
+                    >
+                      <dashboard.icon className="h-4 w-4" />
+                      <span>{dashboard.label}</span>
+                    </Button>
+                  ))}
+                </div>
+              </ScrollArea>
 
               {/* Weather Monitoring Reference */}
-              <div className="hidden md:block mt-4 pt-4 border-t border-border">
+              <div className="hidden md:block mt-4 pt-4 border-t border-border flex-shrink-0">
                 <a
                   href="https://meteor.admsurgut.ru/ru/meteogram"
                   target="_blank"
@@ -149,7 +154,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Glossary Button */}
-              <div className="hidden md:block mt-auto pt-4">
+              <div className="hidden md:block mt-auto pt-4 flex-shrink-0">
                 <GlossaryDialog />
               </div>
             </div>
