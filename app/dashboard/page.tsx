@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Navigation } from "@/components/navigation"
-import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map, Users2, ShieldAlert, Hammer, ClipboardCheck } from "lucide-react"
+import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map, Users2, ShieldAlert, Hammer, ClipboardCheck, Heater } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
@@ -10,8 +10,9 @@ import { PassengerAnalytics } from "@/components/dashboard/passenger-analytics"
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
 import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
 import { ConditionAnalytics } from "@/components/dashboard/condition-analytics"
+import { WarmStopAnalytics } from "@/components/dashboard/warmstop-analytics"
 
-type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger" | "security" | "vandalism" | "condition"
+type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger" | "security" | "vandalism" | "condition" | "warmstop"
 
 const DASHBOARDS = [
   {
@@ -79,6 +80,12 @@ const DASHBOARDS = [
     label: "Состояние остановки",
     icon: ClipboardCheck,
     component: ConditionAnalytics,
+  },
+  {
+    id: "warmstop" as const,
+    label: "Эксплуатация тёплой остановки",
+    icon: Heater,
+    component: WarmStopAnalytics,
   }
 ] as const
 
