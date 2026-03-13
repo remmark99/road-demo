@@ -2,14 +2,15 @@
 
 import { useState } from "react"
 import { Navigation } from "@/components/navigation"
-import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map, Users2, ShieldAlert } from "lucide-react"
+import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map, Users2, ShieldAlert, Hammer } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
 import { PassengerAnalytics } from "@/components/dashboard/passenger-analytics"
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
+import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
 
-type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger" | "security"
+type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger" | "security" | "vandalism"
 
 const DASHBOARDS = [
   {
@@ -65,6 +66,12 @@ const DASHBOARDS = [
     label: "События безопасности",
     icon: ShieldAlert,
     component: SecurityAnalytics,
+  },
+  {
+    id: "vandalism" as const,
+    label: "Вандализм",
+    icon: Hammer,
+    component: VandalismAnalytics,
   }
 ] as const
 
