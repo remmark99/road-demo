@@ -1135,7 +1135,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
               <div className="font-medium text-sm border-b pb-1 mb-2">Отображение</div>
               <div className="flex items-center space-x-2">
                 <Checkbox id="clusters" checked={showClusters} onCheckedChange={(checked) => setShowClusters(!!checked)} />
-                <Label htmlFor="clusters" className="text-sm font-medium leading-none cursor-pointer">Кластеризация маркеров</Label>
+                <Label htmlFor="clusters" className="text-sm font-medium leading-none cursor-pointer">Группировка меток</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <Checkbox id="fovs" checked={showAllFov} onCheckedChange={(checked) => setShowAllFov(!!checked)} />
