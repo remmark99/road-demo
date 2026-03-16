@@ -84,7 +84,7 @@ const DASHBOARDS = [
   },
   {
     id: "warmstop" as const,
-    label: "Эксплуатация тёплой остановки",
+    label: "Теплая остановка",
     icon: Heater,
     component: WarmStopAnalytics,
   }

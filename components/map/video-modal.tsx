@@ -23,6 +23,7 @@ interface VideoModalProps {
 
 export function VideoModal({ camera, onClose }: VideoModalProps) {
   const hlsRef = useRef<Hls | null>(null)
+  const pcRef = useRef<RTCPeerConnection | null>(null)
   const [streamStatus, setStreamStatus] = useState<"loading" | "online" | "offline">("loading")
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([])
   const [alertsLoading, setAlertsLoading] = useState(false)
@@ -37,69 +38,158 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
       .finally(() => setAlertsLoading(false))
   }, [camera?.cameraIndex])
 
-  // Callback ref that initializes HLS when the video element is mounted
+  // Cleanup effect
+  useEffect(() => {
+    return () => {
+      if (hlsRef.current) {
+        hlsRef.current.destroy()
+        hlsRef.current = null
+      }
+      if (pcRef.current) {
+        pcRef.current.close()
+        pcRef.current = null
+      }
+    }
+  }, [])
+
+  // Callback ref that initializes HLS or WebRTC when the video element is mounted
   const videoRef = useCallback((videoElement: HTMLVideoElement | null) => {
-    // Cleanup previous HLS instance
+    // Cleanup previous instances
     if (hlsRef.current) {
       hlsRef.current.destroy()
       hlsRef.current = null
     }
+    if (pcRef.current) {
+      pcRef.current.close()
+      pcRef.current = null
+    }
 
-    if (!videoElement || !camera?.hlsUrl) {
-      setStreamStatus("offline")
+    if (!videoElement) {
       return
     }
 
-    setStreamStatus("loading")
-
-    if (Hls.isSupported()) {
-      const hls = new Hls({
-        enableWorker: true,
-        lowLatencyMode: true,
-        manifestLoadingTimeOut: 5000,
-        manifestLoadingMaxRetry: 2,
-      })
-
-      hlsRef.current = hls
-      hls.loadSource(camera.hlsUrl)
-      hls.attachMedia(videoElement)
-
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        setStreamStatus("online")
-        videoElement.play().catch(() => {
-          // Autoplay blocked, user needs to interact
+    if (camera?.hlsUrl) {
+      setStreamStatus("loading")
+      if (Hls.isSupported()) {
+        const hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: true,
+          manifestLoadingTimeOut: 5000,
+          manifestLoadingMaxRetry: 2,
         })
-      })
 
-      hls.on(Hls.Events.ERROR, (_, data) => {
-        console.error("HLS error:", data)
-        if (data.fatal) {
+        hlsRef.current = hls
+        hls.loadSource(camera.hlsUrl)
+        hls.attachMedia(videoElement)
+
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          setStreamStatus("online")
+          videoElement.play().catch(() => {
+            // Autoplay blocked, user needs to interact
+          })
+        })
+
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          console.error("HLS error:", data)
+          if (data.fatal) {
+            setStreamStatus("offline")
+            hls.destroy()
+            hlsRef.current = null
+          }
+        })
+      } else if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
+        // Native HLS support (Safari)
+        videoElement.src = camera.hlsUrl
+        videoElement.addEventListener("loadedmetadata", () => {
+          setStreamStatus("online")
+          videoElement.play().catch(() => { })
+        })
+        videoElement.addEventListener("error", (e) => {
+          console.error("Video error:", e)
           setStreamStatus("offline")
-          hls.destroy()
-          hlsRef.current = null
-        }
-      })
-    } else if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
-      // Native HLS support (Safari)
-      videoElement.src = camera.hlsUrl
-      videoElement.addEventListener("loadedmetadata", () => {
-        setStreamStatus("online")
-        videoElement.play().catch(() => { })
-      })
-      videoElement.addEventListener("error", (e) => {
-        console.error("Video error:", e)
+        })
+      } else {
         setStreamStatus("offline")
-      })
+      }
+    } else if (camera?.rtspUrl) {
+      setStreamStatus("loading")
+
+      const getWhepUrl = (rtspUrl: string) => {
+        if (rtspUrl.startsWith("http")) return rtspUrl;
+        try {
+          const url = new URL(rtspUrl);
+          // Convert rtsp://host:port/path to http://host:8889/path/whep
+          return `http://${url.hostname}:8889${url.pathname}/whep`;
+        } catch (e) {
+          return rtspUrl; // Fallback
+        }
+      }
+
+      const whepUrl = getWhepUrl(camera.rtspUrl)
+
+      const pc = new RTCPeerConnection()
+      pcRef.current = pc
+
+      pc.addTransceiver("video", { direction: "recvonly" })
+      pc.addTransceiver("audio", { direction: "recvonly" })
+
+      pc.ontrack = (event) => {
+        if (videoElement.srcObject !== event.streams[0]) {
+          videoElement.srcObject = event.streams[0]
+          videoElement.play().catch(e => console.error("WebRTC play error:", e))
+        }
+      }
+
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "connected") {
+          setStreamStatus("online")
+        } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+          setStreamStatus("offline")
+        }
+      }
+
+      const startWebRTC = async () => {
+        try {
+          const offer = await pc.createOffer()
+          await pc.setLocalDescription(offer)
+
+          const response = await fetch(whepUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/sdp"
+            },
+            body: offer.sdp
+          })
+
+          if (!response.ok) {
+            throw new Error(`WHEP request failed: ${response.status}`)
+          }
+
+          const answer = await response.text()
+          await pc.setRemoteDescription({
+            type: "answer",
+            sdp: answer
+          })
+        } catch (error) {
+          console.error("WebRTC error:", error)
+          setStreamStatus("offline")
+        }
+      }
+
+      startWebRTC()
     } else {
       setStreamStatus("offline")
     }
-  }, [camera?.hlsUrl])
+  }, [camera?.hlsUrl, camera?.rtspUrl])
 
   if (!camera) return null
 
   const hasHlsStream = !!camera.hlsUrl
-  const isOnline = hasHlsStream ? streamStatus === "online" : camera.status === "online"
-  const isLoading = hasHlsStream && streamStatus === "loading"
+  const hasRtspStream = !!camera.rtspUrl
+  const hasVideo = hasHlsStream || hasRtspStream
+
+  const isOnline = hasVideo ? streamStatus === "online" : camera.status === "online"
+  const isLoading = hasVideo && streamStatus === "loading"
 
   const formatTimeAgo = (dateStr: string) => {
     const date = new Date(dateStr)
@@ -136,7 +226,7 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
         </DialogHeader>
 
         <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
-          {hasHlsStream ? (
+          {hasVideo ? (
             <>
               <video
                 ref={videoRef}
@@ -144,6 +234,7 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
                 controls
                 muted
                 playsInline
+                autoPlay
               />
               {streamStatus === "loading" && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80">
@@ -155,38 +246,21 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80">
                   <WifiOff className="h-12 w-12 text-muted-foreground mb-4" />
                   <p className="text-muted-foreground">Поток недоступен</p>
-                  <p className="text-xs text-muted-foreground mt-1">{camera.hlsUrl}</p>
+                  <p className="text-xs text-muted-foreground mt-1 text-center max-w-[80%] break-all">
+                    {hasHlsStream ? camera.hlsUrl : camera.rtspUrl}
+                  </p>
                 </div>
               )}
             </>
           ) : camera.status === "online" ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
               <div className="relative w-full h-full bg-black">
-                <div className="absolute inset-0 opacity-20">
-                  <div className="w-full h-full" style={{
-                    backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E")`,
-                    backgroundSize: "256px 256px"
-                  }} />
-                </div>
-
                 <div className="absolute inset-0 flex flex-col items-center justify-center text-white">
                   <Video className="h-12 w-12 mb-4 text-primary" />
-                  <p className="text-lg font-medium">Видеопоток RTSP</p>
+                  <p className="text-lg font-medium">Нет видеопотока</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    {camera.rtspUrl}
+                    У камеры не настроен HLS или RTSP URL
                   </p>
-                  <p className="text-xs text-muted-foreground mt-4">
-                    Подключите IP камеры для просмотра потока
-                  </p>
-                </div>
-
-                <div className="absolute top-4 left-4 flex items-center gap-2">
-                  <span className="h-3 w-3 rounded-full bg-destructive animate-pulse" />
-                  <span className="text-xs text-white/80">REC</span>
-                </div>
-
-                <div className="absolute bottom-4 right-4 text-xs text-white/60 font-mono">
-                  {new Date().toLocaleString("ru-RU")}
                 </div>
               </div>
             </div>
