@@ -1,13 +1,16 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { Map, Bell, BarChart3, Camera, Settings, Bot, ExternalLink, Thermometer } from "lucide-react"
+import { Map, Bell, BarChart3, Camera, Settings, Bot, ExternalLink, Thermometer, LogOut, User } from "lucide-react"
 import { SensorPopover } from "@/components/sensors/sensor-readings"
+import { createClient } from "@/lib/supabase/client"
+import type { User as SupabaseUser } from "@supabase/supabase-js"
 
 const navItems = [
   { href: "/", label: "Карта", icon: Map },
@@ -19,6 +22,31 @@ const navItems = [
 
 export function Navigation() {
   const pathname = usePathname()
+  const router = useRouter()
+  const [user, setUser] = useState<SupabaseUser | null>(null)
+
+  useEffect(() => {
+    const supabase = createClient()
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user)
+    })
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const handleSignOut = async () => {
+    const supabase = createClient()
+    await supabase.auth.signOut()
+    router.push("/login")
+    router.refresh()
+  }
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -78,6 +106,25 @@ export function Navigation() {
             Система активна
           </Badge>
           <Badge variant="secondary">Сургут</Badge>
+
+          {user && (
+            <>
+              <Separator orientation="vertical" className="h-6" />
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <User className="h-4 w-4" />
+                <span className="max-w-[150px] truncate">{user.email}</span>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleSignOut}
+                title="Выйти"
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+
           <Separator orientation="vertical" className="h-6" />
           <Button
             variant={pathname === "/settings" ? "default" : "ghost"}
@@ -94,3 +141,4 @@ export function Navigation() {
     </nav>
   )
 }
+

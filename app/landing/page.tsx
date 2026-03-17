@@ -75,7 +75,7 @@ export default function LandingPage() {
                         <a href="#modules" className="hover:text-white transition-colors">Модули</a>
                         <a href="#about" className="hover:text-white transition-colors">О проекте</a>
                         <Link
-                            href="/"
+                            href="/login"
                             className="px-4 py-2 bg-white/10 hover:bg-white/15 rounded-lg transition-colors text-white"
                         >
                             Войти в систему
@@ -122,7 +122,7 @@ export default function LandingPage() {
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                         <Link
-                            href="/"
+                            href="/login"
                             className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white font-medium rounded-xl transition-all shadow-lg shadow-teal-500/25 hover:shadow-teal-500/40"
                         >
                             Открыть платформу
