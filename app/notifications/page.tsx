@@ -78,6 +78,7 @@ const alertIcons: Record<string, any> = {
 }
 
 import { Suspense } from "react"
+import { useModuleAccess } from "@/components/providers/module-context"
 
 // ── Shared helpers ──────────────────────────────────────────────────────
 function formatTime(dateStr: string) {
@@ -912,11 +913,15 @@ function ControllerAlertsTab() {
 // Main page
 // ═══════════════════════════════════════════════════════════════════════
 function NotificationsContent() {
+  const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
   const [cameras, setCameras] = useState<Camera[]>([])
 
   useEffect(() => {
-    fetchCameras().then(setCameras)
-  }, [])
+    if (modulesLoading) return
+    fetchCameras(modules).then(setCameras)
+  }, [modules, modulesLoading])
+
+  const showStops = hasModule('stops')
 
   return (
     <main className="min-h-screen bg-background">
@@ -942,19 +947,23 @@ function NotificationsContent() {
                 <CameraIcon className="h-4 w-4" />
                 Камеры
               </TabsTrigger>
-              <TabsTrigger value="controller" className="gap-2">
-                <Activity className="h-4 w-4" />
-                Датчики
-              </TabsTrigger>
+              {showStops && (
+                <TabsTrigger value="controller" className="gap-2">
+                  <Activity className="h-4 w-4" />
+                  Датчики
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="camera">
               <CameraAlertsTab cameras={cameras} />
             </TabsContent>
 
-            <TabsContent value="controller">
-              <ControllerAlertsTab />
-            </TabsContent>
+            {showStops && (
+              <TabsContent value="controller">
+                <ControllerAlertsTab />
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </div>

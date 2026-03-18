@@ -5,27 +5,33 @@ import { DataTable } from "@/components/cameras/data-table"
 import { getColumns } from "@/components/cameras/columns"
 import { fetchCameraRows, CameraRow } from "@/lib/api/cameras"
 import { Navigation } from "@/components/navigation"
+import { useModuleAccess } from "@/components/providers/module-context"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Loader2 } from "lucide-react"
 
 export default function CamerasPage() {
+    const { modules, loading: modulesLoading } = useModuleAccess()
     const [data, setData] = useState<CameraRow[]>([])
     const [loading, setLoading] = useState(true)
 
     const loadData = useCallback(async () => {
+        if (modulesLoading) return
         try {
-            const rows = await fetchCameraRows()
+            setLoading(true)
+            const rows = await fetchCameraRows(modules)
             setData(rows)
         } catch (e) {
             console.error(e)
         } finally {
             setLoading(false)
         }
-    }, [])
+    }, [modules, modulesLoading])
 
     useEffect(() => {
-        loadData()
-    }, [loadData])
+        if (!modulesLoading) {
+            loadData()
+        }
+    }, [loadData, modulesLoading])
 
     const columns = useMemo(() => getColumns(loadData), [loadData])
 

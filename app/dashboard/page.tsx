@@ -1,11 +1,12 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Navigation } from "@/components/navigation"
 import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map, Users2, ShieldAlert, Hammer, ClipboardCheck, Heater } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { useModuleAccess } from "@/components/providers/module-context"
 import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
 import { PassengerAnalytics } from "@/components/dashboard/passenger-analytics"
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
@@ -90,8 +91,27 @@ const DASHBOARDS = [
   }
 ] as const
 
+const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city", "districts"]
+const STOPS_DASHBOARDS = ["kpi_bus_stops", "passenger", "security", "vandalism", "condition", "warmstop"]
+
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<DashboardView>("general")
+  const { hasModule, loading: modulesLoading } = useModuleAccess()
+
+  const filteredDashboards = DASHBOARDS.filter(d => {
+    if (ROADS_DASHBOARDS.includes(d.id)) return hasModule('roads')
+    if (STOPS_DASHBOARDS.includes(d.id)) return hasModule('stops')
+    return true
+  })
+
+  // Ensure activeView is valid for the current modules
+  useEffect(() => {
+    if (!modulesLoading && filteredDashboards.length > 0) {
+      if (!filteredDashboards.find(d => d.id === activeView)) {
+        setActiveView(filteredDashboards[0].id)
+      }
+    }
+  }, [modulesLoading, filteredDashboards, activeView])
 
   return (
     <main className="h-screen w-full bg-background flex flex-col">
@@ -114,7 +134,7 @@ export default function DashboardPage() {
             <div className="w-full md:w-64 flex-shrink-0 flex md:flex-col gap-0 pb-2 md:pb-0 min-h-0">
               <ScrollArea className="flex-1 min-h-0">
                 <div className="flex md:flex-col gap-2 pr-3">
-                  {DASHBOARDS.map((dashboard) => (
+                  {filteredDashboards.map((dashboard) => (
                     <Button
                       key={dashboard.id}
                       variant={activeView === dashboard.id ? "default" : "ghost"}
@@ -161,7 +181,7 @@ export default function DashboardPage() {
 
             {/* Dashboard Content */}
             <div className="flex-1 rounded-lg border overflow-hidden bg-background shadow-sm relative">
-              {DASHBOARDS.map((dashboard) => {
+              {filteredDashboards.map((dashboard) => {
                 const isActive = activeView === dashboard.id
                 if ('component' in dashboard && dashboard.component) {
                   const Component = dashboard.component
