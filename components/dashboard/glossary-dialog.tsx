@@ -12,10 +12,12 @@ import {
 } from "@/components/ui/dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
+import { useModuleAccess } from "@/components/providers/module-context"
 
 interface GlossaryItem {
   title: string
   content: React.ReactNode
+  modules?: string[]
 }
 
 const glossaryItems: GlossaryItem[] = [
@@ -251,7 +253,8 @@ const glossaryItems: GlossaryItem[] = [
           </div>
         </div>
       </div>
-    )
+    ),
+    modules: ['stops']
   },
   {
     title: "КОМФОРТНАЯ ТЕМПЕРАТУРНАЯ ЗОНА (ОСТАНОВКА)",
@@ -268,16 +271,23 @@ const glossaryItems: GlossaryItem[] = [
           </ul>
         </div>
       </div>
-    )
+    ),
+    modules: ['stops']
   }
 ]
 
 export function GlossaryDialog() {
+  const { hasModule } = useModuleAccess()
   const [openItem, setOpenItem] = useState<string | null>(null)
 
   const toggleItem = (title: string) => {
     setOpenItem(openItem === title ? null : title)
   }
+
+  const filteredItems = glossaryItems.filter(item => {
+    if (!item.modules) return true
+    return item.modules.some(mod => hasModule(mod))
+  })
 
   return (
     <Dialog>
@@ -299,7 +309,7 @@ export function GlossaryDialog() {
         </DialogHeader>
         <ScrollArea className="h-[60vh] pr-4">
           <div className="space-y-1">
-            {glossaryItems.map((item) => (
+            {filteredItems.map((item) => (
               <div key={item.title} className="border rounded-lg overflow-hidden">
                 <button
                   onClick={() => toggleItem(item.title)}

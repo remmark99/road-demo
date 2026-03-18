@@ -46,6 +46,11 @@ export async function fetchCameraRows(allowedModules?: string[]): Promise<Camera
     const { data, error } = await query
 
     if (error) {
+        if (error.code === '42703' || error.message?.includes('module')) {
+            console.warn("Колонка 'module' не найдена. Делаю fallback на все камеры.");
+            const fallbackQuery = await supabase.from('cameras').select('*').order('camera_index')
+            if (!fallbackQuery.error) return fallbackQuery.data as CameraRow[]
+        }
         console.error('Error fetching camera rows:', error)
         return []
     }
@@ -63,6 +68,11 @@ export async function fetchCameras(allowedModules?: string[]): Promise<Camera[]>
     const { data, error } = await query
 
     if (error) {
+        if (error.code === '42703' || error.message?.includes('module')) {
+            console.warn("Колонка 'module' не найдена. Делаю fallback на все камеры.");
+            const fallbackQuery = await supabase.from('cameras').select('*').order('camera_index')
+            if (!fallbackQuery.error) return (fallbackQuery.data as CameraRow[]).map(mapCameraRow)
+        }
         console.error('Error fetching cameras:', error)
         return []
     }
@@ -80,6 +90,11 @@ export async function fetchOnlineCameras(allowedModules?: string[]): Promise<Cam
     const { data, error } = await query
 
     if (error) {
+        if (error.code === '42703' || error.message?.includes('module')) {
+            console.warn("Колонка 'module' не найдена. Делаю fallback на все онлайн камеры.");
+            const fallbackQuery = await supabase.from('cameras').select('*').eq('status', 'online').order('camera_index')
+            if (!fallbackQuery.error) return (fallbackQuery.data as CameraRow[]).map(mapCameraRow)
+        }
         console.error('Error fetching online cameras:', error)
         return []
     }

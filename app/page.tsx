@@ -6,9 +6,11 @@ import { TimelineSlider } from "@/components/map/timeline-slider"
 import { Legend } from "@/components/map/legend"
 import { BusStopsStats } from "@/components/map/bus-stops-stats"
 import { Navigation } from "@/components/navigation"
+import { useModuleAccess } from "@/components/providers/module-context"
 import type { RoadStatus } from "@/lib/types"
 
 export default function MapPage() {
+  const { hasModule } = useModuleAccess()
   const [selectedTime, setSelectedTime] = useState<Date>(new Date())
   const [statusOverride, setStatusOverride] = useState<Record<string, RoadStatus>>({})
   const [hoveredSegmentId, setHoveredSegmentId] = useState<string | null>(null)
@@ -36,15 +38,17 @@ export default function MapPage() {
 
           {/* Sidebar */}
           <div className="w-80 p-4 border-l border-border overflow-y-auto flex-shrink-0">
-            <BusStopsStats />
+            {hasModule('stops') && <BusStopsStats />}
             <Legend />
           </div>
         </div>
 
         {/* Timeline */}
-        <div className="p-4 border-t border-border">
-          <TimelineSlider onTimeChange={handleTimeChange} />
-        </div>
+        {hasModule('roads') && (
+          <div className="p-4 border-t border-border">
+            <TimelineSlider onTimeChange={handleTimeChange} />
+          </div>
+        )}
       </div>
     </main>
   )

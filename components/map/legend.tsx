@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Camera as CameraIcon, Route, MapPin, Snowflake } from "lucide-react"
+import { useModuleAccess } from "@/components/providers/module-context"
 
 const snowStatusItems = [
   { label: "Чисто", color: "#4ade80" },
@@ -25,11 +26,13 @@ const LEGEND_HIGHWAYS = [
 ]
 
 export function Legend() {
+  const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
   const [cameras, setCameras] = useState<Camera[]>([])
 
   useEffect(() => {
-    fetchCameras().then(setCameras)
-  }, [])
+    if (modulesLoading) return
+    fetchCameras(modules).then(setCameras)
+  }, [modules, modulesLoading])
 
   const onlineCameras = cameras.filter(c => c.status === "online").length
 
@@ -43,25 +46,28 @@ export function Legend() {
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Snow status legend */}
-        <div>
-          <div className="text-sm font-medium mb-2 flex items-center gap-2">
-            <Snowflake className="h-4 w-4 text-muted-foreground" />
-            Состояние дорог
-          </div>
-          <div className="space-y-1.5">
-            {snowStatusItems.map(({ label, color }) => (
-              <div key={label} className="flex items-center gap-2 text-sm">
-                <div
-                  className="w-6 h-1.5 rounded-full"
-                  style={{ backgroundColor: color }}
-                />
-                <span className="text-muted-foreground">{label}</span>
+        {hasModule('roads') && (
+          <>
+            <div>
+              <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                <Snowflake className="h-4 w-4 text-muted-foreground" />
+                Состояние дорог
               </div>
-            ))}
-          </div>
-        </div>
-
-        <Separator />
+              <div className="space-y-1.5">
+                {snowStatusItems.map(({ label, color }) => (
+                  <div key={label} className="flex items-center gap-2 text-sm">
+                    <div
+                      className="w-6 h-1.5 rounded-full"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="text-muted-foreground">{label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <Separator />
+          </>
+        )}
 
         <div>
           <div className="text-sm font-medium mb-2 flex items-center gap-2">
@@ -86,63 +92,68 @@ export function Legend() {
         <Separator />
 
         {/* Bus Stops legend */}
-        <div>
-          <div className="flex items-center gap-2 text-sm font-medium mb-2">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground"><path d="M8 6v6" /><path d="M15 6v6" /><path d="M2 12h19.6" /><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></svg>
-            Остановки
-          </div>
-          <div className="space-y-1.5 p-1">
-            <div className="flex items-center gap-2 text-xs">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#22c55e]" />
-              <span className="text-muted-foreground">В сети (Оборудовано)</span>
+        {hasModule('stops') && (
+          <>
+            <div>
+              <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground"><path d="M8 6v6" /><path d="M15 6v6" /><path d="M2 12h19.6" /><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3" /><circle cx="7" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></svg>
+                Остановки
+              </div>
+              <div className="space-y-1.5 p-1">
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#22c55e]" />
+                  <span className="text-muted-foreground">В сети (Оборудовано)</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" />
+                  <span className="text-muted-foreground">Вандализм (разбито стекло)</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
+                  <span className="text-muted-foreground">Отказ обогревателя</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#9ca3af]" />
+                  <span className="text-muted-foreground">Не в сети</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#3b82f6]" />
+                  <span className="text-muted-foreground">Без оборудования</span>
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-xs">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" />
-              <span className="text-muted-foreground">Вандализм (разбито стекло)</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
-              <span className="text-muted-foreground">Отказ обогревателя</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#9ca3af]" />
-              <span className="text-muted-foreground">Не в сети</span>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#3b82f6]" />
-              <span className="text-muted-foreground">Без оборудования</span>
-            </div>
-          </div>
-        </div>
-
-        <Separator />
+            <Separator />
+          </>
+        )}
 
         {/* Road types by width */}
-        <div>
-          <div className="text-sm font-medium mb-2 flex items-center gap-2">
-            <Route className="h-4 w-4 text-muted-foreground" />
-            Типы дорог
+        {hasModule('roads') && (
+          <div>
+            <div className="text-sm font-medium mb-2 flex items-center gap-2">
+              <Route className="h-4 w-4 text-muted-foreground" />
+              Типы дорог
+            </div>
+            <div className="space-y-1.5">
+              {LEGEND_HIGHWAYS.map(highway => {
+                const cfg = HIGHWAY_CONFIG[highway]
+                if (!cfg) return null
+                return (
+                  <div key={highway} className="flex items-center gap-2 text-sm">
+                    <div
+                      className="rounded-full bg-muted-foreground"
+                      style={{
+                        width: `${Math.max(cfg.width * 4, 8)}px`,
+                        height: `${Math.max(cfg.width, 2)}px`,
+                        opacity: 0.5,
+                      }}
+                    />
+                    <span className="text-muted-foreground">{cfg.label}</span>
+                  </div>
+                )
+              })}
+            </div>
           </div>
-          <div className="space-y-1.5">
-            {LEGEND_HIGHWAYS.map(highway => {
-              const cfg = HIGHWAY_CONFIG[highway]
-              if (!cfg) return null
-              return (
-                <div key={highway} className="flex items-center gap-2 text-sm">
-                  <div
-                    className="rounded-full bg-muted-foreground"
-                    style={{
-                      width: `${Math.max(cfg.width * 4, 8)}px`,
-                      height: `${Math.max(cfg.width, 2)}px`,
-                      opacity: 0.5,
-                    }}
-                  />
-                  <span className="text-muted-foreground">{cfg.label}</span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   )
