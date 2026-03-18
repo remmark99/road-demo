@@ -7,7 +7,6 @@ import { Legend } from "@/components/map/legend"
 import { BusStopsStats } from "@/components/map/bus-stops-stats"
 import { Navigation } from "@/components/navigation"
 import { useModuleAccess } from "@/components/providers/module-context"
-import { Skeleton } from "@/components/ui/skeleton"
 import type { RoadStatus } from "@/lib/types"
 
 export default function MapPage() {
@@ -45,32 +44,9 @@ export default function MapPage() {
         </div>
 
         {/* Timeline */}
-        {modulesLoading ? (
-          <div className="p-4 border-t border-border">
-            <div className="bg-card border border-border rounded-lg p-4">
-              <div className="flex items-center gap-4 mb-4">
-                <Skeleton className="h-9 w-[250px]" />
-                <div className="flex items-center gap-1">
-                  <Skeleton className="h-9 w-9 rounded-md" />
-                  <Skeleton className="h-9 w-9 rounded-md" />
-                  <Skeleton className="h-9 w-9 rounded-md" />
-                </div>
-                <div className="flex-1">
-                  <Skeleton className="h-2 w-full rounded-full" />
-                </div>
-                <Skeleton className="h-4 w-[160px]" />
-              </div>
-              <div className="flex justify-between">
-                <Skeleton className="h-3 w-32" />
-                <Skeleton className="h-3 w-32" />
-              </div>
-            </div>
-          </div>
-        ) : hasModule('roads') && (
-          <div className="p-4 border-t border-border">
-            <TimelineSlider onTimeChange={handleTimeChange} />
-          </div>
-        )}
+        <div className="p-4 border-t border-border">
+          <TimelineSlider onTimeChange={handleTimeChange} />
+        </div>
       </div>
     </main>
   )
