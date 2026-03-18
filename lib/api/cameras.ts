@@ -1,3 +1,4 @@
+import { ContentSteeringController } from 'hls.js'
 import { supabase } from '../supabase'
 import type { Camera } from '../types'
 
@@ -14,6 +15,7 @@ export interface CameraRow {
     fov_distance: number
     rtsp_url: string | null
     hls_url: string | null
+    module?: string
 }
 
 function mapCameraRow(row: CameraRow): Camera {
@@ -30,14 +32,18 @@ function mapCameraRow(row: CameraRow): Camera {
         fovDistance: row.fov_distance,
         rtspUrl: row.rtsp_url,
         hlsUrl: row.hls_url,
+        module: row.module,
     }
 }
 
-export async function fetchCameraRows(): Promise<CameraRow[]> {
-    const { data, error } = await supabase
-        .from('cameras')
-        .select('*')
-        .order('camera_index')
+export async function fetchCameraRows(allowedModules?: string[]): Promise<CameraRow[]> {
+    let query = supabase.from('cameras').select('*').order('camera_index')
+
+    if (allowedModules && allowedModules.length > 0) {
+        query = query.in('module', allowedModules)
+    }
+
+    const { data, error } = await query
 
     if (error) {
         console.error('Error fetching camera rows:', error)
@@ -47,11 +53,14 @@ export async function fetchCameraRows(): Promise<CameraRow[]> {
     return data as CameraRow[]
 }
 
-export async function fetchCameras(): Promise<Camera[]> {
-    const { data, error } = await supabase
-        .from('cameras')
-        .select('*')
-        .order('camera_index')
+export async function fetchCameras(allowedModules?: string[]): Promise<Camera[]> {
+    let query = supabase.from('cameras').select('*').order('camera_index')
+
+    if (allowedModules && allowedModules.length > 0) {
+        query = query.in('module', allowedModules)
+    }
+
+    const { data, error } = await query
 
     if (error) {
         console.error('Error fetching cameras:', error)
@@ -61,12 +70,14 @@ export async function fetchCameras(): Promise<Camera[]> {
     return (data as CameraRow[]).map(mapCameraRow)
 }
 
-export async function fetchOnlineCameras(): Promise<Camera[]> {
-    const { data, error } = await supabase
-        .from('cameras')
-        .select('*')
-        .eq('status', 'online')
-        .order('camera_index')
+export async function fetchOnlineCameras(allowedModules?: string[]): Promise<Camera[]> {
+    let query = supabase.from('cameras').select('*').eq('status', 'online').order('camera_index')
+
+    if (allowedModules && allowedModules.length > 0) {
+        query = query.in('module', allowedModules)
+    }
+
+    const { data, error } = await query
 
     if (error) {
         console.error('Error fetching online cameras:', error)

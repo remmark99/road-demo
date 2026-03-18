@@ -13,6 +13,7 @@ export interface Camera {
   fovAngle: number      // degrees (e.g., 60)
   fovDirection: number  // degrees 0-360 (0 = North)
   fovDistance: number   // meters
+  module?: string
 }
 
 export interface RoadSegment {

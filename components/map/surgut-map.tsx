@@ -11,6 +11,7 @@ import { VideoModal } from "./video-modal"
 import { BusStopModal, type SelectedBusStop } from "./bus-stop-modal"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useModuleAccess } from "@/components/providers/module-context"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 
@@ -144,6 +145,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   const map = useRef<maplibregl.Map | null>(null)
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
   const [selectedBusStop, setSelectedBusStop] = useState<SelectedBusStop | null>(null)
+  const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
   const [isDark, setIsDark] = useState(true)
   const lastThemeRef = useRef(isDark)
   const [cameras, setCameras] = useState<Camera[]>([])
@@ -769,12 +771,23 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
 
   }, [])
 
-  // Fetch cameras, roads, and bus stops from Supabase
+  // Fetch data based on allowed modules
   useEffect(() => {
-    fetchCameras().then(setCameras)
-    fetchRoadsGeoJSON().then(setRoadsData)
-    fetchBusStopsGeoJSON().then(setBusStopsData)
-  }, [])
+    if (modulesLoading) return
+    fetchCameras(modules).then(setCameras)
+
+    if (hasModule('roads')) {
+      fetchRoadsGeoJSON().then(setRoadsData)
+    } else {
+      setRoadsData({ type: "FeatureCollection", features: [] })
+    }
+
+    if (hasModule('stops')) {
+      fetchBusStopsGeoJSON().then(setBusStopsData)
+    } else {
+      setBusStopsData({ type: "FeatureCollection", features: [] })
+    }
+  }, [modules, hasModule, modulesLoading])
 
   // Watch for theme changes
   useEffect(() => {
@@ -1114,19 +1127,21 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
 
       {/* Map Controls */}
       <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 w-72">
-        <Select value={selectedContractor} onValueChange={setSelectedContractor}>
-          <SelectTrigger className="w-full bg-card text-card-foreground border border-border rounded-lg h-10 shadow-sm font-medium">
-            <SelectValue placeholder="Выберите подрядчика" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все подрядчики</SelectItem>
-            <SelectItem value="Подрядчик 1">Подрядчик 1</SelectItem>
-            <SelectItem value="Подрядчик 2">Подрядчик 2</SelectItem>
-            <SelectItem value="Подрядчик 3">Подрядчик 3</SelectItem>
-            <SelectItem value="Подрядчик 4">Подрядчик 4</SelectItem>
-            <SelectItem value="Подрядчик 5">Подрядчик 5</SelectItem>
-          </SelectContent>
-        </Select>
+        {hasModule('roads') && (
+          <Select value={selectedContractor} onValueChange={setSelectedContractor}>
+            <SelectTrigger className="w-full bg-card text-card-foreground border border-border rounded-lg h-10 shadow-sm font-medium">
+              <SelectValue placeholder="Выберите подрядчика" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Все подрядчики</SelectItem>
+              <SelectItem value="Подрядчик 1">Подрядчик 1</SelectItem>
+              <SelectItem value="Подрядчик 2">Подрядчик 2</SelectItem>
+              <SelectItem value="Подрядчик 3">Подрядчик 3</SelectItem>
+              <SelectItem value="Подрядчик 4">Подрядчик 4</SelectItem>
+              <SelectItem value="Подрядчик 5">Подрядчик 5</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
 
         <Card className="shadow-sm">
           <CardContent className="p-4 space-y-4">
@@ -1157,25 +1172,27 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
             </div>
 
             {/* Bus Stop Filters */}
-            <div className="space-y-3">
-              <div className="font-medium text-sm border-b pb-1 mb-2">Остановки (🚌)</div>
-              <div className="flex items-center space-x-2">
-                <Checkbox id="bus-online" checked={busStopFilters.online} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, online: !!checked }))} />
-                <Label htmlFor="bus-online" className="text-sm cursor-pointer">В сети</Label>
+            {hasModule('stops') && (
+              <div className="space-y-3">
+                <div className="font-medium text-sm border-b pb-1 mb-2">Остановки (🚌)</div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="bus-online" checked={busStopFilters.online} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, online: !!checked }))} />
+                  <Label htmlFor="bus-online" className="text-sm cursor-pointer">В сети</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="bus-offline" checked={busStopFilters.offline} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, offline: !!checked }))} />
+                  <Label htmlFor="bus-offline" className="text-sm cursor-pointer">Не в сети</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="bus-incidents" checked={busStopFilters.incidents} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, incidents: !!checked }))} />
+                  <Label htmlFor="bus-incidents" className="text-sm cursor-pointer">Инциденты/Поломки</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="bus-unequipped" checked={busStopFilters.unequipped} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, unequipped: !!checked }))} />
+                  <Label htmlFor="bus-unequipped" className="text-sm cursor-pointer">Без оборудования</Label>
+                </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox id="bus-offline" checked={busStopFilters.offline} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, offline: !!checked }))} />
-                <Label htmlFor="bus-offline" className="text-sm cursor-pointer">Не в сети</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox id="bus-incidents" checked={busStopFilters.incidents} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, incidents: !!checked }))} />
-                <Label htmlFor="bus-incidents" className="text-sm cursor-pointer">Инциденты/Поломки</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox id="bus-unequipped" checked={busStopFilters.unequipped} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, unequipped: !!checked }))} />
-                <Label htmlFor="bus-unequipped" className="text-sm cursor-pointer">Без оборудования</Label>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
