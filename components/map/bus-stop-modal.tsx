@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Wifi, WifiOff, Thermometer, Droplets, Zap, AlertTriangle, ShieldAlert, BusFront } from "lucide-react"
+import { fetchLatestMeasurements, subscribeMeasurements, type SensorReading } from "@/lib/api/measurements"
 
 export interface BusStopSensorData {
     is_online: boolean
@@ -28,12 +30,51 @@ interface BusStopModalProps {
 }
 
 export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
+    const [realReadings, setRealReadings] = useState<SensorReading[]>([])
+
+    // Check if this is the target station
+    const isTargetStation = busStop?.name?.toLowerCase().includes("юности") && busStop?.description?.toLowerCase().includes("ленин") || false;
+
+    useEffect(() => {
+        if (!busStop || !isTargetStation) return;
+
+        // Fetch real data for this specific stop
+        fetchLatestMeasurements().then(setRealReadings)
+
+        const unsubscribe = subscribeMeasurements(() => {
+            fetchLatestMeasurements().then(setRealReadings)
+        })
+
+        return () => unsubscribe()
+    }, [busStop, isTargetStation])
+
     if (!busStop) return null
 
-    const sd = busStop.sensor_data
+    // Use real data if it's the target station and we have readings, otherwise use mock data
+    let sd = busStop.sensor_data
+
+    if (isTargetStation && realReadings.length > 0) {
+        const dio1 = realReadings.find(r => r.element === 1)
+        const dht13 = realReadings.find(r => r.element === 13) // temp & humidity
+        const temp14 = realReadings.find(r => r.element === 14) // internal temp
+
+        sd = {
+            ...sd,
+            is_online: true,
+            has_equipment: true,
+            is_partly_equipped: false,
+            temperature_out: dht13?.temperature ?? undefined,
+            temperature_in: temp14?.temperature ?? undefined,
+            humidity: dht13?.humidity ?? undefined,
+            heater_working: dio1?.digitalState ?? undefined,
+            // You can also map alarms to glass_broken or other statuses if needed
+            glass_broken: dio1?.digitalState === false, // Example: mapping broken state
+        } as BusStopSensorData
+    }
 
     const isOnline = sd?.is_online ?? false
-    const hasEquipment = sd?.has_equipment || sd?.is_partly_equipped
+    // Force hasEquipment for the target station so the grid always renders
+    const hasEquipment = isTargetStation ? true : (sd?.has_equipment || sd?.is_partly_equipped)
 
     return (
         <Dialog open={!!busStop} onOpenChange={onClose}>
@@ -92,21 +133,21 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                                     <Thermometer className="h-5 w-5 text-sky-500 mb-2" />
                                     <div className="text-xs text-muted-foreground">Т. снаружи</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && sd?.temperature_out !== undefined ? `${sd.temperature_out}°C` : '—'}
+                                        {isOnline && sd?.temperature_out !== undefined ? `${sd.temperature_out.toFixed(1)}°C` : '—'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary rounded-lg flex flex-col items-center justify-center text-center">
                                     <Thermometer className="h-5 w-5 text-orange-500 mb-2" />
                                     <div className="text-xs text-muted-foreground">Т. внутри</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && sd?.temperature_in !== undefined ? `${sd.temperature_in}°C` : '—'}
+                                        {isOnline && sd?.temperature_in !== undefined ? `${sd.temperature_in.toFixed(1)}°C` : '—'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary rounded-lg flex flex-col items-center justify-center text-center">
                                     <Droplets className="h-5 w-5 text-blue-400 mb-2" />
                                     <div className="text-xs text-muted-foreground">Влажность</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && sd?.humidity !== undefined ? `${sd.humidity}%` : '—'}
+                                        {isOnline && sd?.humidity !== undefined ? `${sd.humidity.toFixed(1)}%` : '—'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary rounded-lg flex flex-col items-center justify-center text-center">
@@ -135,13 +176,19 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                                         <>
                                             {sd?.glass_broken && (
                                                 <div className="flex justify-between items-center text-sm p-2 rounded bg-red-500/5 border border-red-500/10">
-                                                    <span className="text-red-500 font-medium">Срабатывание датчика разбития стекла</span>
-                                                    <span className="text-xs text-muted-foreground">Только что</span>
+                                                    <span className="text-red-500 font-medium">{isTargetStation ? 'Срабатывание цифрового датчика 1' : 'Срабатывание датчика разбития стекла'}</span>
+                                                    <span className="text-xs text-muted-foreground">Недавно</span>
                                                 </div>
                                             )}
                                             {sd?.heater_working === false && (
                                                 <div className="flex justify-between items-center text-sm p-2 rounded bg-amber-500/5 border border-amber-500/10">
                                                     <span className="text-amber-500 font-medium">Отказ системы обогревателя</span>
+                                                    <span className="text-xs text-muted-foreground">Недавно</span>
+                                                </div>
+                                            )}
+                                            {isTargetStation && realReadings.some(r => r.temperatureAlarm) && (
+                                                <div className="flex justify-between items-center text-sm p-2 rounded bg-amber-500/5 border border-amber-500/10">
+                                                    <span className="text-amber-500 font-medium">Предупреждение температуры</span>
                                                     <span className="text-xs text-muted-foreground">Недавно</span>
                                                 </div>
                                             )}

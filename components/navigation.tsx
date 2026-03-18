@@ -7,7 +7,35 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { Map, Bell, BarChart3, Camera, Settings, Bot, ExternalLink, Thermometer, LogOut, User } from "lucide-react"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+  SheetClose,
+} from "@/components/ui/sheet"
+import {
+  Map,
+  Bell,
+  BarChart3,
+  Camera,
+  Settings,
+  Bot,
+  ExternalLink,
+  Thermometer,
+  LogOut,
+  User,
+  Menu,
+} from "lucide-react"
 import { SensorPopover } from "@/components/sensors/sensor-readings"
 import { createClient } from "@/lib/supabase/client"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
@@ -24,6 +52,7 @@ export function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
   const [user, setUser] = useState<SupabaseUser | null>(null)
+  const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
     const supabase = createClient()
@@ -41,6 +70,11 @@ export function Navigation() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [pathname])
+
   const handleSignOut = async () => {
     const supabase = createClient()
     await supabase.auth.signOut()
@@ -50,95 +84,254 @@ export function Navigation() {
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="flex h-14 items-center px-4 gap-6">
-        <Link href="/" className="flex items-center gap-2">
-          <Camera className="h-6 w-6 text-primary" />
-          <span className="font-semibold text-lg">СургутДороги</span>
-        </Link>
+      <div className="flex h-14 items-center px-4 justify-between lg:justify-start lg:gap-6">
 
-        <Separator orientation="vertical" className="h-6" />
+        {/* === LEFT SIDE === */}
+        <div className="flex items-center gap-2 lg:gap-6">
+          {/* Mobile Burger Menu (<1024px) */}
+          <div className="lg:hidden">
+            <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Открыть меню">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 p-0 flex flex-col">
+                <SheetHeader className="px-4 pt-4 pb-2 border-b">
+                  <SheetTitle className="flex items-center gap-2 text-primary">
+                    <Camera className="h-5 w-5" />
+                    СургутДороги
+                  </SheetTitle>
+                </SheetHeader>
 
-        <div className="flex items-center gap-1">
-          {navItems.map((item) => {
-            const Icon = item.icon
-            const isActive = pathname === item.href
-            return (
-              <Button
-                key={item.href}
-                variant={isActive ? "default" : "ghost"}
-                size="sm"
-                asChild
-              >
-                <Link href={item.href} className="flex items-center gap-2">
-                  <Icon className="h-4 w-4" />
-                  {item.label}
-                </Link>
-              </Button>
-            )
-          })}
+                <div className="flex flex-col py-2 px-2 gap-1 overflow-y-auto">
+                  {/* Nav Links */}
+                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Разделы
+                  </div>
+                  {navItems.map((item) => {
+                    const Icon = item.icon
+                    const isActive = pathname === item.href
+                    return (
+                      <SheetClose key={item.href} asChild>
+                        <Button
+                          variant={isActive ? "secondary" : "ghost"}
+                          className="justify-start gap-3 h-10 w-full"
+                          asChild
+                        >
+                          <Link href={item.href}>
+                            <Icon className="h-4 w-4" />
+                            {item.label}
+                          </Link>
+                        </Button>
+                      </SheetClose>
+                    )
+                  })}
 
-          <Separator orientation="vertical" className="h-6 mx-2" />
+                  <Separator className="my-2" />
 
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/30"
-            asChild
-          >
-            <a
-              href="https://meteor.admsurgut.ru/ru/meteogram"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-2"
-            >
-              <Thermometer className="h-4 w-4" />
-              <span>Метеомониторинг</span>
-              <ExternalLink className="h-3 w-3 opacity-60" />
-            </a>
-          </Button>
+                  {/* Tools */}
+                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Инструменты
+                  </div>
+                  <Button
+                    variant="ghost"
+                    className="justify-start gap-3 h-10 w-full text-sky-600 dark:text-sky-400"
+                    asChild
+                  >
+                    <a
+                      href="https://meteor.admsurgut.ru/ru/meteogram"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Thermometer className="h-4 w-4" />
+                      Метеомониторинг
+                      <ExternalLink className="h-3 w-3 opacity-60 ml-auto" />
+                    </a>
+                  </Button>
+                  <SheetClose asChild>
+                    <Button
+                      variant={pathname === "/settings" ? "secondary" : "ghost"}
+                      className="justify-start gap-3 h-10 w-full"
+                      asChild
+                    >
+                      <Link href="/settings">
+                        <Settings className="h-4 w-4" />
+                        Настройки
+                      </Link>
+                    </Button>
+                  </SheetClose>
+                </div>
 
-          <SensorPopover />
+                <div className="mt-auto">
+                  {/* Status */}
+                  <div className="border-t border-border px-4 py-3 flex items-center gap-2 bg-muted/30">
+                    <Badge variant="outline" className="gap-1.5 bg-background">
+                      <span className="h-2 w-2 rounded-full bg-road-clean animate-pulse" />
+                      Система активна
+                    </Badge>
+                    <Badge variant="secondary">Сургут</Badge>
+                  </div>
+
+                  {/* User Profile */}
+                  {user && (
+                    <div className="border-t border-border px-4 py-3 bg-muted/10">
+                      <div className="flex items-center gap-2 text-sm text-foreground mb-3 font-medium">
+                        <User className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="truncate">{user.email}</span>
+                      </div>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="w-full gap-2"
+                        onClick={handleSignOut}
+                      >
+                        <LogOut className="h-4 w-4" />
+                        Выход
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </SheetContent>
+            </Sheet>
+          </div>
+
+          {/* Logo */}
+          <Link href="/" className="flex items-center gap-2">
+            <Camera className="h-6 w-6 text-primary" />
+            <span className="font-semibold text-lg hover:opacity-80 transition-opacity">
+              СургутДороги
+            </span>
+          </Link>
+
+          <Separator orientation="vertical" className="h-6 hidden lg:block" />
+
+          {/* Desktop Nav Links (≥1024px) */}
+          <div className="hidden lg:flex items-center gap-1">
+            {navItems.map((item) => {
+              const Icon = item.icon
+              const isActive = pathname === item.href
+              return (
+                <Button
+                  key={item.href}
+                  variant={isActive ? "default" : "ghost"}
+                  size="sm"
+                  className={isActive ? "bg-primary/10 text-primary hover:bg-primary/20 dark:bg-primary/20 dark:text-primary dark:hover:bg-primary/30" : ""}
+                  asChild
+                >
+                  <Link href={item.href} className="flex items-center gap-2">
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </Link>
+                </Button>
+              )
+            })}
+          </div>
         </div>
 
-        <div className="ml-auto flex items-center gap-3">
-          <Badge variant="outline" className="gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-road-clean animate-pulse" />
-            Система активна
-          </Badge>
-          <Badge variant="secondary">Сургут</Badge>
+        {/* === RIGHT SIDE === */}
+        <div className="flex items-center gap-2 xl:gap-3 lg:ml-auto">
 
-          {user && (
-            <>
-              <Separator orientation="vertical" className="h-6" />
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <User className="h-4 w-4" />
-                <span className="max-w-[150px] truncate">{user.email}</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleSignOut}
-                title="Выйти"
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
-            </>
-          )}
-
-          <Separator orientation="vertical" className="h-6" />
-          <Button
-            variant={pathname === "/settings" ? "default" : "ghost"}
-            size="icon"
-            asChild
-          >
-            <Link href="/settings">
-              <Settings className="h-4 w-4" />
-            </Link>
-          </Button>
+          {/* Theme toggle (visible on all screens) */}
           <ThemeToggle />
+
+          {/* Desktop Right Side (≥1024px) */}
+          <div className="hidden lg:flex items-center gap-2 xl:gap-3">
+            <Separator orientation="vertical" className="h-6" />
+
+            {/* Meteomonitoring Link */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/30 hidden 2xl:flex"
+              asChild
+            >
+              <a
+                href="https://meteor.admsurgut.ru/ru/meteogram"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2"
+              >
+                <Thermometer className="h-4 w-4" />
+                <span>Метеомониторинг</span>
+                <ExternalLink className="h-3 w-3 opacity-60" />
+              </a>
+            </Button>
+            {/* Show only icon on lg and xl to save space */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-sky-600 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 hover:bg-sky-50 dark:hover:bg-sky-950/30 lg:flex 2xl:hidden"
+              asChild
+              title="Метеомониторинг"
+            >
+              <a
+                href="https://meteor.admsurgut.ru/ru/meteogram"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Thermometer className="h-4 w-4" />
+              </a>
+            </Button>
+
+            {/* Status (Pulse dot on lg/xl, full badge on 2xl) */}
+            <div className="flex items-center gap-2">
+              <span className="flex 2xl:hidden h-2.5 w-2.5 rounded-full bg-road-clean animate-pulse" title="Система активна" />
+              <Badge variant="outline" className="gap-1.5 hidden 2xl:flex text-xs">
+                <span className="h-2 w-2 rounded-full bg-road-clean animate-pulse" />
+                Система активна
+              </Badge>
+              <Badge variant="secondary" className="hidden 2xl:flex text-xs">Сургут</Badge>
+            </div>
+
+            <Separator orientation="vertical" className="h-6" />
+
+            {/* User Dropdown Profile (≥1024px) */}
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="gap-2 px-2 hover:bg-muted">
+                    <User className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium hidden xl:inline-block max-w-[120px] truncate">
+                      {user.email?.split("@")[0]}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel className="font-normal">
+                    <div className="flex flex-col space-y-1">
+                      <p className="text-sm font-medium leading-none">Профиль</p>
+                      <p className="text-xs leading-none text-muted-foreground">
+                        {user.email}
+                      </p>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link href="/settings" className="cursor-pointer gap-2">
+                      <Settings className="h-4 w-4 text-muted-foreground" />
+                      <span>Настройки</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="cursor-pointer gap-2 text-destructive focus:text-destructive"
+                    onClick={handleSignOut}
+                  >
+                    <LogOut className="h-4 w-4" />
+                    <span>Выйти</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Button variant="ghost" size="sm" asChild>
+                <Link href="/login">Войти</Link>
+              </Button>
+            )}
+          </div>
         </div>
+
       </div>
     </nav>
   )
 }
-
