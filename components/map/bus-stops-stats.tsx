@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Activity, Wifi, WifiOff, Settings2, AlertTriangle, Flame } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 
 export function BusStopsStats() {
     const [data, setData] = useState<BusStopsGeoJSON | null>(null)
@@ -12,7 +13,35 @@ export function BusStopsStats() {
         fetchBusStopsGeoJSON().then(setData)
     }, [])
 
-    if (!data) return null
+    if (!data) {
+        return (
+            <Card className="mb-4">
+                <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                        <Activity className="h-4 w-4" />
+                        Остановки (Датчики)
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                        <Skeleton className="h-[68px] w-full rounded-md" />
+                        <Skeleton className="h-[68px] w-full rounded-md" />
+                    </div>
+                    <div>
+                        <div className="text-sm font-medium mb-2 flex items-center gap-2">
+                            <Settings2 className="h-4 w-4 text-muted-foreground" />
+                            Оснащение
+                        </div>
+                        <div className="space-y-2 mt-1">
+                            <div className="flex justify-between items-center"><Skeleton className="h-4 w-[120px]" /><Skeleton className="h-4 w-[20px]" /></div>
+                            <div className="flex justify-between items-center"><Skeleton className="h-4 w-[130px]" /><Skeleton className="h-4 w-[20px]" /></div>
+                            <div className="flex justify-between items-center"><Skeleton className="h-4 w-[110px]" /><Skeleton className="h-4 w-[20px]" /></div>
+                        </div>
+                    </div>
+                </CardContent>
+            </Card>
+        )
+    }
 
     const total = data.features.length
     let online = 0

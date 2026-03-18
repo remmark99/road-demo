@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,6 +53,7 @@ export function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
   const [user, setUser] = useState<SupabaseUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
@@ -59,12 +61,14 @@ export function Navigation() {
 
     supabase.auth.getUser().then(({ data: { user } }) => {
       setUser(user)
+      setAuthLoading(false)
     })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
+      setAuthLoading(false)
     })
 
     return () => subscription.unsubscribe()
@@ -174,7 +178,12 @@ export function Navigation() {
                   </div>
 
                   {/* User Profile */}
-                  {user && (
+                  {authLoading ? (
+                    <div className="border-t border-border px-4 py-3 bg-muted/10">
+                      <Skeleton className="h-5 w-[200px] mb-3" />
+                      <Skeleton className="h-8 w-full" />
+                    </div>
+                  ) : user && (
                     <div className="border-t border-border px-4 py-3 bg-muted/10">
                       <div className="flex items-center gap-2 text-sm text-foreground mb-3 font-medium">
                         <User className="h-4 w-4 shrink-0 text-muted-foreground" />
@@ -287,7 +296,9 @@ export function Navigation() {
             <Separator orientation="vertical" className="h-6" />
 
             {/* User Dropdown Profile (≥1024px) */}
-            {user ? (
+            {authLoading ? (
+              <Skeleton className="h-9 w-24 rounded-md hidden lg:block" />
+            ) : user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="gap-2 px-2 hover:bg-muted">

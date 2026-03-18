@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Camera as CameraIcon, Route, MapPin, Snowflake } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
+import { Skeleton } from "@/components/ui/skeleton"
 
 const snowStatusItems = [
   { label: "Чисто", color: "#4ade80" },
@@ -28,13 +29,60 @@ const LEGEND_HIGHWAYS = [
 export function Legend() {
   const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
   const [cameras, setCameras] = useState<Camera[]>([])
+  const [camerasLoading, setCamerasLoading] = useState(true)
 
   useEffect(() => {
     if (modulesLoading) return
-    fetchCameras(modules).then(setCameras)
+    setCamerasLoading(true)
+    fetchCameras(modules).then(res => {
+      setCameras(res)
+      setCamerasLoading(false)
+    })
   }, [modules, modulesLoading])
 
   const onlineCameras = cameras.filter(c => c.status === "online").length
+
+  if (modulesLoading) {
+    return (
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <MapPin className="h-4 w-4" />
+            Информация
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <Skeleton className="h-5 w-32 mb-2" />
+            <div className="space-y-2">
+              <div className="flex items-center gap-2"><Skeleton className="h-2 w-6 rounded-full" /><Skeleton className="h-4 w-16" /></div>
+              <div className="flex items-center gap-2"><Skeleton className="h-2 w-6 rounded-full" /><Skeleton className="h-4 w-24" /></div>
+              <div className="flex items-center gap-2"><Skeleton className="h-2 w-6 rounded-full" /><Skeleton className="h-4 w-20" /></div>
+            </div>
+          </div>
+          <Separator />
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-5 w-8 rounded-full" />
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2"><Skeleton className="h-2 w-2 rounded-full" /><Skeleton className="h-4 w-32" /></div>
+              <div className="flex items-center gap-2"><Skeleton className="h-2 w-2 rounded-full" /><Skeleton className="h-4 w-28" /></div>
+            </div>
+          </div>
+          <Separator />
+          <div>
+            <Skeleton className="h-5 w-28 mb-2" />
+            <div className="space-y-2">
+              <div className="flex items-center gap-2"><Skeleton className="h-2 w-8 rounded-full" /><Skeleton className="h-4 w-24" /></div>
+              <div className="flex items-center gap-2"><Skeleton className="h-2 w-8 rounded-full" /><Skeleton className="h-4 w-20" /></div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card>
@@ -74,22 +122,36 @@ export function Legend() {
             <CameraIcon className="h-4 w-4 text-muted-foreground" />
             Камеры
             <Badge variant="outline" className="ml-auto text-xs">
-              {onlineCameras}/{cameras.length}
+              {camerasLoading ? (
+                <Skeleton className="h-4 w-6" />
+              ) : (
+                `${onlineCameras}/${cameras.length}`
+              )}
             </Badge>
           </div>
-          <ScrollArea className="h-24">
-            <div className="space-y-1.5">
-              {cameras.filter(c => c.status === "online").map(camera => (
-                <div key={camera.id} className="flex items-center gap-2 text-sm">
-                  <div className="h-2 w-2 rounded-full bg-road-clean" />
-                  <span className="text-muted-foreground truncate">{camera.name}</span>
+          <ScrollArea className="max-h-32 pr-3">
+            <div className="space-y-1.5 min-h-[1.5rem]">
+              {camerasLoading || modulesLoading ? (
+                <div className="space-y-2 py-1">
+                  <Skeleton className="h-4 w-full" />
+                  <Skeleton className="h-4 w-[85%]" />
+                  <Skeleton className="h-4 w-[60%]" />
                 </div>
-              ))}
+              ) : cameras.filter(c => c.status === "online").length === 0 ? (
+                <div className="text-xs text-muted-foreground py-1">Нет доступных камер</div>
+              ) : (
+                cameras.filter(c => c.status === "online").map(camera => (
+                  <div key={camera.id} className="flex items-center gap-2 text-sm">
+                    <div className="h-2 w-2 rounded-full bg-road-clean flex-shrink-0" />
+                    <span className="text-muted-foreground truncate">{camera.name}</span>
+                  </div>
+                ))
+              )}
             </div>
           </ScrollArea>
         </div>
 
-        <Separator />
+        {(hasModule('stops') || hasModule('roads')) && <Separator />}
 
         {/* Bus Stops legend */}
         {hasModule('stops') && (
