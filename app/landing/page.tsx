@@ -4,6 +4,7 @@ import Image from "next/image"
 import Link from "next/link"
 import { useState } from "react"
 import { ArrowRight, Shield, Eye, Brain, ChevronRight } from "lucide-react"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 const MODULES = [
     {
@@ -61,9 +62,9 @@ export default function LandingPage() {
     const [hoveredModule, setHoveredModule] = useState<string | null>(null)
 
     return (
-        <div className="min-h-screen bg-[#0a0e1a] text-white overflow-x-hidden">
+        <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
             {/* ─── Navigation ────────────────────────── */}
-            <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/5 bg-[#0a0e1a]/80 backdrop-blur-xl">
+            <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
                 <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center">
@@ -71,15 +72,18 @@ export default function LandingPage() {
                         </div>
                         <span className="font-semibold text-lg tracking-tight">Безопасный город</span>
                     </div>
-                    <div className="hidden md:flex items-center gap-8 text-sm text-white/60">
-                        <a href="#modules" className="hover:text-white transition-colors">Модули</a>
-                        <a href="#about" className="hover:text-white transition-colors">О проекте</a>
-                        <Link
-                            href="/login"
-                            className="px-4 py-2 bg-white/10 hover:bg-white/15 rounded-lg transition-colors text-white"
-                        >
-                            Войти в систему
-                        </Link>
+                    <div className="hidden md:flex items-center gap-8 text-sm text-foreground/60">
+                        <a href="#modules" className="hover:text-foreground transition-colors">Модули</a>
+                        <a href="#about" className="hover:text-foreground transition-colors">О проекте</a>
+                        <div className="flex items-center gap-4">
+                            <ThemeToggle />
+                            <Link
+                                href="/login"
+                                className="px-4 py-2 bg-foreground/10 hover:bg-foreground/15 rounded-lg transition-colors text-foreground"
+                            >
+                                Войти в систему
+                            </Link>
+                        </div>
                     </div>
                 </div>
             </nav>
@@ -87,35 +91,35 @@ export default function LandingPage() {
             {/* ─── Hero ──────────────────────────────── */}
             <section className="relative min-h-[90vh] flex items-center justify-center pt-16">
                 {/* Background image */}
-                <div className="absolute inset-0 z-0">
+                <div className="absolute inset-0 z-0 opacity-30 dark:opacity-30">
                     <Image
                         src="/landing/hero.png"
                         alt=""
                         fill
-                        className="object-cover opacity-30"
+                        className="object-cover"
                         priority
                     />
-                    <div className="absolute inset-0 bg-gradient-to-b from-[#0a0e1a] via-transparent to-[#0a0e1a]" />
-                    <div className="absolute inset-0 bg-gradient-to-r from-[#0a0e1a]/80 via-transparent to-[#0a0e1a]/80" />
+                    <div className="absolute inset-0 bg-gradient-to-b from-background via-transparent to-background" />
+                    <div className="absolute inset-0 bg-gradient-to-r from-background/80 via-transparent to-background/80" />
                 </div>
 
                 <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
-                    <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/5 border border-white/10 text-sm text-white/60 mb-8">
+                    <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-sm text-foreground/60 mb-8">
                         <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
                         Платформа городского мониторинга
                     </div>
 
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-white via-white to-white/60">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-foreground via-foreground to-foreground/60">
                             Безопасный
                         </span>
                         <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-300 via-cyan-300 to-blue-400">
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-300 dark:via-cyan-300 dark:to-blue-400">
                             город Сургут
                         </span>
                     </h1>
 
-                    <p className="text-lg md:text-xl text-white/50 max-w-2xl mx-auto leading-relaxed mb-10">
+                    <p className="text-lg md:text-xl text-foreground/50 max-w-2xl mx-auto leading-relaxed mb-10">
                         Интеллектуальная система мониторинга городской инфраструктуры
                         на основе компьютерного зрения и IoT-датчиков
                     </p>
@@ -123,14 +127,14 @@ export default function LandingPage() {
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                         <Link
                             href="/login"
-                            className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white font-medium rounded-xl transition-all shadow-lg shadow-teal-500/25 hover:shadow-teal-500/40"
+                            className="group flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white font-medium rounded-xl transition-all shadow-lg shadow-teal-500/25 dark:shadow-teal-500/40"
                         >
                             Открыть платформу
                             <ArrowRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
                         </Link>
                         <a
                             href="#modules"
-                            className="flex items-center gap-2 px-6 py-3 bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 rounded-xl transition-all"
+                            className="flex items-center gap-2 px-6 py-3 bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 text-foreground/80 rounded-xl transition-all"
                         >
                             Обзор модулей
                         </a>
@@ -140,15 +144,15 @@ export default function LandingPage() {
                     <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6 max-w-2xl mx-auto">
                         {STATS.map((stat) => (
                             <div key={stat.label} className="text-center">
-                                <div className="text-2xl md:text-3xl font-bold text-white">{stat.value}</div>
-                                <div className="text-sm text-white/40 mt-1">{stat.label}</div>
+                                <div className="text-2xl md:text-3xl font-bold text-foreground">{stat.value}</div>
+                                <div className="text-sm text-foreground/50 mt-1">{stat.label}</div>
                             </div>
                         ))}
                     </div>
                 </div>
 
                 {/* Scroll indicator */}
-                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-white/30 animate-bounce">
+                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 text-foreground/30 animate-bounce">
                     <ChevronRight className="h-5 w-5 rotate-90" />
                 </div>
             </section>
@@ -158,7 +162,7 @@ export default function LandingPage() {
                 <div className="max-w-6xl mx-auto">
                     <div className="text-center mb-16">
                         <h2 className="text-3xl md:text-4xl font-bold mb-4">Модули платформы</h2>
-                        <p className="text-white/40 text-lg max-w-xl mx-auto">
+                        <p className="text-foreground/50 text-lg max-w-xl mx-auto">
                             Каждый модуль — отдельная система мониторинга, объединённая в единую платформу
                         </p>
                     </div>
@@ -168,12 +172,12 @@ export default function LandingPage() {
                             <Link
                                 key={mod.id}
                                 href={mod.href}
-                                className={`group relative rounded-2xl border bg-gradient-to-b ${mod.color} ${mod.borderColor} p-6 transition-all duration-300 hover:shadow-2xl ${mod.glowColor} hover:-translate-y-1`}
+                                className={`group relative rounded-2xl border border-border bg-gradient-to-b ${mod.color} ${mod.borderColor} p-6 transition-all duration-300 hover:shadow-2xl ${mod.glowColor} hover:-translate-y-1`}
                                 onMouseEnter={() => setHoveredModule(mod.id)}
                                 onMouseLeave={() => setHoveredModule(null)}
                             >
                                 {/* Module image */}
-                                <div className="relative w-full aspect-square mb-6 rounded-xl overflow-hidden bg-[#0a0e1a]/50">
+                                <div className="relative w-full aspect-square mb-6 rounded-xl overflow-hidden bg-background/50">
                                     <Image
                                         src={mod.image}
                                         alt={mod.title}
@@ -185,21 +189,21 @@ export default function LandingPage() {
                                 {/* Status dot */}
                                 <div className="flex items-center gap-2 mb-3">
                                     <span className={`w-2 h-2 rounded-full ${mod.dotColor} ${mod.id !== "shore" ? "animate-pulse" : "opacity-50"}`} />
-                                    <span className={`text-xs font-medium ${mod.accentColor}`}>
+                                    <span className={`text-xs font-medium dark:${mod.accentColor} ${mod.id === 'roads' ? 'text-amber-600' : mod.id === 'stops' ? 'text-teal-600' : 'text-blue-600'}`}>
                                         {mod.id === "shore" ? "В разработке" : "Активен"}
                                     </span>
                                 </div>
 
                                 <h3 className="text-xl font-semibold mb-1">{mod.title}</h3>
-                                <p className="text-sm text-white/40 mb-3">{mod.subtitle}</p>
-                                <p className="text-sm text-white/50 leading-relaxed mb-4">{mod.description}</p>
+                                <p className="text-sm text-foreground/50 mb-3">{mod.subtitle}</p>
+                                <p className="text-sm text-foreground/60 leading-relaxed mb-4">{mod.description}</p>
 
                                 {/* Tags */}
                                 <div className="flex flex-wrap gap-2">
                                     {mod.tags.map((tag) => (
                                         <span
                                             key={tag}
-                                            className="px-2.5 py-1 text-[11px] rounded-md bg-white/5 text-white/50 border border-white/5"
+                                            className="px-2.5 py-1 text-[11px] rounded-md bg-foreground/5 text-foreground/60 border border-foreground/5"
                                         >
                                             {tag}
                                         </span>
@@ -207,8 +211,8 @@ export default function LandingPage() {
                                 </div>
 
                                 {/* Arrow */}
-                                <div className="absolute top-6 right-6 w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-white/10 transition-colors">
-                                    <ArrowRight className={`h-4 w-4 ${mod.accentColor} group-hover:translate-x-0.5 transition-transform`} />
+                                <div className="absolute top-6 right-6 w-8 h-8 rounded-full bg-foreground/5 flex items-center justify-center group-hover:bg-foreground/10 transition-colors">
+                                    <ArrowRight className={`h-4 w-4 dark:${mod.accentColor} ${mod.id === 'roads' ? 'text-amber-600' : mod.id === 'stops' ? 'text-teal-600' : 'text-blue-600'} group-hover:translate-x-0.5 transition-transform`} />
                                 </div>
                             </Link>
                         ))}
@@ -217,7 +221,7 @@ export default function LandingPage() {
             </section>
 
             {/* ─── About ─────────────────────────────── */}
-            <section id="about" className="relative py-24 px-6 border-t border-white/5">
+            <section id="about" className="relative py-24 px-6 border-t border-border">
                 <div className="max-w-4xl mx-auto">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
                         <div>
@@ -228,28 +232,28 @@ export default function LandingPage() {
                                     { icon: Brain, title: "ML-модели", desc: "Детекция событий, классификация объектов, предсказание инцидентов" },
                                     { icon: Shield, title: "Единая платформа", desc: "Все модули объединены в единую систему с общим дашбордом" },
                                 ].map((item) => (
-                                    <div key={item.title} className="flex gap-4 p-4 rounded-xl bg-white/[0.02] border border-white/5">
+                                    <div key={item.title} className="flex gap-4 p-4 rounded-xl bg-foreground/[0.02] border border-foreground/5">
                                         <div className="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center flex-shrink-0">
-                                            <item.icon className="h-5 w-5 text-teal-400" />
+                                            <item.icon className="h-5 w-5 text-teal-600 dark:text-teal-400" />
                                         </div>
                                         <div>
                                             <h3 className="font-medium mb-1">{item.title}</h3>
-                                            <p className="text-sm text-white/40">{item.desc}</p>
+                                            <p className="text-sm text-foreground/50">{item.desc}</p>
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         </div>
-                        <div className="relative aspect-square rounded-2xl overflow-hidden border border-white/5">
+                        <div className="relative aspect-square rounded-2xl overflow-hidden border border-border">
                             <Image
                                 src="/landing/hero.png"
                                 alt="Карта города"
                                 fill
-                                className="object-cover opacity-60"
+                                className="object-cover opacity-60 dark:opacity-60"
                             />
-                            <div className="absolute inset-0 bg-gradient-to-t from-[#0a0e1a] via-transparent to-transparent" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-background via-transparent to-transparent" />
                             <div className="absolute bottom-6 left-6 right-6">
-                                <div className="text-sm text-white/40 mb-2">г. Сургут</div>
+                                <div className="text-sm text-foreground/50 mb-2">г. Сургут</div>
                                 <div className="text-lg font-semibold">Единая карта мониторинга</div>
                             </div>
                         </div>
@@ -258,15 +262,15 @@ export default function LandingPage() {
             </section>
 
             {/* ─── Footer ────────────────────────────── */}
-            <footer className="border-t border-white/5 py-12 px-6">
+            <footer className="border-t border-border py-12 px-6">
                 <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                         <div className="w-7 h-7 rounded-md bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center">
                             <Eye className="h-3.5 w-3.5 text-white" />
                         </div>
-                        <span className="text-sm text-white/40">Безопасный город · Сургут</span>
+                        <span className="text-sm text-foreground/50">Безопасный город · Сургут</span>
                     </div>
-                    <div className="text-sm text-white/30">
+                    <div className="text-sm text-foreground/40">
                         © 2025 – {new Date().getFullYear()}
                     </div>
                 </div>
