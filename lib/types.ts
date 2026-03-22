@@ -14,6 +14,7 @@ export interface Camera {
   fovDirection: number  // degrees 0-360 (0 = North)
   fovDistance: number   // meters
   module?: string
+  busStopId?: number | null
 }
 
 export interface RoadSegment {

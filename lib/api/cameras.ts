@@ -16,6 +16,7 @@ export interface CameraRow {
     rtsp_url: string | null
     hls_url: string | null
     module?: string
+    bus_stop_id?: number | null
 }
 
 function mapCameraRow(row: CameraRow): Camera {
@@ -33,6 +34,7 @@ function mapCameraRow(row: CameraRow): Camera {
         rtspUrl: row.rtsp_url,
         hlsUrl: row.hls_url,
         module: row.module,
+        busStopId: row.bus_stop_id,
     }
 }
 
