@@ -83,7 +83,8 @@ export async function fetchAlertTypes(): Promise<string[]> {
 }
 
 // Категории типов инцидентов
-export type AlertCategory = 'equipment' | 'cleaning' | 'repair'
+// Категории типов инцидентов
+export type AlertCategory = 'equipment' | 'cleaning' | 'repair' | 'shore_security' | 'shore_safety'
 
 export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: string[] }> = {
     equipment: {
@@ -97,6 +98,14 @@ export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: str
     repair: {
         label: 'Ремонт',
         types: ['open_manhole', 'tilted_sign', 'dirty_sign', 'broken_light', 'worn_marking', 'pothole']
+    },
+    shore_security: {
+        label: 'Охрана периметра',
+        types: ['line_cross', 'person_detect', 'vehicle_detect']
+    },
+    shore_safety: {
+        label: 'Безопасность людей',
+        types: ['restricted_zone', 'unaccompanied_child', 'water_fall', 'fire_detect']
     }
 }
 
@@ -188,6 +197,50 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         icon: 'camera-off',
         color: 'text-red-400 bg-red-500/20 border-red-500/30',
         category: 'equipment'
+    },
+    // Охрана периметра (Безопасный берег)
+    line_cross: {
+        label: 'Пересечение линии',
+        icon: 'footprints',
+        color: 'text-amber-500 bg-amber-500/20 border-amber-500/30',
+        category: 'shore_security'
+    },
+    person_detect: {
+        label: 'Проход человека',
+        icon: 'user',
+        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
+        category: 'shore_security'
+    },
+    vehicle_detect: {
+        label: 'Проезд автомобиля',
+        icon: 'car',
+        color: 'text-rose-500 bg-rose-500/20 border-rose-500/30',
+        category: 'shore_security'
+    },
+    // Безопасность людей (Безопасный берег)
+    restricted_zone: {
+        label: 'Запретная зона (Вода/Лед)',
+        icon: 'shield-alert',
+        color: 'text-red-500 bg-red-500/20 border-red-500/30',
+        category: 'shore_safety'
+    },
+    unaccompanied_child: {
+        label: 'Дети без сопровождения',
+        icon: 'baby',
+        color: 'text-purple-400 bg-purple-500/20 border-purple-500/30',
+        category: 'shore_safety'
+    },
+    water_fall: {
+        label: 'Падение в воду',
+        icon: 'life-buoy',
+        color: 'text-red-600 bg-red-600/20 border-red-600/30 font-bold',
+        category: 'shore_safety'
+    },
+    fire_detect: {
+        label: 'Детекция огня',
+        icon: 'flame',
+        color: 'text-orange-600 bg-orange-600/20 border-orange-600/30 font-bold',
+        category: 'shore_safety'
     }
 }
 
@@ -197,5 +250,7 @@ export const MODULE_MAP: Record<string, string> = {
     puddle_detection: 'Модуль детекции луж',
     pothole_detection: 'Модуль детекции ям',
     snow_pile_detection: 'Модуль детекции снежных накоплений',
-    camera_check: 'Модуль проверки камеры'
+    camera_check: 'Модуль проверки камеры',
+    shore_security: 'Охрана периметра (ББ)',
+    shore_safety: 'Безопасность людей (ББ)'
 }

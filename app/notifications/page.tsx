@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useSearchParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
 import { fetchAlerts, ALERT_TYPE_CONFIG, ALERT_CATEGORIES, MODULE_MAP } from "@/lib/api/alerts"
@@ -56,6 +56,13 @@ import {
   Thermometer,
   Activity,
   ArrowRight,
+  Footprints,
+  User,
+  Car,
+  ShieldAlert,
+  Baby,
+  LifeBuoy,
+  Flame,
 } from "lucide-react"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
@@ -75,6 +82,13 @@ const alertIcons: Record<string, any> = {
   broken_light: LightbulbOff,
   worn_marking: Minus,
   pothole: TriangleAlert,
+  line_cross: Footprints,
+  person_detect: User,
+  vehicle_detect: Car,
+  restricted_zone: ShieldAlert,
+  unaccompanied_child: Baby,
+  water_fall: LifeBuoy,
+  fire_detect: Flame,
 }
 
 import { Suspense } from "react"
@@ -198,6 +212,7 @@ function ResultsHeader({
 function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const searchParams = useSearchParams()
   const initialCamera = searchParams.get("camera")
+  const { hasModule } = useModuleAccess()
 
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [selectedCameras, setSelectedCameras] = useState<number[]>(
@@ -210,10 +225,35 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const [pageSize, setPageSize] = useState(25)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
+  const allowedTypes = useMemo(() => {
+    const types: string[] = []
+    if (hasModule('roads')) {
+      types.push(
+        ...ALERT_CATEGORIES.equipment.types,
+        ...ALERT_CATEGORIES.cleaning.types,
+        ...ALERT_CATEGORIES.repair.types
+      )
+    }
+    if (hasModule('shore')) {
+      types.push(
+        ...ALERT_CATEGORIES.shore_security.types,
+        ...ALERT_CATEGORIES.shore_safety.types
+      )
+    }
+    return types
+  }, [hasModule])
+
   useEffect(() => {
+    if (allowedTypes.length === 0) {
+      setAlerts([])
+      setTotal(0)
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     fetchAlerts({
-      types: selectedTypes.length > 0 ? selectedTypes : undefined,
+      types: selectedTypes.length > 0 ? selectedTypes : allowedTypes,
       cameraIndexes: selectedCameras.length > 0 ? selectedCameras : undefined,
       limit: pageSize,
       offset: page * pageSize,
@@ -222,7 +262,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
       setTotal(result.total)
       setLoading(false)
     })
-  }, [selectedTypes, selectedCameras, page, pageSize])
+  }, [selectedTypes, selectedCameras, page, pageSize, allowedTypes])
 
   useEffect(() => {
     setPage(0)
@@ -278,95 +318,163 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
           </div>
         </div>
         <CardContent className="space-y-4 pt-0">
-          {/* Спецтехника */}
-          <div>
-            <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
-              <Truck className="h-4 w-4 text-blue-400" />
-              Спецтехника
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {ALERT_CATEGORIES.equipment.types.map((type) => {
-                const config = ALERT_TYPE_CONFIG[type]
-                if (!config) return null
-                const Icon = alertIcons[type] || Snowflake
-                const isSelected = selectedTypes.includes(type)
-                return (
-                  <Button
-                    key={type}
-                    variant={isSelected ? "default" : "outline"}
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => toggleType(type)}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {config.label}
-                  </Button>
-                )
-              })}
-            </div>
-          </div>
+          {hasModule('roads') && (
+            <>
+              {/* Спецтехника */}
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <Truck className="h-4 w-4 text-blue-400" />
+                  Спецтехника
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.equipment.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || Snowflake
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
 
-          <Separator />
+              <Separator />
 
-          {/* Уборка */}
-          <div>
-            <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
-              <Sparkles className="h-4 w-4 text-cyan-400" />
-              Уборка
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {ALERT_CATEGORIES.cleaning.types.map((type) => {
-                const config = ALERT_TYPE_CONFIG[type]
-                if (!config) return null
-                const Icon = alertIcons[type] || Snowflake
-                const isSelected = selectedTypes.includes(type)
-                return (
-                  <Button
-                    key={type}
-                    variant={isSelected ? "default" : "outline"}
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => toggleType(type)}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {config.label}
-                  </Button>
-                )
-              })}
-            </div>
-          </div>
+              {/* Уборка */}
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-cyan-400" />
+                  Уборка
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.cleaning.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || Snowflake
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
 
-          <Separator />
+              <Separator />
 
-          {/* Ремонт */}
-          <div>
-            <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
-              <Wrench className="h-4 w-4 text-orange-400" />
-              Ремонт
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {ALERT_CATEGORIES.repair.types.map((type) => {
-                const config = ALERT_TYPE_CONFIG[type]
-                if (!config) return null
-                const Icon = alertIcons[type] || Snowflake
-                const isSelected = selectedTypes.includes(type)
-                return (
-                  <Button
-                    key={type}
-                    variant={isSelected ? "default" : "outline"}
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => toggleType(type)}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {config.label}
-                  </Button>
-                )
-              })}
-            </div>
-          </div>
+              {/* Ремонт */}
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <Wrench className="h-4 w-4 text-orange-400" />
+                  Ремонт
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.repair.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || Snowflake
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
 
-          <Separator />
+              <Separator />
+            </>
+          )}
+
+          {hasModule('shore') && (
+            <>
+              {/* Охрана периметра */}
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 text-amber-500" />
+                  Охрана периметра
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.shore_security.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || Snowflake
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Безопасность людей */}
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <LifeBuoy className="h-4 w-4 text-red-500" />
+                  Безопасность людей
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.shore_safety.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || Snowflake
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+            </>
+          )}
 
           {/* Camera filter */}
           <div>
