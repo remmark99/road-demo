@@ -36,10 +36,12 @@ import {
   LogOut,
   User,
   Menu,
+  Shield,
 } from "lucide-react"
 import { SensorPopover } from "@/components/sensors/sensor-readings"
 import { createClient } from "@/lib/supabase/client"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
+import { useModuleAccess } from "@/components/providers/module-context"
 
 const navItems = [
   { href: "/", label: "Карта", icon: Map },
@@ -55,6 +57,7 @@ export function Navigation() {
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const { role } = useModuleAccess()
 
   useEffect(() => {
     const supabase = createClient()
@@ -165,6 +168,20 @@ export function Navigation() {
                       </Link>
                     </Button>
                   </SheetClose>
+                  {role === 'admin' && (
+                    <SheetClose asChild>
+                      <Button
+                        variant={pathname === "/admin" ? "secondary" : "ghost"}
+                        className="justify-start gap-3 h-10 w-full text-teal-600 dark:text-teal-400 hover:text-teal-700 dark:hover:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/30"
+                        asChild
+                      >
+                        <Link href="/admin">
+                          <Shield className="h-4 w-4" />
+                          Админ-панель
+                        </Link>
+                      </Button>
+                    </SheetClose>
+                  )}
                 </div>
 
                 <div className="mt-auto">
@@ -324,6 +341,14 @@ export function Navigation() {
                       <span>Настройки</span>
                     </Link>
                   </DropdownMenuItem>
+                  {role === 'admin' && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/admin" className="cursor-pointer gap-2 text-teal-600 dark:text-teal-400 focus:text-teal-700 dark:focus:text-teal-300">
+                        <Shield className="h-4 w-4" />
+                        <span>Админ-панель</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="cursor-pointer gap-2 text-destructive focus:text-destructive"

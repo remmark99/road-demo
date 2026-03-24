@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Navigation } from "@/components/navigation"
 import { Shield, Plus, Edit2, Loader2, Save, X, AlertCircle } from "lucide-react"
+import { useModuleAccess } from "@/components/providers/module-context"
 
 type Module = 'roads' | 'shore' | 'stops'
 
@@ -21,6 +22,7 @@ const AVAILABLE_MODULES: { id: Module; name: string }[] = [
 ]
 
 export default function AdminPage() {
+    const { role, loading: ctxLoading } = useModuleAccess()
     const [users, setUsers] = useState<Profile[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
@@ -135,6 +137,27 @@ export default function AdminPage() {
         } else {
             setModArray([...modArray, mod])
         }
+    }
+
+    if (ctxLoading) {
+        return <div className="min-h-screen bg-background flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
+    }
+
+    if (role !== 'admin') {
+        return (
+            <main className="min-h-screen bg-background">
+                <Navigation />
+                <div className="pt-20 px-6 max-w-6xl mx-auto flex items-center justify-center h-[60vh]">
+                    <div className="text-center space-y-4">
+                        <div className="bg-destructive/10 p-4 rounded-full inline-flex mx-auto border border-destructive/20">
+                            <Shield className="h-10 w-10 text-destructive" />
+                        </div>
+                        <h2 className="text-2xl font-bold">Доступ запрещен</h2>
+                        <p className="text-muted-foreground max-w-md mx-auto">У вас нет прав администратора для просмотра этой страницы. Обратитесь к системному администратору.</p>
+                    </div>
+                </div>
+            </main>
+        )
     }
 
     return (
