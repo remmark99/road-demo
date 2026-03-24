@@ -6,6 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
 import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
+import { fetchParksGeoJSON } from "@/lib/api/parks"
 import type { Camera, RoadStatus } from "@/lib/types"
 import { VideoModal } from "./video-modal"
 import { BusStopModal, type SelectedBusStop } from "./bus-stop-modal"
@@ -147,7 +148,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   const [selectedBusStop, setSelectedBusStop] = useState<SelectedBusStop | null>(null)
   const [spiderifiedStop, setSpiderifiedStop] = useState<{ id: number; lat: number; lng: number } | null>(null)
   const spiderifiedStopRef = useRef<{ id: number; lat: number; lng: number } | null>(null)
-  
+
   // Sync state to ref for callbacks
   useEffect(() => {
     spiderifiedStopRef.current = spiderifiedStop
@@ -162,6 +163,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   const [mapLoaded, setMapLoaded] = useState(false)
   const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
   const [busStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
+  const [parksData, setParksData] = useState<any>(null)
 
   // Filter States
   const [cameraFilters, setCameraFilters] = useState({ online: true, offline: false })
@@ -474,7 +476,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       },
       layout: { "visibility": "none" }
     })
-    
+
     map.current.addLayer({
       id: `${layerId}-raw-badge-text`,
       type: "symbol",
@@ -953,6 +955,39 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
 
   }, [])
 
+  const addParks = useCallback(() => {
+    if (!map.current) return
+
+    const sourceId = "parks"
+    if (map.current.getSource(sourceId)) return
+
+    map.current.addSource(sourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    })
+
+    map.current.addLayer({
+      id: "parks-fill",
+      type: "fill",
+      source: sourceId,
+      paint: {
+        "fill-color": ["get", "fill"],
+        "fill-opacity": ["to-number", ["get", "fill-opacity"]]
+      }
+    })
+
+    map.current.addLayer({
+      id: "parks-line",
+      type: "line",
+      source: sourceId,
+      paint: {
+        "line-color": ["get", "stroke"],
+        "line-width": 4,
+        "line-opacity": ["to-number", ["get", "stroke-opacity"]]
+      }
+    })
+  }, [])
+
   // Fetch data based on allowed modules
   useEffect(() => {
     if (modulesLoading) return
@@ -968,6 +1003,12 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       fetchBusStopsGeoJSON().then(setBusStopsData)
     } else {
       setBusStopsData({ type: "FeatureCollection", features: [] })
+    }
+
+    if (hasModule('parks')) {
+      fetchParksGeoJSON().then(setParksData)
+    } else {
+      setParksData({ type: "FeatureCollection", features: [] })
     }
   }, [modules, hasModule, modulesLoading])
 
@@ -1001,8 +1042,9 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       addRoads()
       addBusStops()
       addCameraLayers()
+      addParks()
     })
-  }, [isDark, addRoads, addBusStops, addCameraLayers, mapLoaded])
+  }, [isDark, addRoads, addBusStops, addCameraLayers, addParks, mapLoaded])
 
   // Initialize map - this should only run once
   useEffect(() => {
@@ -1049,6 +1091,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     addRoads()
     addBusStops()
     addCameraLayers()
+    addParks()
 
     // Global click listener to close spiderify if clicked elsewhere
     if (map.current) {
@@ -1068,7 +1111,18 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         map.current?.off('click', clickHandler)
       }
     }
-  }, [mapLoaded, addRoads, addBusStops, addCameraLayers])
+  }, [mapLoaded, addRoads, addBusStops, addCameraLayers, addParks])
+
+  // Sync parks data to source
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !parksData) return
+    const source = map.current.getSource("parks") as maplibregl.GeoJSONSource
+    if (source) {
+      source.setData(parksData)
+      map.current.setLayoutProperty("parks-fill", "visibility", hasModule("parks") ? "visible" : "none")
+      map.current.setLayoutProperty("parks-line", "visibility", hasModule("parks") ? "visible" : "none")
+    }
+  }, [mapLoaded, parksData, hasModule])
 
   // Sync camera data to the GeoJSON source
   useEffect(() => {
@@ -1141,7 +1195,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     }
 
     const stopCams = cameras.filter(c => c.busStopId === spiderifiedStop.id)
-    
+
     // Spread them in a circle
     const n = stopCams.length
     const radiusLng = 0.00015 // approx 10 meters
