@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react"
 import { Navigation } from "@/components/navigation"
-import { Shield, Plus, Edit2, Loader2, Save, X, AlertCircle } from "lucide-react"
+import { Shield, Plus, Edit2, Loader2, Save, X, AlertCircle, Users, Camera } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { CamerasTab } from "@/components/admin/cameras-tab"
 
 type Module = 'roads' | 'shore' | 'stops' | 'parks' | 'transport'
 
@@ -197,122 +199,141 @@ export default function AdminPage() {
                     </div>
                 )}
 
-                <div className="bg-white/[0.02] border border-border rounded-xl shadow-sm overflow-hidden backdrop-blur-sm">
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-border bg-white/[0.02]">
-                                    <th className="px-6 py-4 font-medium text-muted-foreground">Пользователь</th>
-                                    <th className="px-6 py-4 font-medium text-muted-foreground">Роль</th>
-                                    <th className="px-6 py-4 font-medium text-muted-foreground">Доступные модули</th>
-                                    <th className="px-6 py-4 font-medium text-muted-foreground text-right">Действия</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-border">
-                                {loading ? (
-                                    <tr>
-                                        <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
-                                            <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 opacity-50" />
-                                            Загрузка пользователей...
-                                        </td>
-                                    </tr>
-                                ) : users.length === 0 ? (
-                                    <tr>
-                                        <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
-                                            Нет зарегистрированных пользователей
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    users.map((u) => (
-                                        <tr key={u.id} className="hover:bg-white/[0.01] transition-colors">
-                                            <td className="px-6 py-4 font-medium">{u.email}</td>
+                <Tabs defaultValue="users" className="space-y-6">
+                    <TabsList>
+                        <TabsTrigger value="users" className="gap-2">
+                            <Users className="h-4 w-4" />
+                            Пользователи
+                        </TabsTrigger>
+                        <TabsTrigger value="cameras" className="gap-2">
+                            <Camera className="h-4 w-4" />
+                            Камеры
+                        </TabsTrigger>
+                    </TabsList>
 
-                                            <td className="px-6 py-4">
-                                                {editingId === u.id ? (
-                                                    <select
-                                                        value={editRole}
-                                                        onChange={(e) => setEditRole(e.target.value)}
-                                                        className="bg-background border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:border-teal-500"
-                                                    >
-                                                        <option value="user">Пользователь</option>
-                                                        <option value="admin">Администратор</option>
-                                                    </select>
-                                                ) : (
-                                                    <span className={`inline-flex px-2 py-1 rounded-md text-xs font-medium ${u.role === 'admin' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-muted text-muted-foreground border border-border'
-                                                        }`}>
-                                                        {u.role === 'admin' ? 'Админ' : 'Пользователь'}
-                                                    </span>
-                                                )}
-                                            </td>
-
-                                            <td className="px-6 py-4">
-                                                {editingId === u.id ? (
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {AVAILABLE_MODULES.map(mod => (
-                                                            <label key={mod.id} className="flex items-center gap-1.5 text-sm cursor-pointer border border-border rounded-md px-2 py-1 hover:bg-white/5 transition-colors">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={editModules.includes(mod.id)}
-                                                                    onChange={() => toggleModule(editModules, setEditModules, mod.id)}
-                                                                    className="accent-teal-500"
-                                                                />
-                                                                {mod.name}
-                                                            </label>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {AVAILABLE_MODULES.map(mod => {
-                                                            const hasModule = (u.modules || []).includes(mod.id)
-                                                            if (!hasModule) return null
-                                                            return (
-                                                                <span key={mod.id} className="inline-flex px-2 py-1 rounded-md text-xs font-medium bg-teal-500/10 text-teal-400 border border-teal-500/20">
-                                                                    {mod.name}
-                                                                </span>
-                                                            )
-                                                        })}
-                                                        {(!u.modules || u.modules.length === 0) && (
-                                                            <span className="text-sm text-muted-foreground italic">Нет назначенных модулей</span>
-                                                        )}
-                                                    </div>
-                                                )}
-                                            </td>
-
-                                            <td className="px-6 py-4 text-right">
-                                                {editingId === u.id ? (
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <button
-                                                            onClick={() => saveEditing(u.id)}
-                                                            className="p-1.5 text-green-400 hover:bg-green-400/10 rounded-md transition-colors"
-                                                            title="Сохранить"
-                                                        >
-                                                            <Save className="h-4 w-4" />
-                                                        </button>
-                                                        <button
-                                                            onClick={cancelEditing}
-                                                            className="p-1.5 text-red-400 hover:bg-red-400/10 rounded-md transition-colors"
-                                                            title="Отмена"
-                                                        >
-                                                            <X className="h-4 w-4" />
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        onClick={() => startEditing(u)}
-                                                        className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-foreground rounded-md transition-colors"
-                                                        title="Редактировать модули"
-                                                    >
-                                                        <Edit2 className="h-4 w-4" />
-                                                    </button>
-                                                )}
-                                            </td>
+                    <TabsContent value="users" className="space-y-2">
+                        <div className="bg-white/[0.02] border border-border rounded-xl shadow-sm overflow-hidden backdrop-blur-sm">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="border-b border-border bg-white/[0.02]">
+                                            <th className="px-6 py-4 font-medium text-muted-foreground">Пользователь</th>
+                                            <th className="px-6 py-4 font-medium text-muted-foreground">Роль</th>
+                                            <th className="px-6 py-4 font-medium text-muted-foreground">Доступные модули</th>
+                                            <th className="px-6 py-4 font-medium text-muted-foreground text-right">Действия</th>
                                         </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                                    </thead>
+                                    <tbody className="divide-y divide-border">
+                                        {loading ? (
+                                            <tr>
+                                                <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
+                                                    <Loader2 className="h-6 w-6 animate-spin mx-auto mb-2 opacity-50" />
+                                                    Загрузка пользователей...
+                                                </td>
+                                            </tr>
+                                        ) : users.length === 0 ? (
+                                            <tr>
+                                                <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
+                                                    Нет зарегистрированных пользователей
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            users.map((u) => (
+                                                <tr key={u.id} className="hover:bg-white/[0.01] transition-colors">
+                                                    <td className="px-6 py-4 font-medium">{u.email}</td>
+
+                                                    <td className="px-6 py-4">
+                                                        {editingId === u.id ? (
+                                                            <select
+                                                                value={editRole}
+                                                                onChange={(e) => setEditRole(e.target.value)}
+                                                                className="bg-background border border-border rounded-md px-2 py-1 text-sm focus:outline-none focus:border-teal-500"
+                                                            >
+                                                                <option value="user">Пользователь</option>
+                                                                <option value="admin">Администратор</option>
+                                                            </select>
+                                                        ) : (
+                                                            <span className={`inline-flex px-2 py-1 rounded-md text-xs font-medium ${u.role === 'admin' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-muted text-muted-foreground border border-border'
+                                                                }`}>
+                                                                {u.role === 'admin' ? 'Админ' : 'Пользователь'}
+                                                            </span>
+                                                        )}
+                                                    </td>
+
+                                                    <td className="px-6 py-4">
+                                                        {editingId === u.id ? (
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {AVAILABLE_MODULES.map(mod => (
+                                                                    <label key={mod.id} className="flex items-center gap-1.5 text-sm cursor-pointer border border-border rounded-md px-2 py-1 hover:bg-white/5 transition-colors">
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked={editModules.includes(mod.id)}
+                                                                            onChange={() => toggleModule(editModules, setEditModules, mod.id)}
+                                                                            className="accent-teal-500"
+                                                                        />
+                                                                        {mod.name}
+                                                                    </label>
+                                                                ))}
+                                                            </div>
+                                                        ) : (
+                                                            <div className="flex flex-wrap gap-2">
+                                                                {AVAILABLE_MODULES.map(mod => {
+                                                                    const hasModule = (u.modules || []).includes(mod.id)
+                                                                    if (!hasModule) return null
+                                                                    return (
+                                                                        <span key={mod.id} className="inline-flex px-2 py-1 rounded-md text-xs font-medium bg-teal-500/10 text-teal-400 border border-teal-500/20">
+                                                                            {mod.name}
+                                                                        </span>
+                                                                    )
+                                                                })}
+                                                                {(!u.modules || u.modules.length === 0) && (
+                                                                    <span className="text-sm text-muted-foreground italic">Нет назначенных модулей</span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                    </td>
+
+                                                    <td className="px-6 py-4 text-right">
+                                                        {editingId === u.id ? (
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <button
+                                                                    onClick={() => saveEditing(u.id)}
+                                                                    className="p-1.5 text-green-400 hover:bg-green-400/10 rounded-md transition-colors"
+                                                                    title="Сохранить"
+                                                                >
+                                                                    <Save className="h-4 w-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={cancelEditing}
+                                                                    className="p-1.5 text-red-400 hover:bg-red-400/10 rounded-md transition-colors"
+                                                                    title="Отмена"
+                                                                >
+                                                                    <X className="h-4 w-4" />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <button
+                                                                onClick={() => startEditing(u)}
+                                                                className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-foreground rounded-md transition-colors"
+                                                                title="Редактировать модули"
+                                                            >
+                                                                <Edit2 className="h-4 w-4" />
+                                                            </button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="cameras" className="mt-6">
+                        <CamerasTab />
+                    </TabsContent>
+                </Tabs>
             </div>
 
             {/* Create User Modal */}

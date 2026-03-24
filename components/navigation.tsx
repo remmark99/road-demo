@@ -47,7 +47,6 @@ const navItems = [
   { href: "/", label: "Карта", icon: Map },
   { href: "/notifications", label: "Уведомления", icon: Bell },
   { href: "/dashboard", label: "Аналитика", icon: BarChart3 },
-  { href: "/cameras", label: "Камеры", icon: Camera },
   { href: "/ai-assistant", label: "AI-ассистент", icon: Bot },
 ]
 
