@@ -1039,10 +1039,10 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     map.current.setStyle(getMapStyle(isDark))
 
     map.current.once("style.load", () => {
+      addParks()
       addRoads()
       addBusStops()
       addCameraLayers()
-      addParks()
     })
   }, [isDark, addRoads, addBusStops, addCameraLayers, addParks, mapLoaded])
 
@@ -1088,10 +1088,10 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   // Add base map layers when map loads
   useEffect(() => {
     if (!mapLoaded) return
+    addParks()
     addRoads()
     addBusStops()
     addCameraLayers()
-    addParks()
 
     // Global click listener to close spiderify if clicked elsewhere
     if (map.current) {
