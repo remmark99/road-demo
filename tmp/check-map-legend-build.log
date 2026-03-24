@@ -1,0 +1,46 @@
+
+> road-demo@0.1.0 build
+> next build
+
+▲ Next.js 16.1.4 (Turbopack)
+- Environments: .env
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 10.6s
+  Skipping validation of types
+  Collecting page data using 11 workers ...
+undefined
+  Generating static pages using 11 workers (0/19) ...
+undefined
+  Generating static pages using 11 workers (4/19) 
+  Generating static pages using 11 workers (9/19) 
+  Generating static pages using 11 workers (14/19) 
+✓ Generating static pages using 11 workers (19/19) in 760.9ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /admin
+├ ○ /ai-assistant
+├ ƒ /api/admin/users
+├ ƒ /api/bus-stops
+├ ƒ /api/chat
+├ ƒ /api/plots/[...path]
+├ ƒ /api/roads
+├ ƒ /api/settings/email
+├ ƒ /auth/callback
+├ ○ /cameras
+├ ○ /dashboard
+├ ○ /landing
+├ ○ /login
+├ ○ /notifications
+├ ○ /overview
+└ ○ /settings
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

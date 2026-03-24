@@ -1,0 +1,1 @@
+/home/dabdi/.codex/policies/rules.md

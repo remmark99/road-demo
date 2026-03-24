@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, LogIn, ArrowLeft, Loader2 } from 'lucide-react'
@@ -12,7 +11,6 @@ export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
-    const router = useRouter()
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -31,8 +29,9 @@ export default function LoginPage() {
             return
         }
 
-        router.push('/')
-        router.refresh()
+        // Force a full navigation so the next request reliably includes
+        // the freshly written auth cookies for the route guard.
+        window.location.replace('/')
     }
 
     return (

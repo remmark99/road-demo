@@ -1,8 +1,31 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Navigation } from "@/components/navigation"
-import { BarChart3, Activity, Grid3X3, Users, CloudRain, Building2, ExternalLink, Thermometer, BusFront, Map, Users2, ShieldAlert, Hammer, ClipboardCheck, Heater } from "lucide-react"
+import {
+  BarChart3,
+  Activity,
+  Grid3X3,
+  Users,
+  CloudRain,
+  Building2,
+  ExternalLink,
+  Thermometer,
+  BusFront,
+  Map,
+  Users2,
+  ShieldAlert,
+  Hammer,
+  ClipboardCheck,
+  Heater,
+  AlertCircle,
+  ShieldCheck,
+  LifeBuoy,
+  Siren,
+  Trash2,
+  Route,
+  DoorClosed,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -16,10 +39,32 @@ import { WarmStopAnalytics } from "@/components/dashboard/warmstop-analytics"
 import { ShoreSecurityAnalytics } from "@/components/dashboard/shore-security-analytics"
 import { ShoreSafetyAnalytics } from "@/components/dashboard/shore-safety-analytics"
 import { ShoreEmergencyAnalytics } from "@/components/dashboard/shore-emergency-analytics"
-import { AlertCircle, ShieldCheck, LifeBuoy, Siren } from "lucide-react"
+import { ParkSecurityAnalytics } from "@/components/dashboard/park-security-analytics"
+import { ParkOperationsAnalytics } from "@/components/dashboard/park-operations-analytics"
+import { TransportRouteAnalytics } from "@/components/dashboard/transport-route-analytics"
+import { TransportServiceAnalytics } from "@/components/dashboard/transport-service-analytics"
 import { Skeleton } from "@/components/ui/skeleton"
 
-type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger" | "security" | "vandalism" | "condition" | "warmstop" | "shore_security" | "shore_safety" | "shore_emergency"
+type DashboardView =
+  | "general"
+  | "cleaning"
+  | "incidents"
+  | "predictions"
+  | "city"
+  | "kpi_bus_stops"
+  | "districts"
+  | "passenger"
+  | "security"
+  | "vandalism"
+  | "condition"
+  | "warmstop"
+  | "shore_security"
+  | "shore_safety"
+  | "shore_emergency"
+  | "park_security"
+  | "park_operations"
+  | "transport_route"
+  | "transport_service"
 
 const DASHBOARDS = [
   {
@@ -111,12 +156,38 @@ const DASHBOARDS = [
     label: "Критические ситуации",
     icon: Siren,
     component: ShoreEmergencyAnalytics,
+  },
+  {
+    id: "park_security" as const,
+    label: "Инциденты и безопасность",
+    icon: ShieldAlert,
+    component: ParkSecurityAnalytics,
+  },
+  {
+    id: "park_operations" as const,
+    label: "Эксплуатация территории",
+    icon: Trash2,
+    component: ParkOperationsAnalytics,
+  },
+  {
+    id: "transport_route" as const,
+    label: "Маршрутная дисциплина",
+    icon: Route,
+    component: TransportRouteAnalytics,
+  },
+  {
+    id: "transport_service" as const,
+    label: "Обслуживание остановок",
+    icon: DoorClosed,
+    component: TransportServiceAnalytics,
   }
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city", "districts"]
 const STOPS_DASHBOARDS = ["kpi_bus_stops", "passenger", "security", "vandalism", "condition", "warmstop"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
+const PARK_DASHBOARDS = ["park_security", "park_operations"]
+const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]
 
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<DashboardView>("general")
@@ -126,21 +197,19 @@ export default function DashboardPage() {
     if (ROADS_DASHBOARDS.includes(d.id)) return hasModule('roads')
     if (STOPS_DASHBOARDS.includes(d.id)) return hasModule('stops')
     if (SHORE_DASHBOARDS.includes(d.id)) return hasModule('shore')
+    if (PARK_DASHBOARDS.includes(d.id)) return hasModule('parks')
+    if (TRANSPORT_DASHBOARDS.includes(d.id)) return hasModule('transport')
     return true
   })
 
   const roadsDashboardsList = filteredDashboards.filter(d => ROADS_DASHBOARDS.includes(d.id))
   const stopsDashboardsList = filteredDashboards.filter(d => STOPS_DASHBOARDS.includes(d.id))
   const shoreDashboardsList = filteredDashboards.filter(d => SHORE_DASHBOARDS.includes(d.id))
-
-  // Ensure activeView is valid for the current modules
-  useEffect(() => {
-    if (!modulesLoading && filteredDashboards.length > 0) {
-      if (!filteredDashboards.find(d => d.id === activeView)) {
-        setActiveView(filteredDashboards[0].id)
-      }
-    }
-  }, [modulesLoading, filteredDashboards, activeView])
+  const parkDashboardsList = filteredDashboards.filter(d => PARK_DASHBOARDS.includes(d.id))
+  const transportDashboardsList = filteredDashboards.filter(d => TRANSPORT_DASHBOARDS.includes(d.id))
+  const resolvedActiveView =
+    filteredDashboards.find((dashboard) => dashboard.id === activeView)?.id ??
+    filteredDashboards[0]?.id
 
   return (
     <main className="h-screen w-full bg-background flex flex-col">
@@ -154,7 +223,7 @@ export default function DashboardPage() {
               Аналитика
             </h1>
             <p className="text-muted-foreground mt-1">
-              Статистика и мониторинг состояния дорог
+              Статистика и мониторинг подключенных модулей
             </p>
           </div>
 
@@ -186,10 +255,10 @@ export default function DashboardPage() {
                             {roadsDashboardsList.map((dashboard) => (
                               <Button
                                 key={dashboard.id}
-                                variant={activeView === dashboard.id ? "default" : "ghost"}
+                                variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
                                 className={cn(
                                   "justify-start gap-3 h-auto py-3 w-full",
-                                  activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                                  resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
                                 )}
                                 onClick={() => setActiveView(dashboard.id)}
                               >
@@ -208,10 +277,10 @@ export default function DashboardPage() {
                             {stopsDashboardsList.map((dashboard) => (
                               <Button
                                 key={dashboard.id}
-                                variant={activeView === dashboard.id ? "default" : "ghost"}
+                                variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
                                 className={cn(
                                   "justify-start gap-3 h-auto py-3 w-full",
-                                  activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                                  resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
                                 )}
                                 onClick={() => setActiveView(dashboard.id)}
                               >
@@ -230,10 +299,54 @@ export default function DashboardPage() {
                             {shoreDashboardsList.map((dashboard) => (
                               <Button
                                 key={dashboard.id}
-                                variant={activeView === dashboard.id ? "default" : "ghost"}
+                                variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
                                 className={cn(
                                   "justify-start gap-3 h-auto py-3 w-full",
-                                  activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                                  resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                                )}
+                                onClick={() => setActiveView(dashboard.id)}
+                              >
+                                <dashboard.icon className="h-4 w-4" />
+                                <span>{dashboard.label}</span>
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {parkDashboardsList.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Безопасный парк</h4>
+                          <div className="flex flex-col gap-1">
+                            {parkDashboardsList.map((dashboard) => (
+                              <Button
+                                key={dashboard.id}
+                                variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
+                                className={cn(
+                                  "justify-start gap-3 h-auto py-3 w-full",
+                                  resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                                )}
+                                onClick={() => setActiveView(dashboard.id)}
+                              >
+                                <dashboard.icon className="h-4 w-4" />
+                                <span>{dashboard.label}</span>
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {transportDashboardsList.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Контроль транспорта</h4>
+                          <div className="flex flex-col gap-1">
+                            {transportDashboardsList.map((dashboard) => (
+                              <Button
+                                key={dashboard.id}
+                                variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
+                                className={cn(
+                                  "justify-start gap-3 h-auto py-3 w-full",
+                                  resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
                                 )}
                                 onClick={() => setActiveView(dashboard.id)}
                               >
@@ -284,12 +397,12 @@ export default function DashboardPage() {
                       </div>
                       <h3 className="text-xl font-medium mb-2">Нет доступных дашбордов</h3>
                       <p className="text-muted-foreground max-w-sm">
-                        Для ваших подключенных модулей пока нет аналитических панелей. В будущих обновлениях здесь появится статистика для модулей Безопасный берег, Парки и Транспорт.
+                        Для ваших подключенных модулей пока нет аналитических панелей. Проверьте состав доступных модулей или обратитесь к администратору.
                       </p>
                     </div>
                   ) : (
                     filteredDashboards.map((dashboard) => {
-                      const isActive = activeView === dashboard.id
+                      const isActive = resolvedActiveView === dashboard.id
                       if ('component' in dashboard && dashboard.component) {
                         const Component = dashboard.component
                         return (

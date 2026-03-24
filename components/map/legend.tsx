@@ -28,19 +28,21 @@ const LEGEND_HIGHWAYS = [
 
 export function Legend() {
   const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
-  const [cameras, setCameras] = useState<Camera[]>([])
-  const [camerasLoading, setCamerasLoading] = useState(true)
+  const [cameras, setCameras] = useState<Camera[] | null>(null)
 
   useEffect(() => {
     if (modulesLoading) return
-    setCamerasLoading(true)
+
     fetchCameras(modules).then(res => {
       setCameras(res)
-      setCamerasLoading(false)
     })
   }, [modules, modulesLoading])
 
-  const onlineCameras = cameras.filter(c => c.status === "online").length
+  const camerasLoading = modulesLoading || cameras === null
+  const cameraList = cameras ?? []
+  const onlineCameraList = cameraList.filter(c => c.status === "online")
+  const onlineCameras = onlineCameraList.length
+  const shouldScrollCameraList = onlineCameras > 5
 
   if (modulesLoading) {
     return (
@@ -125,11 +127,11 @@ export function Legend() {
               {camerasLoading ? (
                 <Skeleton className="h-4 w-6" />
               ) : (
-                `${onlineCameras}/${cameras.length}`
+                `${onlineCameras}/${cameraList.length}`
               )}
             </Badge>
           </div>
-          <ScrollArea className="max-h-32 pr-3">
+          <ScrollArea className={shouldScrollCameraList ? "h-40 pr-3" : "pr-3"}>
             <div className="space-y-1.5 min-h-[1.5rem]">
               {camerasLoading || modulesLoading ? (
                 <div className="space-y-2 py-1">
@@ -137,10 +139,10 @@ export function Legend() {
                   <Skeleton className="h-4 w-[85%]" />
                   <Skeleton className="h-4 w-[60%]" />
                 </div>
-              ) : cameras.filter(c => c.status === "online").length === 0 ? (
+              ) : onlineCameraList.length === 0 ? (
                 <div className="text-xs text-muted-foreground py-1">Нет доступных камер</div>
               ) : (
-                cameras.filter(c => c.status === "online").map(camera => (
+                onlineCameraList.map(camera => (
                   <div key={camera.id} className="flex items-center gap-2 text-sm">
                     <div className="h-2 w-2 rounded-full bg-road-clean flex-shrink-0" />
                     <span className="text-muted-foreground truncate">{camera.name}</span>

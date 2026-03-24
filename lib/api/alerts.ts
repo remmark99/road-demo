@@ -83,8 +83,14 @@ export async function fetchAlertTypes(): Promise<string[]> {
 }
 
 // Категории типов инцидентов
-// Категории типов инцидентов
-export type AlertCategory = 'equipment' | 'cleaning' | 'repair' | 'shore_security' | 'shore_safety'
+export type AlertCategory =
+    | 'equipment'
+    | 'cleaning'
+    | 'repair'
+    | 'shore_security'
+    | 'shore_safety'
+    | 'park_monitoring'
+    | 'transport_monitoring'
 
 export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: string[] }> = {
     equipment: {
@@ -106,6 +112,27 @@ export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: str
     shore_safety: {
         label: 'Безопасность людей',
         types: ['restricted_zone', 'unaccompanied_child', 'water_fall', 'fire_detect']
+    },
+    park_monitoring: {
+        label: 'Безопасный парк',
+        types: [
+            'park_left_item',
+            'park_person_down',
+            'park_fight',
+            'park_fire',
+            'park_trash_overflow',
+            'park_camera_obstruction',
+            'park_light_off',
+            'park_vehicle_detect'
+        ]
+    },
+    transport_monitoring: {
+        label: 'Контроль транспорта',
+        types: [
+            'transport_route_deviation',
+            'transport_wait_overrun',
+            'transport_doors_not_opened'
+        ]
     }
 }
 
@@ -241,6 +268,74 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         icon: 'flame',
         color: 'text-orange-600 bg-orange-600/20 border-orange-600/30 font-bold',
         category: 'shore_safety'
+    },
+    // Безопасный парк
+    park_left_item: {
+        label: 'Оставленный предмет',
+        icon: 'package-search',
+        color: 'text-violet-400 bg-violet-500/20 border-violet-500/30',
+        category: 'park_monitoring'
+    },
+    park_person_down: {
+        label: 'Лежачий человек',
+        icon: 'person-standing',
+        color: 'text-orange-400 bg-orange-500/20 border-orange-500/30',
+        category: 'park_monitoring'
+    },
+    park_fight: {
+        label: 'Драка',
+        icon: 'shield-alert',
+        color: 'text-red-400 bg-red-500/20 border-red-500/30',
+        category: 'park_monitoring'
+    },
+    park_fire: {
+        label: 'Возгорание',
+        icon: 'flame',
+        color: 'text-red-500 bg-red-500/20 border-red-500/30 font-bold',
+        category: 'park_monitoring'
+    },
+    park_trash_overflow: {
+        label: 'Переполненная урна',
+        icon: 'trash-2',
+        color: 'text-amber-400 bg-amber-500/20 border-amber-500/30',
+        category: 'park_monitoring'
+    },
+    park_camera_obstruction: {
+        label: 'Камера перекрыта',
+        icon: 'camera-off',
+        color: 'text-red-400 bg-red-500/20 border-red-500/30',
+        category: 'park_monitoring'
+    },
+    park_light_off: {
+        label: 'Неработающее освещение',
+        icon: 'lightbulb-off',
+        color: 'text-zinc-400 bg-zinc-500/20 border-zinc-500/30',
+        category: 'park_monitoring'
+    },
+    park_vehicle_detect: {
+        label: 'Проезд автомобиля',
+        icon: 'car',
+        color: 'text-sky-400 bg-sky-500/20 border-sky-500/30',
+        category: 'park_monitoring'
+    },
+    // Контроль транспорта
+    transport_route_deviation: {
+        label: 'Отклонение от маршрута',
+        icon: 'route',
+        color: 'text-amber-400 bg-amber-500/20 border-amber-500/30',
+        category: 'transport_monitoring'
+    },
+    transport_wait_overrun: {
+        label: 'Превышение ожидания',
+        icon: 'clock',
+        color: 'text-blue-400 bg-blue-500/20 border-blue-500/30',
+        category: 'transport_monitoring'
+    },
+    transport_doors_not_opened: {
+        label: 'Неоткрытые двери',
+        icon: 'door-closed',
+        color: 'text-rose-400 bg-rose-500/20 border-rose-500/30',
+        category: 'transport_monitoring'
     }
 }
 
@@ -252,5 +347,9 @@ export const MODULE_MAP: Record<string, string> = {
     snow_pile_detection: 'Модуль детекции снежных накоплений',
     camera_check: 'Модуль проверки камеры',
     shore_security: 'Охрана периметра',
-    shore_safety: 'Безопасность людей'
+    shore_safety: 'Безопасность людей',
+    park_monitoring: 'Безопасный парк',
+    safe_park: 'Безопасный парк',
+    transport_monitoring: 'Контроль транспорта',
+    transport_control: 'Контроль транспорта'
 }
