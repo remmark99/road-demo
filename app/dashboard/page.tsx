@@ -13,6 +13,8 @@ import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
 import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
 import { ConditionAnalytics } from "@/components/dashboard/condition-analytics"
 import { WarmStopAnalytics } from "@/components/dashboard/warmstop-analytics"
+import { AlertCircle } from "lucide-react"
+import { Skeleton } from "@/components/ui/skeleton"
 
 type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger" | "security" | "vandalism" | "condition" | "warmstop"
 
@@ -130,87 +132,117 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-6">
-            {/* Dashboard Sidebar */}
-            <div className="w-full md:w-64 flex-shrink-0 flex md:flex-col gap-0 pb-2 md:pb-0 min-h-0">
-              <ScrollArea className="flex-1 min-h-0">
-                <div className="flex md:flex-col gap-2 pr-3">
-                  {filteredDashboards.map((dashboard) => (
-                    <Button
-                      key={dashboard.id}
-                      variant={activeView === dashboard.id ? "default" : "ghost"}
-                      className={cn(
-                        "justify-start gap-3 h-auto py-3",
-                        activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
-                      )}
-                      onClick={() => setActiveView(dashboard.id)}
-                    >
-                      <dashboard.icon className="h-4 w-4" />
-                      <span>{dashboard.label}</span>
-                    </Button>
-                  ))}
+            {modulesLoading ? (
+              <>
+                <div className="w-full md:w-64 flex-shrink-0 flex md:flex-col gap-2 pb-2 md:pb-0 min-h-0 pr-3">
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
+                  <Skeleton className="h-12 w-full" />
                 </div>
-              </ScrollArea>
-
-              {/* Weather Monitoring Reference */}
-              <div className="hidden md:block mt-4 pt-4 border-t border-border flex-shrink-0">
-                <a
-                  href="https://meteor.admsurgut.ru/ru/meteogram"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block p-4 rounded-lg bg-gradient-to-br from-sky-500/10 via-blue-500/10 to-indigo-500/10 border border-sky-500/20 hover:border-sky-500/40 transition-all hover:shadow-lg hover:shadow-sky-500/10 group"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <Thermometer className="h-5 w-5 text-sky-400" />
-                    <span className="text-sm font-semibold text-foreground">Метеомониторинг</span>
-                    <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto group-hover:text-sky-400 transition-colors" />
-                  </div>
-                  <p className="text-xs text-muted-foreground leading-relaxed">
-                    Данные об осадках получены из системы метеомониторинга г. Сургут
-                  </p>
-                  <div className="mt-2 text-xs text-sky-400 font-medium">
-                    meteor.admsurgut.ru →
-                  </div>
-                </a>
-              </div>
-
-              {/* Glossary Button */}
-              <div className="hidden md:block mt-auto pt-4 flex-shrink-0">
-                <GlossaryDialog />
-              </div>
-            </div>
-
-            {/* Dashboard Content */}
-            <div className="flex-1 rounded-lg border overflow-hidden bg-background shadow-sm relative">
-              {filteredDashboards.map((dashboard) => {
-                const isActive = activeView === dashboard.id
-                if ('component' in dashboard && dashboard.component) {
-                  const Component = dashboard.component
-                  return (
-                    <div
-                      key={dashboard.id}
-                      className={cn(
-                        "w-full h-full absolute inset-0 overflow-auto",
-                        isActive ? "z-10" : "z-0 invisible"
-                      )}
-                    >
-                      {isActive && <Component />}
+                <div className="flex-1 rounded-lg border bg-background shadow-sm p-0">
+                  <Skeleton className="w-full h-full rounded-lg" />
+                </div>
+              </>
+            ) : (
+              <>
+                {/* Dashboard Sidebar */}
+                <div className="w-full md:w-64 flex-shrink-0 flex md:flex-col gap-0 pb-2 md:pb-0 min-h-0">
+                  <ScrollArea className="flex-1 min-h-0">
+                    <div className="flex md:flex-col gap-2 pr-3">
+                      {filteredDashboards.map((dashboard) => (
+                        <Button
+                          key={dashboard.id}
+                          variant={activeView === dashboard.id ? "default" : "ghost"}
+                          className={cn(
+                            "justify-start gap-3 h-auto py-3",
+                            activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                          )}
+                          onClick={() => setActiveView(dashboard.id)}
+                        >
+                          <dashboard.icon className="h-4 w-4" />
+                          <span>{dashboard.label}</span>
+                        </Button>
+                      ))}
                     </div>
-                  )
-                }
-                return (
-                  <iframe
-                    key={dashboard.id}
-                    src={'url' in dashboard ? dashboard.url : ''}
-                    className={cn(
-                      "w-full h-full border-0 absolute inset-0",
-                      isActive ? "z-10" : "z-0 invisible"
-                    )}
-                    title={dashboard.label}
-                    loading="lazy"
-                  />
-                )
-              })}
-            </div>
+                  </ScrollArea>
+
+                  {/* Weather Monitoring Reference */}
+                  <div className="hidden md:block mt-4 pt-4 border-t border-border flex-shrink-0">
+                    <a
+                      href="https://meteor.admsurgut.ru/ru/meteogram"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block p-4 rounded-lg bg-gradient-to-br from-sky-500/10 via-blue-500/10 to-indigo-500/10 border border-sky-500/20 hover:border-sky-500/40 transition-all hover:shadow-lg hover:shadow-sky-500/10 group"
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <Thermometer className="h-5 w-5 text-sky-400" />
+                        <span className="text-sm font-semibold text-foreground">Метеомониторинг</span>
+                        <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto group-hover:text-sky-400 transition-colors" />
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Данные об осадках получены из системы метеомониторинга г. Сургут
+                      </p>
+                      <div className="mt-2 text-xs text-sky-400 font-medium">
+                        meteor.admsurgut.ru →
+                      </div>
+                    </a>
+                  </div>
+
+                  {/* Glossary Button */}
+                  <div className="hidden md:block mt-auto pt-4 flex-shrink-0">
+                    <GlossaryDialog />
+                  </div>
+                </div>
+
+                {/* Dashboard Content */}
+                <div className="flex-1 rounded-lg border overflow-hidden bg-background shadow-sm relative flex flex-col">
+                  {filteredDashboards.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-muted/20">
+                      <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mb-4">
+                        <AlertCircle className="h-8 w-8 text-muted-foreground" />
+                      </div>
+                      <h3 className="text-xl font-medium mb-2">Нет доступных дашбордов</h3>
+                      <p className="text-muted-foreground max-w-sm">
+                        Для ваших подключенных модулей пока нет аналитических панелей. В будущих обновлениях здесь появится статистика для модулей Безопасный берег, Парки и Транспорт.
+                      </p>
+                    </div>
+                  ) : (
+                    filteredDashboards.map((dashboard) => {
+                      const isActive = activeView === dashboard.id
+                      if ('component' in dashboard && dashboard.component) {
+                        const Component = dashboard.component
+                        return (
+                          <div
+                            key={dashboard.id}
+                            className={cn(
+                              "w-full h-full absolute inset-0 overflow-auto",
+                              isActive ? "z-10" : "z-0 invisible"
+                            )}
+                          >
+                            {isActive && <Component />}
+                          </div>
+                        )
+                      }
+                      return (
+                        <iframe
+                          key={dashboard.id}
+                          src={'url' in dashboard ? dashboard.url : ''}
+                          className={cn(
+                            "w-full h-full absolute inset-0 border-0 bg-background",
+                            isActive ? "z-10" : "z-0 invisible"
+                          )}
+                          title={dashboard.label}
+                          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                        />
+                      )
+                    })
+                  )}
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>
