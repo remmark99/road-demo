@@ -66,13 +66,13 @@ import {
 // ─── Chart Configs ───────────────────────────────────
 
 const dailyStackedConfig = {
-    abandoned: { label: "Предметы", color: "hsl(38, 92%, 50%)" },
+    abandoned: { label: "Оставленные предметы", color: "hsl(38, 92%, 50%)" },
     fallen: { label: "Лежачий человек", color: "hsl(0, 84%, 60%)" },
     fight: { label: "Драка", color: "hsl(280, 67%, 50%)" },
 } satisfies ChartConfig
 
 const hourlyLineConfig = {
-    abandoned: { label: "Предметы", color: "hsl(38, 92%, 50%)" },
+    abandoned: { label: "Оставленные предметы", color: "hsl(38, 92%, 50%)" },
     fallen: { label: "Лежачий человек", color: "hsl(0, 84%, 60%)" },
     fight: { label: "Драка", color: "hsl(280, 67%, 50%)" },
 } satisfies ChartConfig
@@ -231,7 +231,7 @@ export function SecurityAnalytics() {
                     <CardContent className="pt-4 pb-3 px-4">
                         <div className="flex items-center gap-2 mb-1">
                             <Package className="h-4 w-4 text-amber-500" />
-                            <span className="text-xs text-muted-foreground">Предметы</span>
+                            <span className="text-xs text-muted-foreground">Оставленные предметы</span>
                         </div>
                         <div className="text-2xl font-bold">{kpiTotals.abandoned}</div>
                     </CardContent>
