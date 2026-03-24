@@ -18,9 +18,9 @@ export const fetchParksGeoJSON = async () => {
                     ]
                 },
                 "properties": {
-                    "fill": "#ed4543",
+                    "fill": "#43ed4cff",
                     "fill-opacity": 0.6,
-                    "stroke": "#ed4543",
+                    "stroke": "#43ed4cff",
                     "stroke-width": "5",
                     "stroke-opacity": 0.9
                 }
@@ -37,9 +37,9 @@ export const fetchParksGeoJSON = async () => {
                     ]
                 },
                 "properties": {
-                    "fill": "#ed4543",
+                    "fill": "#43ed4cff",
                     "fill-opacity": 0.6,
-                    "stroke": "#ed4543",
+                    "stroke": "#43ed4cff",
                     "stroke-width": "5",
                     "stroke-opacity": 0.9
                 }
