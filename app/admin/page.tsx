@@ -5,7 +5,7 @@ import { Navigation } from "@/components/navigation"
 import { Shield, Plus, Edit2, Loader2, Save, X, AlertCircle } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
 
-type Module = 'roads' | 'shore' | 'stops'
+type Module = 'roads' | 'shore' | 'stops' | 'parks' | 'transport'
 
 interface Profile {
     id: string
@@ -19,6 +19,8 @@ const AVAILABLE_MODULES: { id: Module; name: string }[] = [
     { id: 'roads', name: 'Состояние дорог' },
     { id: 'shore', name: 'Безопасный берег' },
     { id: 'stops', name: 'Остановки' },
+    { id: 'parks', name: 'Безопасный парк' },
+    { id: 'transport', name: 'Контроль транспорта' },
 ]
 
 export default function AdminPage() {
