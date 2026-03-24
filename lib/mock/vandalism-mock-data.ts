@@ -35,7 +35,7 @@ function generateVandalismEvents(): VandalismEventEntry[] {
 
     for (const stop of BUS_STOPS) {
         const stopSeed = parseInt(stop.id.replace("stop-", "")) * 6000
-        for (let day = 0; day < 7; day++) {
+        for (let day = 0; day < 30; day++) {
             for (let h = 0; h < 24; h++) {
                 for (const type of types) {
                     const seed = stopSeed + day * 100 + h + types.indexOf(type) * 10000
@@ -116,7 +116,8 @@ export interface DailyVandalismSummary {
 
 export function getDailyVandalismSummary(events: VandalismEventEntry[]): DailyVandalismSummary[] {
     const map = new Map<number, { glass: number; structural: number; graffiti: number; postings: number }>()
-    for (let d = 0; d < 7; d++) map.set(d, { glass: 0, structural: 0, graffiti: 0, postings: 0 })
+    const maxDay = events.length > 0 ? Math.max(...events.map(e => e.day)) : 6
+    for (let d = 0; d <= maxDay; d++) map.set(d, { glass: 0, structural: 0, graffiti: 0, postings: 0 })
 
     for (const evt of events) {
         const row = map.get(evt.day)!
@@ -125,7 +126,7 @@ export function getDailyVandalismSummary(events: VandalismEventEntry[]): DailyVa
 
     return Array.from(map.entries()).map(([day, counts]) => ({
         day,
-        dayLabel: DAY_LABELS[day],
+        dayLabel: maxDay > 6 ? `${day + 1}` : DAY_LABELS[day % 7],
         ...counts,
     }))
 }

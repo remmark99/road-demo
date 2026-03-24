@@ -32,7 +32,7 @@ function generateConditionReadings(): ConditionReading[] {
 
     for (const stop of BUS_STOPS) {
         const stopSeed = parseInt(stop.id.replace("stop-", "")) * 7000
-        for (let day = 0; day < 7; day++) {
+        for (let day = 0; day < 30; day++) {
             let trashAccum = 5 + Math.round(seededRandom(stopSeed + day) * 15)
             for (let h = 0; h < 24; h++) {
                 const seed = stopSeed + day * 100 + h

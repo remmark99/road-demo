@@ -48,7 +48,7 @@ function generateHourlyFlow(): HourlyFlowEntry[] {
 
     for (const stop of BUS_STOPS) {
         const stopSeed = parseInt(stop.id.replace("stop-", "")) * 1000
-        for (let day = 0; day < 7; day++) {
+        for (let day = 0; day < 30; day++) {
             for (let h = 0; h < 24; h++) {
                 const seed = stopSeed + day * 100 + h
                 const mult = hourMultiplier[h]
@@ -113,7 +113,7 @@ function generateQueueDensity(): QueueDensityEntry[] {
 
     for (const stop of BUS_STOPS) {
         const stopSeed = parseInt(stop.id.replace("stop-", "")) * 2000
-        for (let day = 0; day < 7; day++) {
+        for (let day = 0; day < 30; day++) {
             for (let h = 0; h < 24; h++) {
                 const seed = stopSeed + day * 100 + h
                 // Higher density during rush hours
@@ -144,7 +144,7 @@ function generateBoarding(): BoardingEntry[] {
     const data: BoardingEntry[] = []
     for (const stop of BUS_STOPS) {
         const stopSeed = parseInt(stop.id.replace("stop-", "")) * 3000
-        for (let day = 0; day < 7; day++) {
+        for (let day = 0; day < 30; day++) {
             for (let h = 0; h < 24; h++) {
                 const seed = stopSeed + day * 100 + h
                 const rush = (h >= 7 && h <= 9) || (h >= 17 && h <= 19) ? 2 : 1
@@ -172,7 +172,7 @@ function generateAlighting(): AlightingEntry[] {
     const data: AlightingEntry[] = []
     for (const stop of BUS_STOPS) {
         const stopSeed = parseInt(stop.id.replace("stop-", "")) * 4000
-        for (let day = 0; day < 7; day++) {
+        for (let day = 0; day < 30; day++) {
             const seed = stopSeed + day * 100
             data.push({
                 stopId: stop.id,
@@ -212,9 +212,9 @@ export function filterByDay<T extends { day: number }>(
         case "yesterday":
             return data.filter((d) => d.day === 1)
         case "week":
-            return data // all 7 days
+            return data.filter((d) => d.day < 7)
         case "month":
-            return data // use all data, pretend it's a month snapshot
+            return data
     }
 }
 

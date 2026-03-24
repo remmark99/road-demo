@@ -34,7 +34,7 @@ function generateDoorStatus(): DoorStatusReading[] {
 
     for (const stop of BUS_STOPS) {
         const stopSeed = parseInt(stop.id.replace("stop-", "")) * 8000
-        for (let day = 0; day < 7; day++) {
+        for (let day = 0; day < 30; day++) {
             for (let h = 0; h < 24; h++) {
                 const seed = stopSeed + day * 100 + h
                 // More openings during passenger hours
@@ -75,7 +75,7 @@ function generateAnimalEvents(): AnimalEvent[] {
 
     for (const stop of BUS_STOPS) {
         const stopSeed = parseInt(stop.id.replace("stop-", "")) * 9000
-        for (let day = 0; day < 7; day++) {
+        for (let day = 0; day < 30; day++) {
             for (let h = 0; h < 24; h++) {
                 const seed = stopSeed + day * 100 + h
                 // Animals more common at night and early morning
@@ -215,7 +215,8 @@ export function getDailyDoorSummary(
     animals: AnimalEvent[]
 ): DailyDoorSummary[] {
     const map = new Map<number, { openings: number; longOpen: number; animals: number }>()
-    for (let d = 0; d < 7; d++) map.set(d, { openings: 0, longOpen: 0, animals: 0 })
+    const maxDay = readings.length > 0 ? Math.max(...readings.map(r => r.day)) : (animals.length > 0 ? Math.max(...animals.map(a => a.day)) : 6)
+    for (let d = 0; d <= maxDay; d++) map.set(d, { openings: 0, longOpen: 0, animals: 0 })
 
     for (const r of readings) {
         const row = map.get(r.day)!
@@ -229,7 +230,7 @@ export function getDailyDoorSummary(
 
     return Array.from(map.entries()).map(([day, counts]) => ({
         day,
-        dayLabel: DAY_LABELS[day],
+        dayLabel: maxDay > 6 ? `${day + 1}` : DAY_LABELS[day % 7],
         ...counts,
     }))
 }
