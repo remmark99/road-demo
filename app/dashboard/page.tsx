@@ -54,7 +54,7 @@ const DASHBOARDS = [
   },
   {
     id: "kpi_bus_stops" as const,
-    label: "Показатели Остановки",
+    label: "Показатели остановок",
     icon: BusFront,
     url: "https://superset.board-coding.ru/superset/dashboard/8?standalone=2&expand_filters=0"
   },
@@ -84,7 +84,7 @@ const DASHBOARDS = [
   },
   {
     id: "condition" as const,
-    label: "Состояние остановки",
+    label: "Состояние остановок",
     icon: ClipboardCheck,
     component: ConditionAnalytics,
   },
