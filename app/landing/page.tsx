@@ -98,7 +98,7 @@ export default function LandingPage() {
                         <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center">
                             <Eye className="h-4 w-4 text-white" />
                         </div>
-                        <span className="font-semibold text-lg tracking-tight">Безопасный город</span>
+                        <span className="font-semibold text-lg tracking-tight">Вектор Города</span>
                     </div>
                     <div className="hidden md:flex items-center gap-8 text-sm text-foreground/60">
                         <a href="#modules" className="hover:text-foreground transition-colors">Модули</a>
@@ -139,11 +139,11 @@ export default function LandingPage() {
 
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-foreground via-foreground to-foreground/60">
-                            Безопасный
+                            Вектор Города
                         </span>
                         <br />
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-500 dark:from-teal-300 dark:via-cyan-300 dark:to-blue-400">
-                            город Сургут
+                            Сургут
                         </span>
                     </h1>
 
@@ -296,7 +296,7 @@ export default function LandingPage() {
                         <div className="w-7 h-7 rounded-md bg-gradient-to-br from-teal-400 to-cyan-500 flex items-center justify-center">
                             <Eye className="h-3.5 w-3.5 text-white" />
                         </div>
-                        <span className="text-sm text-foreground/50">Безопасный город · Сургут</span>
+                        <span className="text-sm text-foreground/50">Вектор Города · Сургут</span>
                     </div>
                     <div className="text-sm text-foreground/40">
                         © 2025 – {new Date().getFullYear()}

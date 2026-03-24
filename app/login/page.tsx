@@ -64,7 +64,7 @@ export default function LoginPage() {
                             Вход в систему
                         </h1>
                         <p className="text-sm text-white/40">
-                            Безопасный город · Сургут
+                            Вектор Города · Сургут
                         </p>
                     </div>
 
@@ -144,7 +144,7 @@ export default function LoginPage() {
 
                 {/* Footer */}
                 <div className="text-center mt-6 text-sm text-white/30">
-                    © 2025 – {new Date().getFullYear()} · Безопасный город
+                    © 2025 – {new Date().getFullYear()} · Вектор Города
                 </div>
             </div>
         </div>

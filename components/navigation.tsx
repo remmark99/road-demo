@@ -107,7 +107,7 @@ export function Navigation() {
                 <SheetHeader className="px-4 pt-4 pb-2 border-b">
                   <SheetTitle className="flex items-center gap-2 text-primary">
                     <Camera className="h-5 w-5" />
-                    СургутДороги
+                    Вектор Города
                   </SheetTitle>
                 </SheetHeader>
 
@@ -226,7 +226,7 @@ export function Navigation() {
           <Link href="/" className="flex items-center gap-2">
             <Camera className="h-6 w-6 text-primary" />
             <span className="font-semibold text-lg hover:opacity-80 transition-opacity">
-              СургутДороги
+              Вектор Города
             </span>
           </Link>
 
