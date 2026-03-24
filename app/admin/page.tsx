@@ -16,7 +16,7 @@ interface Profile {
 }
 
 const AVAILABLE_MODULES: { id: Module; name: string }[] = [
-    { id: 'roads', name: 'Безопасные дороги' },
+    { id: 'roads', name: 'Состояние дорог' },
     { id: 'shore', name: 'Безопасный берег' },
     { id: 'stops', name: 'Остановки' },
 ]

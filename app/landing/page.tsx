@@ -9,7 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle"
 const MODULES = [
     {
         id: "roads",
-        title: "Безопасные дороги",
+        title: "Состояние дорог",
         subtitle: "Мониторинг состояния дорожного покрытия",
         description: "Автоматический анализ видеопотока с камер для выявления ям, луж, снежных завалов и работы снегоуборочной техники.",
         image: "/landing/roads-v2.png",
