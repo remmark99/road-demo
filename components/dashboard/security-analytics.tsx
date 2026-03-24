@@ -157,11 +157,6 @@ export function SecurityAnalytics() {
         return Math.round(incidentsFiltered.reduce((s, i) => s + i.responseMinutes, 0) / incidentsFiltered.length)
     }, [incidentsFiltered])
 
-    const resolvedPct = useMemo(() => {
-        if (incidentsFiltered.length === 0) return 0
-        return Math.round((incidentsFiltered.filter((i) => i.resolved).length / incidentsFiltered.length) * 100)
-    }, [incidentsFiltered])
-
     const selectedLabel =
         selectedStops.length === BUS_STOPS.length
             ? "Все остановки"
@@ -226,7 +221,7 @@ export function SecurityAnalytics() {
             </div>
 
             {/* ─── KPI Cards ───────────────────────────── */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
                     <CardContent className="pt-4 pb-3 px-4">
                         <div className="flex items-center gap-2 mb-1">
@@ -261,15 +256,6 @@ export function SecurityAnalytics() {
                             <span className="text-xs text-muted-foreground">Ср. реакция</span>
                         </div>
                         <div className="text-2xl font-bold">{avgResponse} <span className="text-sm font-normal">мин</span></div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border-emerald-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            <span className="text-xs text-muted-foreground">Разрешено</span>
-                        </div>
-                        <div className="text-2xl font-bold">{resolvedPct}%</div>
                     </CardContent>
                 </Card>
             </div>
