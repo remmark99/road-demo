@@ -1,15 +1,10 @@
-import { createOpenAI } from "@ai-sdk/openai"
-
-const openai = createOpenAI({
-    baseURL: "https://routerai.ru/api/v1",
-    apiKey: process.env.OPENAI_API_KEY2,
-})
+import { openai } from "@ai-sdk/openai"
 import { convertToModelMessages, streamText, UIMessage, stepCountIs, jsonSchema } from "ai"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 
 const MCP_SERVER_URL = process.env.MCP_SERVER_URL || "http://89.124.74.27:8000/sse"
-console.log(process.env.OPENAI_API_KEY2)
+
 // Таймауты (в мс)
 const MCP_CONNECT_TIMEOUT = 20000    // 20 сек на подключение
 const MCP_PING_TIMEOUT = 7000        // 7 сек на проверку соединения
@@ -56,7 +51,7 @@ async function connectMCP(): Promise<Client | null> {
 
     try {
         console.log("🔌 Connecting to MCP server:", MCP_SERVER_URL);
-
+        
         const transport = new SSEClientTransport(new URL(MCP_SERVER_URL), {
             requestInit: {
                 headers: {
@@ -64,7 +59,7 @@ async function connectMCP(): Promise<Client | null> {
                 },
             }
         })
-
+        
         const newClient = new Client(
             { name: "surgut-roads-client", version: "1.0.0" },
             { capabilities: {} }
@@ -76,7 +71,7 @@ async function connectMCP(): Promise<Client | null> {
             MCP_CONNECT_TIMEOUT,
             "MCP connection timeout"
         );
-
+        
         mcpClient = newClient;
         mcpConnected = true;
         console.log("✅ Connected to MCP server");
@@ -159,7 +154,7 @@ export async function POST(req: Request) {
     }
 
     const result = streamText({
-        model: openai("openai/gpt-5.1-chat"),
+        model: openai("gpt-5"),
         system: `Ты - AI-ассистент для анализа состояния дорог и трафика в городе Сургут. 
 Ты помогаешь администрации города в принятии управленческих решений. 
 Отвечай на литературном и понятном русском языке. Ты общаешься с уважаемыми людьми.
