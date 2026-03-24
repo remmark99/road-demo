@@ -129,6 +129,10 @@ export default function DashboardPage() {
     return true
   })
 
+  const roadsDashboardsList = filteredDashboards.filter(d => ROADS_DASHBOARDS.includes(d.id))
+  const stopsDashboardsList = filteredDashboards.filter(d => STOPS_DASHBOARDS.includes(d.id))
+  const shoreDashboardsList = filteredDashboards.filter(d => SHORE_DASHBOARDS.includes(d.id))
+
   // Ensure activeView is valid for the current modules
   useEffect(() => {
     if (!modulesLoading && filteredDashboards.length > 0) {
@@ -174,21 +178,72 @@ export default function DashboardPage() {
                 {/* Dashboard Sidebar */}
                 <div className="w-full md:w-64 flex-shrink-0 flex md:flex-col gap-0 pb-2 md:pb-0 min-h-0">
                   <ScrollArea className="flex-1 min-h-0">
-                    <div className="flex md:flex-col gap-2 pr-3">
-                      {filteredDashboards.map((dashboard) => (
-                        <Button
-                          key={dashboard.id}
-                          variant={activeView === dashboard.id ? "default" : "ghost"}
-                          className={cn(
-                            "justify-start gap-3 h-auto py-3",
-                            activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
-                          )}
-                          onClick={() => setActiveView(dashboard.id)}
-                        >
-                          <dashboard.icon className="h-4 w-4" />
-                          <span>{dashboard.label}</span>
-                        </Button>
-                      ))}
+                    <div className="flex md:flex-col gap-6 pr-3 pb-4">
+                      {roadsDashboardsList.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Состояние дорог</h4>
+                          <div className="flex flex-col gap-1">
+                            {roadsDashboardsList.map((dashboard) => (
+                              <Button
+                                key={dashboard.id}
+                                variant={activeView === dashboard.id ? "default" : "ghost"}
+                                className={cn(
+                                  "justify-start gap-3 h-auto py-3 w-full",
+                                  activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                                )}
+                                onClick={() => setActiveView(dashboard.id)}
+                              >
+                                <dashboard.icon className="h-4 w-4" />
+                                <span>{dashboard.label}</span>
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {stopsDashboardsList.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Остановки</h4>
+                          <div className="flex flex-col gap-1">
+                            {stopsDashboardsList.map((dashboard) => (
+                              <Button
+                                key={dashboard.id}
+                                variant={activeView === dashboard.id ? "default" : "ghost"}
+                                className={cn(
+                                  "justify-start gap-3 h-auto py-3 w-full",
+                                  activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                                )}
+                                onClick={() => setActiveView(dashboard.id)}
+                              >
+                                <dashboard.icon className="h-4 w-4" />
+                                <span>{dashboard.label}</span>
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {shoreDashboardsList.length > 0 && (
+                        <div className="space-y-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Безопасный берег</h4>
+                          <div className="flex flex-col gap-1">
+                            {shoreDashboardsList.map((dashboard) => (
+                              <Button
+                                key={dashboard.id}
+                                variant={activeView === dashboard.id ? "default" : "ghost"}
+                                className={cn(
+                                  "justify-start gap-3 h-auto py-3 w-full",
+                                  activeView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                                )}
+                                onClick={() => setActiveView(dashboard.id)}
+                              >
+                                <dashboard.icon className="h-4 w-4" />
+                                <span>{dashboard.label}</span>
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </ScrollArea>
 
