@@ -1,16 +1,22 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { format } from "date-fns"
+import { ru } from "date-fns/locale"
+import { type DateRange } from "react-day-picker"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Send, Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid } from "lucide-react"
+import { Send, Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
 
 const STORAGE_KEY = "road-demo-user-settings"
+const STANDARD_REPORT_MIN_DATE = new Date(2025, 0, 1)
 
 interface UserSettings {
   email: string
@@ -43,6 +49,7 @@ const MODULE_INFO: Record<string, { name: string; description: string }> = {
 
 export default function SettingsPage() {
   const { allModules, modules: activeModules, toggleModule } = useModuleAccess()
+  const today = new Date()
   const [email, setEmail] = useState("")
   const [telegram, setTelegram] = useState("")
   const [savedEmail, setSavedEmail] = useState("")
@@ -54,6 +61,10 @@ export default function SettingsPage() {
   const [selectedTime, setSelectedTime] = useState("09:00")
   const [selectedDay, setSelectedDay] = useState("")
   const [selectedPeriod, setSelectedPeriod] = useState("daily")
+  const [standardReportRange, setStandardReportRange] = useState<DateRange | undefined>({
+    from: STANDARD_REPORT_MIN_DATE,
+    to: today,
+  })
   const [telegramEnabled, setTelegramEnabled] = useState(false)
   const [emailEnabled, setEmailEnabled] = useState(true)
   const [isReportSaving, setIsReportSaving] = useState(false)
@@ -174,8 +185,8 @@ export default function SettingsPage() {
                   <div
                     key={moduleId}
                     className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${isActive
-                        ? 'bg-primary/5 border-primary/20'
-                        : 'bg-muted/30 border-border opacity-60'
+                      ? 'bg-primary/5 border-primary/20'
+                      : 'bg-muted/30 border-border opacity-60'
                       }`}
                   >
                     <div className="flex items-center gap-3">
@@ -215,11 +226,11 @@ export default function SettingsPage() {
           <CardTitle className="text-xl font-bold">Настройки сводного отчёта</CardTitle>
         </CardHeader>
         <CardContent className="space-y-8">
-          {/* Промпт для отчёта - теперь вверху */}
+          {/* Запрос для отчёта */}
           <div>
             <div className="mb-4">
-              <h2 className="text-xl font-bold">Промпт для отчёта</h2>
-              <p className="text-muted-foreground">Опишите, что должен содержать сводный отчёт. ИИ сформирует его на основе вашего описания.</p>
+              <h2 className="text-xl font-bold">Запрос для отчёта</h2>
+              <p className="text-muted-foreground">Опишите, что должен содержать сводный отчёт. ИИ сформирует его на основе вашего запроса.</p>
             </div>
             <textarea
               className="w-full min-h-[150px] p-4 rounded-lg border border-input bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
@@ -227,6 +238,58 @@ export default function SettingsPage() {
               value={reportPrompt}
               onChange={(e) => setReportPrompt(e.target.value)}
             />
+          </div>
+
+          <div className="border-t pt-8">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold">Стандартный отчёт</h3>
+              <p className="text-sm text-muted-foreground">
+                Выберите период и сформируйте стандартный отчёт по готовому шаблону.
+              </p>
+            </div>
+            <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/20 p-4 md:flex-row md:items-end md:justify-between">
+              <div className="space-y-2">
+                <Label htmlFor="standard-report-period">Период</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="standard-report-period"
+                      type="button"
+                      variant="outline"
+                      className="w-full justify-start text-left font-normal md:w-[280px]"
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {standardReportRange?.from ? (
+                        standardReportRange.to ? (
+                          <>
+                            {format(standardReportRange.from, "dd.MM.yyyy", { locale: ru })} -{" "}
+                            {format(standardReportRange.to, "dd.MM.yyyy", { locale: ru })}
+                          </>
+                        ) : (
+                          format(standardReportRange.from, "dd.MM.yyyy", { locale: ru })
+                        )
+                      ) : (
+                        <span>Выберите период</span>
+                      )}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="range"
+                      defaultMonth={standardReportRange?.from ?? STANDARD_REPORT_MIN_DATE}
+                      selected={standardReportRange}
+                      onSelect={setStandardReportRange}
+                      numberOfMonths={2}
+                      locale={ru}
+                      disabled={(date) =>
+                        date < STANDARD_REPORT_MIN_DATE || date > today
+                      }
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <Button type="button">Сформировать отчёт</Button>
+            </div>
           </div>
 
           {/* Каналы для уведомлений */}
@@ -261,7 +324,7 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold mb-3">Периодичность</h3>
+            <h3 className="text-lg font-semibold mb-3">Периодичность рассылки</h3>
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex flex-wrap gap-2">
                 <Button

@@ -11,7 +11,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Bot, Send, User, Loader2, RefreshCw, Database, Search, BarChart, FileText, Download, Maximize2, Plus, MessageSquare, Trash2, History, FileDown, ChevronDown, ChevronUp } from "lucide-react"
+import { Bot, Send, User, Loader2, RefreshCw, Database, Search, BarChart, FileText, Download, Maximize2, Plus, MessageSquare, Trash2, FileDown, ChevronDown, ChevronUp } from "lucide-react"
 import { chatStorage, type ChatSession } from "@/lib/chat-storage"
 import { cn } from "@/lib/utils"
 
@@ -650,12 +650,6 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                             <Bot className="h-5 w-5 text-primary" />
                             AI-ассистент
                         </CardTitle>
-                        {currentSessionId && (
-                            <div className="text-xs text-muted-foreground flex items-center gap-1 bg-muted px-2 py-1 rounded">
-                                <History className="h-3 w-3" />
-                                ID: {currentSessionId}
-                            </div>
-                        )}
                     </div>
                     <div className="flex items-center gap-2">
                         {messages.length > 0 && (

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
 import { fetchAlerts, ALERT_TYPE_CONFIG, ALERT_CATEGORIES, MODULE_MAP } from "@/lib/api/alerts"
@@ -18,6 +18,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { useModuleAccess } from "@/components/providers/module-context"
 import {
   Select,
   SelectContent,
@@ -65,11 +66,18 @@ import {
   Baby,
   LifeBuoy,
   Flame,
+  BusFront,
+  DoorClosed,
+  PackageSearch,
+  PersonStanding,
+  Route,
+  Trash2,
+  type LucideIcon,
 } from "lucide-react"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
-const alertIcons: Record<string, any> = {
+const alertIcons: Record<string, LucideIcon> = {
   snowplow: Truck,
   camera_obstruction: CameraOff,
   snow_slush: Snowflake,
@@ -91,10 +99,131 @@ const alertIcons: Record<string, any> = {
   unaccompanied_child: Baby,
   water_fall: LifeBuoy,
   fire_detect: Flame,
+  park_left_item: PackageSearch,
+  park_person_down: PersonStanding,
+  park_fight: ShieldAlert,
+  park_fire: Flame,
+  park_trash_overflow: Trash2,
+  park_camera_obstruction: CameraOff,
+  park_light_off: LightbulbOff,
+  park_vehicle_detect: Car,
+  transport_route_deviation: Route,
+  transport_wait_overrun: Clock,
+  transport_doors_not_opened: DoorClosed,
 }
 
-import { Suspense } from "react"
-import { useModuleAccess } from "@/components/providers/module-context"
+type DemoAlertSeed = {
+  id: string
+  module: "parks" | "transport"
+  moduleName: string
+  alertType: string
+  message: string
+  severity: number
+  minutesAgo: number
+}
+
+const DEMO_ALERT_SEEDS: DemoAlertSeed[] = [
+  {
+    id: "park-left-item",
+    module: "parks",
+    moduleName: "park_monitoring",
+    alertType: "park_left_item",
+    message: "У детской площадки обнаружен оставленный предмет",
+    severity: 0.72,
+    minutesAgo: 11,
+  },
+  {
+    id: "park-person-down",
+    module: "parks",
+    moduleName: "park_monitoring",
+    alertType: "park_person_down",
+    message: "На центральной аллее зафиксирован лежачий человек",
+    severity: 0.91,
+    minutesAgo: 17,
+  },
+  {
+    id: "park-fight",
+    module: "parks",
+    moduleName: "park_monitoring",
+    alertType: "park_fight",
+    message: "У входной группы зафиксирована драка",
+    severity: 0.94,
+    minutesAgo: 24,
+  },
+  {
+    id: "park-fire",
+    module: "parks",
+    moduleName: "park_monitoring",
+    alertType: "park_fire",
+    message: "В зоне отдыха обнаружено возгорание",
+    severity: 0.98,
+    minutesAgo: 31,
+  },
+  {
+    id: "park-trash-overflow",
+    module: "parks",
+    moduleName: "park_monitoring",
+    alertType: "park_trash_overflow",
+    message: "Переполненная урна у павильона №2 требует уборки",
+    severity: 0.53,
+    minutesAgo: 42,
+  },
+  {
+    id: "park-camera-obstruction",
+    module: "parks",
+    moduleName: "park_monitoring",
+    alertType: "park_camera_obstruction",
+    message: "Обзор камеры перекрыт посторонним объектом",
+    severity: 0.81,
+    minutesAgo: 49,
+  },
+  {
+    id: "park-light-off",
+    module: "parks",
+    moduleName: "park_monitoring",
+    alertType: "park_light_off",
+    message: "На северной аллее не работает освещение",
+    severity: 0.63,
+    minutesAgo: 56,
+  },
+  {
+    id: "park-vehicle-detect",
+    module: "parks",
+    moduleName: "park_monitoring",
+    alertType: "park_vehicle_detect",
+    message: "На пешеходной дорожке зафиксирован проезд автомобиля",
+    severity: 0.76,
+    minutesAgo: 68,
+  },
+  {
+    id: "transport-route-deviation",
+    module: "transport",
+    moduleName: "transport_monitoring",
+    alertType: "transport_route_deviation",
+    message: "Автобус маршрута №24 отклонился от согласованной трассы",
+    severity: 0.79,
+    minutesAgo: 14,
+  },
+  {
+    id: "transport-wait-overrun",
+    module: "transport",
+    moduleName: "transport_monitoring",
+    alertType: "transport_wait_overrun",
+    message: "Автобус маршрута №12 превысил допустимое ожидание на остановке",
+    severity: 0.58,
+    minutesAgo: 27,
+  },
+  {
+    id: "transport-doors-not-opened",
+    module: "transport",
+    moduleName: "transport_monitoring",
+    alertType: "transport_doors_not_opened",
+    message: "Автобус маршрута №8 не открыл двери на остановочном пункте",
+    severity: 0.58,
+    minutesAgo: 36,
+  },
+]
+const DEMO_ALERT_BASE_TIME = Date.now()
 
 // ── Shared helpers ──────────────────────────────────────────────────────
 function formatTime(dateStr: string) {
@@ -119,6 +248,15 @@ function formatTimeAgo(dateStr: string) {
   if (hours < 24) return `${hours} ч. назад`
   if (days < 7) return `${days} дн. назад`
   return formatTime(dateStr)
+}
+
+function getModuleLabel(moduleName: string | null | undefined) {
+  if (!moduleName) return "—"
+  return MODULE_MAP[moduleName] ?? moduleName
+}
+
+function isDemoAlert(alert: Alert) {
+  return alert.id.startsWith("demo-")
 }
 
 // ── Pagination component ────────────────────────────────────────────────
@@ -215,6 +353,10 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const searchParams = useSearchParams()
   const initialCamera = searchParams.get("camera")
   const { hasModule } = useModuleAccess()
+  const hasRoads = hasModule("roads")
+  const hasShore = hasModule("shore")
+  const hasParks = hasModule("parks")
+  const hasTransport = hasModule("transport")
 
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [selectedCameras, setSelectedCameras] = useState<number[]>(
@@ -229,46 +371,46 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
 
   const allowedTypes = useMemo(() => {
     const types: string[] = []
-    if (hasModule('roads')) {
+    if (hasRoads) {
       types.push(
         ...ALERT_CATEGORIES.equipment.types,
         ...ALERT_CATEGORIES.cleaning.types,
         ...ALERT_CATEGORIES.repair.types
       )
     }
-    if (hasModule('shore')) {
+    if (hasShore) {
       types.push(
         ...ALERT_CATEGORIES.shore_security.types,
         ...ALERT_CATEGORIES.shore_safety.types
       )
     }
+    if (hasParks) {
+      types.push(...ALERT_CATEGORIES.park_monitoring.types)
+    }
+    if (hasTransport) {
+      types.push(...ALERT_CATEGORIES.transport_monitoring.types)
+    }
     return types
-  }, [hasModule])
+  }, [hasParks, hasRoads, hasShore, hasTransport])
 
   useEffect(() => {
-    if (allowedTypes.length === 0) {
-      setAlerts([])
-      setTotal(0)
-      setLoading(false)
-      return
-    }
+    const request =
+      allowedTypes.length === 0
+        ? Promise.resolve({ alerts: [], total: 0 })
+        : fetchAlerts({
+            types: selectedTypes.length > 0 ? selectedTypes : allowedTypes,
+            cameraIndexes:
+              selectedCameras.length > 0 ? selectedCameras : undefined,
+            limit: pageSize,
+            offset: page * pageSize,
+          })
 
-    setLoading(true)
-    fetchAlerts({
-      types: selectedTypes.length > 0 ? selectedTypes : allowedTypes,
-      cameraIndexes: selectedCameras.length > 0 ? selectedCameras : undefined,
-      limit: pageSize,
-      offset: page * pageSize,
-    }).then((result) => {
+    request.then((result) => {
       setAlerts(result.alerts)
       setTotal(result.total)
       setLoading(false)
     })
   }, [selectedTypes, selectedCameras, page, pageSize, allowedTypes])
-
-  useEffect(() => {
-    setPage(0)
-  }, [selectedTypes, selectedCameras, pageSize])
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -279,24 +421,81 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   }
 
   const toggleType = (type: string) => {
+    setLoading(true)
+    setPage(0)
     setSelectedTypes((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
     )
   }
 
   const toggleCamera = (index: number) => {
+    setLoading(true)
+    setPage(0)
     setSelectedCameras((prev) =>
       prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
     )
   }
 
   const clearFilters = () => {
+    setLoading(true)
+    setPage(0)
     setSelectedTypes([])
     setSelectedCameras([])
   }
 
   const hasFilters = selectedTypes.length > 0 || selectedCameras.length > 0
   const onlineCameras = cameras.filter((c) => c.status === "online")
+  const demoAlerts = useMemo<Alert[]>(() => {
+    const resolveCameraIndex = (module: DemoAlertSeed["module"]) => {
+      return (
+        onlineCameras.find((camera) => camera.module === module)?.cameraIndex ??
+        cameras.find((camera) => camera.module === module)?.cameraIndex ??
+        onlineCameras[0]?.cameraIndex ??
+        cameras[0]?.cameraIndex ??
+        null
+      )
+    }
+
+    return DEMO_ALERT_SEEDS
+      .filter((seed) => (seed.module === "parks" ? hasParks : hasTransport))
+      .map((seed) => {
+        const timestamp = new Date(
+          DEMO_ALERT_BASE_TIME - seed.minutesAgo * 60 * 1000
+        ).toISOString()
+
+        return {
+          id: `demo-${seed.id}`,
+          module_name: seed.moduleName,
+          alert_type: seed.alertType,
+          severity: seed.severity,
+          message: seed.message,
+          metadata: { demo: true },
+          timestamp,
+          video_timestamp: 0,
+          source_video: `demo://${seed.id}`,
+          clip_path: null,
+          created_at: timestamp,
+          camera_index: resolveCameraIndex(seed.module),
+        }
+      })
+  }, [cameras, hasParks, hasTransport, onlineCameras])
+  const filteredDemoAlerts = useMemo(
+    () =>
+      demoAlerts.filter((alert) => {
+        const typeMatches =
+          selectedTypes.length === 0 || selectedTypes.includes(alert.alert_type)
+        const cameraMatches =
+          selectedCameras.length === 0 ||
+          (alert.camera_index !== null &&
+            selectedCameras.includes(alert.camera_index))
+        return typeMatches && cameraMatches
+      }),
+    [demoAlerts, selectedCameras, selectedTypes]
+  )
+  const visibleAlerts = useMemo(
+    () => [...alerts, ...(page === 0 ? filteredDemoAlerts : [])],
+    [alerts, filteredDemoAlerts, page]
+  )
 
   return (
     <>
@@ -320,7 +519,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
           </div>
         </div>
         <CardContent className="space-y-4 pt-0">
-          {hasModule('roads') && (
+          {hasRoads && (
             <>
               {/* Спецтехника */}
               <div>
@@ -414,7 +613,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
             </>
           )}
 
-          {hasModule('shore') && (
+          {hasShore && (
             <>
               {/* Охрана периметра */}
               <div>
@@ -457,6 +656,72 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                     const config = ALERT_TYPE_CONFIG[type]
                     if (!config) return null
                     const Icon = alertIcons[type] || Snowflake
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+            </>
+          )}
+
+          {hasParks && (
+            <>
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <ShieldAlert className="h-4 w-4 text-emerald-400" />
+                  Безопасный парк
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.park_monitoring.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || ShieldAlert
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+            </>
+          )}
+
+          {hasTransport && (
+            <>
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <BusFront className="h-4 w-4 text-sky-400" />
+                  Контроль транспорта
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.transport_monitoring.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || BusFront
                     const isSelected = selectedTypes.includes(type)
                     return (
                       <Button
@@ -528,7 +793,11 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
         total={total}
         loading={loading}
         pageSize={pageSize}
-        setPageSize={setPageSize}
+        setPageSize={(value) => {
+          setLoading(true)
+          setPage(0)
+          setPageSize(value)
+        }}
       />
 
       {/* Alert rows */}
@@ -536,7 +805,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      ) : alerts.length === 0 ? (
+      ) : visibleAlerts.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Bell className="h-12 w-12 text-muted-foreground mb-4" />
@@ -560,20 +829,24 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
             <div className="col-span-1"></div>
           </div>
 
-          {alerts.map((alert) => {
+          {visibleAlerts.map((alert) => {
             const config = ALERT_TYPE_CONFIG[alert.alert_type] || {
               label: alert.alert_type,
               color: "text-muted-foreground bg-muted",
             }
             const Icon = alertIcons[alert.alert_type] || Snowflake
+            const demoAlert = isDemoAlert(alert)
             const isExpanded = expandedId === alert.id
 
             return (
               <Card
                 key={alert.id}
-                className={`transition-colors cursor-pointer hover:border-primary/50 ${isExpanded ? "border-primary" : ""
-                  }`}
-                onClick={() => setExpandedId(isExpanded ? null : alert.id)}
+                className={`transition-colors hover:border-primary/50 ${
+                  demoAlert ? "cursor-default" : "cursor-pointer"
+                } ${isExpanded ? "border-primary" : ""}`}
+                onClick={() =>
+                  demoAlert ? undefined : setExpandedId(isExpanded ? null : alert.id)
+                }
               >
                 <CardContent className="p-4">
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
@@ -584,14 +857,16 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                       </span>
                     </div>
 
-                    <div className="md:col-span-2">
-                      <Badge className={`gap-1.5 ${config.color}`}>
+                    <div className="md:col-span-2 min-w-0">
+                      <Badge
+                        className={`max-w-full gap-1.5 overflow-hidden ${config.color}`}
+                      >
                         <Icon className="h-3 w-3" />
-                        {config.label}
+                        <span className="truncate">{config.label}</span>
                       </Badge>
                     </div>
 
-                    <div className="md:col-span-2 text-sm">
+                    <div className="md:col-span-2 min-w-0 text-sm truncate">
                       <span className="text-muted-foreground md:hidden">
                         Камера:{" "}
                       </span>
@@ -613,14 +888,19 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                     </div>
 
                     <div className="md:col-span-1 flex justify-end">
-                      <ChevronRight
-                        className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-90" : ""
+                      {demoAlert ? (
+                        <div className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight
+                          className={`h-4 w-4 text-muted-foreground transition-transform ${
+                            isExpanded ? "rotate-90" : ""
                           }`}
-                      />
+                        />
+                      )}
                     </div>
                   </div>
 
-                  {isExpanded && (
+                  {isExpanded && !demoAlert && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="aspect-video bg-muted rounded-lg overflow-hidden">
@@ -674,7 +954,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                           <div>
                             <div className="text-muted-foreground">Модуль</div>
                             <div className="font-medium">
-                              {MODULE_MAP[alert.module_name]}
+                              {getModuleLabel(alert.module_name)}
                             </div>
                           </div>
                           <div>
@@ -717,7 +997,14 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
         </div>
       )}
 
-      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        onPageChange={(nextPage) => {
+          setLoading(true)
+          setPage(nextPage)
+        }}
+      />
     </>
   )
 }
@@ -736,7 +1023,6 @@ function ControllerAlertsTab() {
   const [pageSize, setPageSize] = useState(25)
 
   useEffect(() => {
-    setLoading(true)
     fetchControllerAlerts({
       elements: selectedElements.length > 0 ? selectedElements : undefined,
       alarms: selectedAlarms.length > 0 ? selectedAlarms : undefined,
@@ -750,19 +1036,19 @@ function ControllerAlertsTab() {
     })
   }, [selectedElements, selectedAlarms, selectedCategories, page, pageSize])
 
-  useEffect(() => {
-    setPage(0)
-  }, [selectedElements, selectedAlarms, selectedCategories, pageSize])
-
   const totalPages = Math.ceil(total / pageSize)
 
   const toggleElement = (el: number) => {
+    setLoading(true)
+    setPage(0)
     setSelectedElements((prev) =>
       prev.includes(el) ? prev.filter((e) => e !== el) : [...prev, el]
     )
   }
 
   const toggleAlarm = (alarm: string) => {
+    setLoading(true)
+    setPage(0)
     setSelectedAlarms((prev) =>
       prev.includes(alarm)
         ? prev.filter((a) => a !== alarm)
@@ -771,12 +1057,16 @@ function ControllerAlertsTab() {
   }
 
   const toggleCategory = (cat: string) => {
+    setLoading(true)
+    setPage(0)
     setSelectedCategories((prev) =>
       prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
     )
   }
 
   const clearFilters = () => {
+    setLoading(true)
+    setPage(0)
     setSelectedElements([])
     setSelectedAlarms([])
     setSelectedCategories([])
@@ -899,7 +1189,11 @@ function ControllerAlertsTab() {
         total={total}
         loading={loading}
         pageSize={pageSize}
-        setPageSize={setPageSize}
+        setPageSize={(value) => {
+          setLoading(true)
+          setPage(0)
+          setPageSize(value)
+        }}
       />
 
       {/* Controller alert rows */}
@@ -1022,7 +1316,14 @@ function ControllerAlertsTab() {
         </div>
       )}
 
-      <Pagination page={page} totalPages={totalPages} onPageChange={setPage} />
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        onPageChange={(nextPage) => {
+          setLoading(true)
+          setPage(nextPage)
+        }}
+      />
     </>
   )
 }
