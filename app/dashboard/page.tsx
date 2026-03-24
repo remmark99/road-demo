@@ -114,8 +114,8 @@ const DASHBOARDS = [
   }
 ] as const
 
-const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city", "districts"]
-const STOPS_DASHBOARDS = ["kpi_bus_stops", "passenger", "security", "vandalism", "condition", "warmstop"]
+const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city"]
+const STOPS_DASHBOARDS = ["kpi_bus_stops", "districts", "passenger", "security", "vandalism", "condition", "warmstop"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 
 export default function DashboardPage() {
