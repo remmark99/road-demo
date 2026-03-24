@@ -54,7 +54,7 @@ const DASHBOARDS = [
   },
   {
     id: "kpi_bus_stops" as const,
-    label: "KPI Остановки",
+    label: "Показатели Остановки",
     icon: BusFront,
     url: "https://superset.board-coding.ru/superset/dashboard/8?standalone=2&expand_filters=0"
   },
