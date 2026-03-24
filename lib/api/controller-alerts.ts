@@ -28,7 +28,7 @@ export interface ControllerAlertsResult {
 }
 
 const SENSOR_LABELS: Record<number, string> = {
-    1: 'Датчик DIO1 (цифровой вход)',
+    1: 'Датчик DIO1 (напряжение)',
     13: 'Датчик 1 (влажность и температура)',
     14: 'Датчик 2 (температура)',
 }
@@ -55,7 +55,7 @@ export const ALARM_CONFIG: Record<string, { label: string; color: string }> = {
 export const CATEGORY_LABELS: Record<string, string> = {
     temperature: 'Температура',
     humidity: 'Влажность',
-    'digital input': 'Цифровой вход',
+    'digital input': 'Напряжение',
 }
 
 export async function fetchControllerAlerts(

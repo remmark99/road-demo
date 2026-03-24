@@ -42,6 +42,7 @@ import {
   Filter,
   Camera as CameraIcon,
   Droplets,
+  Zap,
   TriangleAlert,
   Mountain,
   MountainSnow,
@@ -852,8 +853,10 @@ function ControllerAlertsTab() {
                   >
                     {key === "temperature" ? (
                       <Thermometer className="h-3.5 w-3.5" />
-                    ) : (
+                    ) : key === "humidity" ? (
                       <Droplets className="h-3.5 w-3.5" />
+                    ) : (
+                      <Zap className="h-3.5 w-3.5" />
                     )}
                     {label}
                   </Button>
@@ -935,7 +938,7 @@ function ControllerAlertsTab() {
               : null
             const categoryLabel =
               CATEGORY_LABELS[alert.category] || alert.category
-            const unit = alert.category === "temperature" ? "°C" : "%"
+            const unit = alert.category === "temperature" ? "°C" : alert.category === "humidity" ? "%" : "В"
 
             return (
               <Card
@@ -968,8 +971,10 @@ function ControllerAlertsTab() {
                       >
                         {alert.category === "temperature" ? (
                           <Thermometer className="h-3 w-3" />
-                        ) : (
+                        ) : alert.category === "humidity" ? (
                           <Droplets className="h-3 w-3" />
+                        ) : (
+                          <Zap className="h-3 w-3" />
                         )}
                         {categoryLabel}
                       </Badge>
