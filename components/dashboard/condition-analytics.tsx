@@ -70,8 +70,8 @@ const foggingHourlyConfig = {
 } satisfies ChartConfig
 
 const compareConfig = {
-    avgTrash: { label: "Ср. мусор", color: "hsl(25, 95%, 53%)" },
-    avgFogging: { label: "Ср. запотевание", color: "hsl(200, 80%, 55%)" },
+    avgTrash: { label: "Средний мусор", color: "hsl(25, 95%, 53%)" },
+    avgFogging: { label: "Среднее запотевание", color: "hsl(200, 80%, 55%)" },
 } satisfies ChartConfig
 
 // ─── Main Component ──────────────────────────────────
@@ -221,7 +221,7 @@ export function ConditionAnalytics() {
                     <CardContent className="pt-4 pb-3 px-4">
                         <div className="flex items-center gap-2 mb-1">
                             <Trash2 className="h-4 w-4 text-orange-500" />
-                            <span className="text-xs text-muted-foreground">Ср. мусор</span>
+                            <span className="text-xs text-muted-foreground">Средний мусор</span>
                         </div>
                         <div className="text-2xl font-bold">{kpi.avgTrash}%</div>
                     </CardContent>
@@ -230,7 +230,7 @@ export function ConditionAnalytics() {
                     <CardContent className="pt-4 pb-3 px-4">
                         <div className="flex items-center gap-2 mb-1">
                             <Snowflake className="h-4 w-4 text-sky-500" />
-                            <span className="text-xs text-muted-foreground">Ср. запотевание</span>
+                            <span className="text-xs text-muted-foreground">Среднее запотевание</span>
                         </div>
                         <div className="text-2xl font-bold">{kpi.avgFog}%</div>
                     </CardContent>

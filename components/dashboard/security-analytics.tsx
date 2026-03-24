@@ -253,7 +253,7 @@ export function SecurityAnalytics() {
                     <CardContent className="pt-4 pb-3 px-4">
                         <div className="flex items-center gap-2 mb-1">
                             <Clock className="h-4 w-4 text-blue-500" />
-                            <span className="text-xs text-muted-foreground">Ср. реакция</span>
+                            <span className="text-xs text-muted-foreground">Средняя реакция</span>
                         </div>
                         <div className="text-2xl font-bold">{avgResponse} <span className="text-sm font-normal">мин</span></div>
                     </CardContent>
