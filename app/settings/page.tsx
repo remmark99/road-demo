@@ -6,7 +6,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Send, Mail, Settings, Check, Loader2, HelpCircle } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Send, Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid } from "lucide-react"
+import { useModuleAccess } from "@/components/providers/module-context"
 
 const STORAGE_KEY = "road-demo-user-settings"
 
@@ -31,8 +33,16 @@ const dayOptions = [
   { value: "saturday", label: "Суббота" },
   { value: "sunday", label: "Воскресенье" },
 ]
+const MODULE_INFO: Record<string, { name: string; description: string }> = {
+  roads: { name: 'Состояние дорог', description: 'Мониторинг дорожного покрытия и уборки' },
+  shore: { name: 'Безопасный берег', description: 'Контроль прибрежных зон' },
+  stops: { name: 'Остановки', description: 'Аналитика автобусных остановок' },
+  parks: { name: 'Безопасный парк', description: 'Мониторинг парковых территорий' },
+  transport: { name: 'Контроль транспорта', description: 'Отслеживание транспортных средств' },
+}
 
 export default function SettingsPage() {
+  const { allModules, modules: activeModules, toggleModule } = useModuleAccess()
   const [email, setEmail] = useState("")
   const [telegram, setTelegram] = useState("")
   const [savedEmail, setSavedEmail] = useState("")
@@ -88,7 +98,7 @@ export default function SettingsPage() {
 
     try {
       // Save to localStorage
-      const settings: UserSettings = { 
+      const settings: UserSettings = {
         email: email.trim(),
         telegram: telegram.trim()
       }
@@ -142,6 +152,62 @@ export default function SettingsPage() {
           Управление уведомлениями и персональными настройками
         </p>
       </div>
+      {/* Module Visibility Toggles */}
+      {allModules.length > 1 && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <LayoutGrid className="h-5 w-5 text-primary" />
+              Отображение модулей
+            </CardTitle>
+            <CardDescription>
+              Выберите, какие модули отображать в интерфейсе. Отключённые модули будут скрыты из карты, аналитики и уведомлений.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {allModules.map((moduleId) => {
+                const info = MODULE_INFO[moduleId] || { name: moduleId, description: '' }
+                const isActive = activeModules.includes(moduleId)
+                const canDisable = activeModules.length > 1 || !isActive
+                return (
+                  <div
+                    key={moduleId}
+                    className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${isActive
+                        ? 'bg-primary/5 border-primary/20'
+                        : 'bg-muted/30 border-border opacity-60'
+                      }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      {isActive ? (
+                        <Eye className="h-4 w-4 text-primary" />
+                      ) : (
+                        <EyeOff className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <div>
+                        <div className="text-sm font-medium">{info.name}</div>
+                        {info.description && (
+                          <div className="text-xs text-muted-foreground">{info.description}</div>
+                        )}
+                      </div>
+                    </div>
+                    <Switch
+                      checked={isActive}
+                      disabled={!canDisable}
+                      onCheckedChange={() => toggleModule(moduleId)}
+                    />
+                  </div>
+                )
+              })}
+            </div>
+            {allModules.length > 1 && activeModules.length === 1 && (
+              <p className="text-xs text-muted-foreground mt-3">
+                Необходимо оставить хотя бы один активный модуль.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Report Settings Card */}
       <Card className="mb-6">
@@ -168,8 +234,8 @@ export default function SettingsPage() {
             <h3 className="text-lg font-semibold mb-3">Каналы для уведомлений</h3>
             <div className="flex items-center gap-4">
               <div className="flex flex-col items-center gap-1">
-                <Button 
-                  variant={telegramEnabled ? "secondary" : "outline"} 
+                <Button
+                  variant={telegramEnabled ? "secondary" : "outline"}
                   size="icon"
                   className={telegramEnabled ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200" : ""}
                   onClick={() => setTelegramEnabled(!telegramEnabled)}
@@ -180,8 +246,8 @@ export default function SettingsPage() {
                 <span className="text-xs text-muted-foreground">Telegram</span>
               </div>
               <div className="flex flex-col items-center gap-1">
-                <Button 
-                  variant={emailEnabled ? "secondary" : "outline"} 
+                <Button
+                  variant={emailEnabled ? "secondary" : "outline"}
                   size="icon"
                   className={emailEnabled ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200" : ""}
                   onClick={() => setEmailEnabled(!emailEnabled)}
@@ -198,28 +264,28 @@ export default function SettingsPage() {
             <h3 className="text-lg font-semibold mb-3">Периодичность</h3>
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex flex-wrap gap-2">
-                <Button 
+                <Button
                   variant={selectedPeriod === "daily" ? "secondary" : "outline"}
                   className={selectedPeriod === "daily" ? "bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
                   onClick={() => setSelectedPeriod("daily")}
                 >
                   Раз в день
                 </Button>
-                <Button 
+                <Button
                   variant={selectedPeriod === "weekly" ? "secondary" : "outline"}
                   className={selectedPeriod === "weekly" ? "bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
                   onClick={() => setSelectedPeriod("weekly")}
                 >
                   Раз в неделю
                 </Button>
-                <Button 
+                <Button
                   variant={selectedPeriod === "monthly" ? "secondary" : "outline"}
                   className={selectedPeriod === "monthly" ? "bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
                   onClick={() => setSelectedPeriod("monthly")}
                 >
                   Раз в месяц
                 </Button>
-                <Button 
+                <Button
                   variant={selectedPeriod === "yearly" ? "secondary" : "outline"}
                   className={selectedPeriod === "yearly" ? "bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
                   onClick={() => setSelectedPeriod("yearly")}
@@ -228,7 +294,7 @@ export default function SettingsPage() {
                 </Button>
               </div>
             </div>
-            
+
             <div className="flex flex-wrap items-center gap-4 mt-4">
               {selectedPeriod !== "daily" && (
                 <div className="flex items-center gap-2">
@@ -267,7 +333,7 @@ export default function SettingsPage() {
 
           {/* Кнопка сохранить для отчёта */}
           <div className="flex justify-end">
-            <Button 
+            <Button
               onClick={handleReportSave}
               disabled={isReportSaving}
               className="gap-2"
@@ -369,10 +435,10 @@ export default function SettingsPage() {
 
       {/* Help Button - Fixed at bottom */}
       <div className="fixed bottom-6 left-6">
-        <Button 
-          variant="outline" 
+        <Button
+          variant="outline"
           className="gap-2 bg-background shadow-lg hover:bg-muted"
-          onClick={() => {/* Заглушка */}}
+          onClick={() => {/* Заглушка */ }}
         >
           <HelpCircle className="h-5 w-5" />
           Нужна помощь?

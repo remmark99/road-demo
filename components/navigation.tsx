@@ -17,6 +17,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import { Switch } from "@/components/ui/switch"
+import {
   Sheet,
   SheetContent,
   SheetHeader,
@@ -37,6 +43,9 @@ import {
   User,
   Menu,
   Shield,
+  LayoutGrid,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { SensorPopover } from "@/components/sensors/sensor-readings"
 import { createClient } from "@/lib/supabase/client"
@@ -50,13 +59,21 @@ const navItems = [
   { href: "/ai-assistant", label: "AI-ассистент", icon: Bot },
 ]
 
+const MODULE_LABELS: Record<string, string> = {
+  roads: 'Состояние дорог',
+  shore: 'Безопасный берег',
+  stops: 'Остановки',
+  parks: 'Безопасный парк',
+  transport: 'Контроль транспорта',
+}
+
 export function Navigation() {
   const pathname = usePathname()
   const router = useRouter()
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { role } = useModuleAccess()
+  const { role, allModules, modules: activeModules, toggleModule } = useModuleAccess()
 
   useEffect(() => {
     const supabase = createClient()
@@ -259,6 +276,59 @@ export function Navigation() {
 
           {/* Theme toggle (visible on all screens) */}
           <ThemeToggle />
+
+          {/* Module visibility toggle (visible when >1 module) */}
+          {allModules.length > 1 && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative"
+                  title="Модули"
+                >
+                  <LayoutGrid className="h-4 w-4" />
+                  {activeModules.length < allModules.length && (
+                    <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-amber-500 border-2 border-background" />
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-64 p-3">
+                <div className="text-sm font-semibold mb-2 flex items-center gap-2">
+                  <LayoutGrid className="h-4 w-4 text-primary" />
+                  Отображение модулей
+                </div>
+                <div className="space-y-2">
+                  {allModules.map((moduleId) => {
+                    const isActive = activeModules.includes(moduleId)
+                    const canDisable = activeModules.length > 1 || !isActive
+                    return (
+                      <div
+                        key={moduleId}
+                        className={`flex items-center justify-between py-1.5 px-2 rounded-md transition-colors ${isActive ? '' : 'opacity-50'
+                          }`}
+                      >
+                        <div className="flex items-center gap-2 text-sm">
+                          {isActive ? (
+                            <Eye className="h-3.5 w-3.5 text-primary" />
+                          ) : (
+                            <EyeOff className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                          {MODULE_LABELS[moduleId] || moduleId}
+                        </div>
+                        <Switch
+                          checked={isActive}
+                          disabled={!canDisable}
+                          onCheckedChange={() => toggleModule(moduleId)}
+                          className="scale-90"
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </PopoverContent>
+            </Popover>
+          )}
 
           {/* Desktop Right Side (≥1024px) */}
           <div className="hidden lg:flex items-center gap-2 xl:gap-3">
