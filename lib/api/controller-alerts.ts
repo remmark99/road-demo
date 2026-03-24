@@ -56,6 +56,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
     temperature: 'Температура',
     humidity: 'Влажность',
     'digital input': 'Напряжение',
+    'glass_break': 'Датчик разбития стекла',
 }
 
 export async function fetchControllerAlerts(

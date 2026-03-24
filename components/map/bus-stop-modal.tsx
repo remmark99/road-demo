@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Wifi, WifiOff, Thermometer, Droplets, Zap, AlertTriangle, ShieldAlert, BusFront } from "lucide-react"
+import { Wifi, WifiOff, Thermometer, Droplets, Zap, AlertTriangle, ShieldAlert, BusFront, Hammer } from "lucide-react"
 import { fetchLatestMeasurements, subscribeMeasurements, type SensorReading } from "@/lib/api/measurements"
 
 export interface BusStopSensorData {
@@ -128,7 +128,7 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                             )}
 
                             {/* Sensor Grid */}
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 <div className="p-3 bg-secondary rounded-lg flex flex-col items-center justify-center text-center">
                                     <Thermometer className="h-5 w-5 text-sky-500 mb-2" />
                                     <div className="text-xs text-muted-foreground">Т. снаружи</div>
@@ -155,6 +155,13 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                                     <div className="text-xs text-muted-foreground">Обогрев</div>
                                     <div className="font-medium mt-0.5">
                                         {isOnline && sd?.heater_working !== undefined ? (sd.heater_working ? 'Исправен' : 'Отказ') : '—'}
+                                    </div>
+                                </div>
+                                <div className="p-3 bg-secondary rounded-lg flex flex-col items-center justify-center text-center">
+                                    <Hammer className={`h-5 w-5 mb-2 ${isOnline ? (sd?.glass_broken ? 'text-red-500' : 'text-emerald-500') : 'text-muted-foreground'}`} />
+                                    <div className="text-xs text-muted-foreground">Датчик разбития</div>
+                                    <div className="font-medium mt-0.5">
+                                        {isOnline ? (sd?.glass_broken ? 'Тревога' : 'Норма') : '—'}
                                     </div>
                                 </div>
                             </div>
