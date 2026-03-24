@@ -13,10 +13,13 @@ import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
 import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
 import { ConditionAnalytics } from "@/components/dashboard/condition-analytics"
 import { WarmStopAnalytics } from "@/components/dashboard/warmstop-analytics"
-import { AlertCircle } from "lucide-react"
+import { ShoreSecurityAnalytics } from "@/components/dashboard/shore-security-analytics"
+import { ShoreSafetyAnalytics } from "@/components/dashboard/shore-safety-analytics"
+import { ShoreEmergencyAnalytics } from "@/components/dashboard/shore-emergency-analytics"
+import { AlertCircle, ShieldCheck, LifeBuoy, Siren } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 
-type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger" | "security" | "vandalism" | "condition" | "warmstop"
+type DashboardView = "general" | "cleaning" | "incidents" | "predictions" | "city" | "kpi_bus_stops" | "districts" | "passenger" | "security" | "vandalism" | "condition" | "warmstop" | "shore_security" | "shore_safety" | "shore_emergency"
 
 const DASHBOARDS = [
   {
@@ -90,11 +93,30 @@ const DASHBOARDS = [
     label: "Теплая остановка",
     icon: Heater,
     component: WarmStopAnalytics,
+  },
+  {
+    id: "shore_security" as const,
+    label: "Охрана периметра",
+    icon: ShieldCheck,
+    component: ShoreSecurityAnalytics,
+  },
+  {
+    id: "shore_safety" as const,
+    label: "Безопасность посетителей",
+    icon: LifeBuoy,
+    component: ShoreSafetyAnalytics,
+  },
+  {
+    id: "shore_emergency" as const,
+    label: "Критические ситуации",
+    icon: Siren,
+    component: ShoreEmergencyAnalytics,
   }
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city", "districts"]
 const STOPS_DASHBOARDS = ["kpi_bus_stops", "passenger", "security", "vandalism", "condition", "warmstop"]
+const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<DashboardView>("general")
@@ -103,6 +125,7 @@ export default function DashboardPage() {
   const filteredDashboards = DASHBOARDS.filter(d => {
     if (ROADS_DASHBOARDS.includes(d.id)) return hasModule('roads')
     if (STOPS_DASHBOARDS.includes(d.id)) return hasModule('stops')
+    if (SHORE_DASHBOARDS.includes(d.id)) return hasModule('shore')
     return true
   })
 

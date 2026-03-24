@@ -251,6 +251,6 @@ export const MODULE_MAP: Record<string, string> = {
     pothole_detection: 'Модуль детекции ям',
     snow_pile_detection: 'Модуль детекции снежных накоплений',
     camera_check: 'Модуль проверки камеры',
-    shore_security: 'Охрана периметра (ББ)',
-    shore_safety: 'Безопасность людей (ББ)'
+    shore_security: 'Охрана периметра',
+    shore_safety: 'Безопасность людей'
 }
