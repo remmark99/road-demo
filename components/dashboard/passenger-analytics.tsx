@@ -243,55 +243,9 @@ export function PassengerAnalytics() {
                 </Popover>
             </TimeRangeFilter>
 
+
             {/* ─── Charts grid ─────────────────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* 1. Passenger Flow — Area Chart */}
-                <Card className="col-span-1 lg:col-span-2">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                            <Users2 className="h-5 w-5 text-emerald-500" />
-                            Пассажиропоток
-                        </CardTitle>
-                        <CardDescription>
-                            Приход и уход пассажиров по часам
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <ChartContainer config={flowChartConfig} className="h-[300px] w-full">
-                            <AreaChart data={flowFiltered} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} interval={2} />
-                                <YAxis tickLine={false} axisLine={false} tickMargin={8} />
-                                <ChartTooltip content={<ChartTooltipContent />} />
-                                <ChartLegend content={<ChartLegendContent />} />
-                                <defs>
-                                    <linearGradient id="fillArrivals" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="var(--color-arrivals)" stopOpacity={0.8} />
-                                        <stop offset="95%" stopColor="var(--color-arrivals)" stopOpacity={0.1} />
-                                    </linearGradient>
-                                    <linearGradient id="fillDepartures" x1="0" y1="0" x2="0" y2="1">
-                                        <stop offset="5%" stopColor="var(--color-departures)" stopOpacity={0.8} />
-                                        <stop offset="95%" stopColor="var(--color-departures)" stopOpacity={0.1} />
-                                    </linearGradient>
-                                </defs>
-                                <Area
-                                    type="monotone"
-                                    dataKey="arrivals"
-                                    stroke="var(--color-arrivals)"
-                                    fill="url(#fillArrivals)"
-                                    strokeWidth={2}
-                                />
-                                <Area
-                                    type="monotone"
-                                    dataKey="departures"
-                                    stroke="var(--color-departures)"
-                                    fill="url(#fillDepartures)"
-                                    strokeWidth={2}
-                                />
-                            </AreaChart>
-                        </ChartContainer>
-                    </CardContent>
-                </Card>
 
                 {/* 2. Current Occupancy — Radial Bar */}
                 <Card>
