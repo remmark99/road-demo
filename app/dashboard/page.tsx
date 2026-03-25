@@ -129,7 +129,7 @@ const DASHBOARDS = [
   },
   {
     id: "condition" as const,
-    label: "Состояние остановки",
+    label: "Состояние остановок",
     icon: ClipboardCheck,
     component: ConditionAnalytics,
   },
