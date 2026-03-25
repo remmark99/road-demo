@@ -17,21 +17,28 @@ export default function LoginPage() {
         setError(null)
         setLoading(true)
 
-        const supabase = createClient()
-        const { error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-        })
+        try {
+            const supabase = createClient()
+            const { error } = await Promise.race([
+                supabase.auth.signInWithPassword({ email, password }),
+                new Promise<never>((_, reject) =>
+                    setTimeout(() => reject(new Error('timeout')), 10000)
+                ),
+            ])
 
-        if (error) {
-            setError(error.message)
+            if (error) {
+                setError(error.message)
+                setLoading(false)
+                return
+            }
+
+            // Force a full navigation so the next request reliably includes
+            // the freshly written auth cookies for the route guard.
+            window.location.replace('/')
+        } catch {
+            setError('Сервер не отвечает. Попробуйте ещё раз.')
             setLoading(false)
-            return
         }
-
-        // Force a full navigation so the next request reliably includes
-        // the freshly written auth cookies for the route guard.
-        window.location.replace('/')
     }
 
     return (
