@@ -24,11 +24,17 @@ function seededRandom(seed: number): number {
     return x - Math.floor(x)
 }
 
+function localDateStr(d: Date): string {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+}
+
 function getDateString(daysAgo: number) {
     const date = new Date()
-    date.setHours(0, 0, 0, 0)
     date.setDate(date.getDate() - daysAgo)
-    return date.toISOString().split("T")[0]
+    return localDateStr(date)
 }
 
 export type ParkSecurityType = "left_item" | "person_down" | "fight" | "fire"
@@ -253,31 +259,25 @@ export function filterByTimeRange<T extends { date: string }>(
     range: TimeRange
 ): T[] {
     const now = new Date()
-    const limitDate = new Date()
+    const todayStr = localDateStr(now)
+
+    const yesterday = new Date(now)
+    yesterday.setDate(now.getDate() - 1)
+    const yesterdayStr = localDateStr(yesterday)
 
     switch (range) {
         case "today":
-            limitDate.setDate(now.getDate() - 1)
-            break
+            return data.filter(item => item.date === todayStr)
         case "yesterday":
-            limitDate.setDate(now.getDate() - 2)
-            {
-                const yesterdayEnd = new Date(now)
-                yesterdayEnd.setDate(now.getDate() - 1)
-                return data.filter((item) => {
-                    const date = new Date(item.date)
-                    return date > limitDate && date <= yesterdayEnd
-                })
-            }
-        case "week":
-            limitDate.setDate(now.getDate() - 7)
-            break
+            return data.filter(item => item.date === yesterdayStr)
+        case "week": {
+            const weekAgo = new Date(now)
+            weekAgo.setDate(now.getDate() - 7)
+            return data.filter(item => new Date(item.date) >= weekAgo)
+        }
         case "month":
-            limitDate.setDate(now.getDate() - 30)
-            break
+            return data
     }
-
-    return data.filter((item) => new Date(item.date) >= limitDate)
 }
 
 export function filterByLocations<T extends { locationId: ParkId }>(

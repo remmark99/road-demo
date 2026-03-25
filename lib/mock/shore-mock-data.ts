@@ -13,6 +13,13 @@ export const TIME_RANGES = [
     { label: "За месяц", value: "month" },
 ]
 
+function localDateStr(d: Date): string {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+}
+
 // Mock data generator helper
 const generateMockData = (days: number) => {
     const securityData = []
@@ -24,7 +31,7 @@ const generateMockData = (days: number) => {
     for (let i = 0; i < days; i++) {
         const d = new Date(now)
         d.setDate(d.getDate() - i)
-        const dayStr = d.toISOString().split("T")[0]
+        const dayStr = localDateStr(d)
 
         for (const loc of SHORE_LOCATIONS) {
             securityData.push({
@@ -69,27 +76,25 @@ export const { securityData, safetyData, emergencyData } = generateMockData(30)
 // Helper to filter by time range
 export function filterByTimeRange<T extends { date: string }>(data: T[], range: TimeRange): T[] {
     const now = new Date()
-    let limitDate = new Date()
+    const todayStr = localDateStr(now)
+
+    const yesterday = new Date(now)
+    yesterday.setDate(now.getDate() - 1)
+    const yesterdayStr = localDateStr(yesterday)
 
     switch (range) {
         case "today":
-            limitDate.setDate(now.getDate() - 1)
-            break
+            return data.filter(d => d.date === todayStr)
         case "yesterday":
-            limitDate.setDate(now.getDate() - 2)
-            return data.filter(d => {
-                const date = new Date(d.date)
-                return date > limitDate && date <= new Date(now.setDate(now.getDate() - 1))
-            })
-        case "week":
-            limitDate.setDate(now.getDate() - 7)
-            break
+            return data.filter(d => d.date === yesterdayStr)
+        case "week": {
+            const weekAgo = new Date(now)
+            weekAgo.setDate(now.getDate() - 7)
+            return data.filter(d => new Date(d.date) >= weekAgo)
+        }
         case "month":
-            limitDate.setDate(now.getDate() - 30)
-            break
+            return data
     }
-
-    return data.filter(d => new Date(d.date) >= limitDate)
 }
 
 export function filterByLocations<T extends { locationId: string }>(data: T[], locations: string[]): T[] {
