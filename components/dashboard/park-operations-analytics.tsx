@@ -39,7 +39,6 @@ import {
     CameraOff,
     LightbulbOff,
     Car,
-    CheckCircle2,
     AlertTriangle,
 } from "lucide-react"
 import {
@@ -186,14 +185,6 @@ export function ParkOperationsAnalytics() {
         )
     }, [filteredDaily])
 
-    const resolvedPct = useMemo(() => {
-        if (filteredIncidents.length === 0) return 0
-        return Math.round(
-            (filteredIncidents.filter((incident) => incident.resolved).length /
-                filteredIncidents.length) *
-                100
-        )
-    }, [filteredIncidents])
 
     const selectedLabel =
         selectedParks.length === PARKS.length
@@ -260,7 +251,7 @@ export function ParkOperationsAnalytics() {
                 </Popover>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
                     <CardContent className="pt-4 pb-3 px-4">
                         <div className="flex items-center gap-2 mb-1">
@@ -295,15 +286,6 @@ export function ParkOperationsAnalytics() {
                             <span className="text-xs text-muted-foreground">Проезд авто</span>
                         </div>
                         <div className="text-2xl font-bold">{totals.vehicle_detect}</div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border-emerald-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            <span className="text-xs text-muted-foreground">Закрыто</span>
-                        </div>
-                        <div className="text-2xl font-bold">{resolvedPct}%</div>
                     </CardContent>
                 </Card>
             </div>

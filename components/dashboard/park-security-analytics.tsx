@@ -40,7 +40,6 @@ import {
     Swords,
     Flame,
     Clock,
-    CheckCircle2,
     AlertTriangle,
 } from "lucide-react"
 import {
@@ -197,14 +196,6 @@ export function ParkSecurityAnalytics() {
         return Math.round(total / filteredIncidents.length)
     }, [filteredIncidents])
 
-    const resolvedPct = useMemo(() => {
-        if (filteredIncidents.length === 0) return 0
-        return Math.round(
-            (filteredIncidents.filter((incident) => incident.resolved).length /
-                filteredIncidents.length) *
-                100
-        )
-    }, [filteredIncidents])
 
     const selectedLabel =
         selectedParks.length === PARKS.length
@@ -271,7 +262,7 @@ export function ParkSecurityAnalytics() {
                 </Popover>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <Card className="bg-gradient-to-br from-violet-500/10 to-violet-600/5 border-violet-500/20">
                     <CardContent className="pt-4 pb-3 px-4">
                         <div className="flex items-center gap-2 mb-1">
@@ -315,15 +306,6 @@ export function ParkSecurityAnalytics() {
                             <span className="text-xs text-muted-foreground">Ср. реакция</span>
                         </div>
                         <div className="text-2xl font-bold">{avgResponse} мин</div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border-emerald-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            <span className="text-xs text-muted-foreground">Решено</span>
-                        </div>
-                        <div className="text-2xl font-bold">{resolvedPct}%</div>
                     </CardContent>
                 </Card>
             </div>
