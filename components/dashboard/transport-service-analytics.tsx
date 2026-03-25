@@ -24,6 +24,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { TimeRangeFilter, filterByTimeRangeResult, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -34,7 +35,6 @@ import {
     BusFront,
     Clock,
     DoorClosed,
-    Filter,
     MapPin,
     Route,
 } from "lucide-react"
@@ -46,7 +46,6 @@ import {
     transportIncidentsData,
     filterByRoutes,
     filterByTimeRange,
-    type TimeRange,
     type TransportIncidentType,
     type TransportRouteId,
 } from "@/lib/mock/transport-mock-data"
@@ -74,7 +73,7 @@ const TYPE_COLORS: Record<TransportIncidentType, string> = {
 }
 
 export function TransportServiceAnalytics() {
-    const [timeRange, setTimeRange] = useState<TimeRange>("week")
+    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "week" })
     const [selectedRoutes, setSelectedRoutes] = useState<TransportRouteId[]>(
         TRANSPORT_ROUTES.map((route) => route.id)
     )
@@ -96,14 +95,14 @@ export function TransportServiceAnalytics() {
     }
 
     const filteredDaily = useMemo(() => {
-        return filterByTimeRange(
+        return filterByTimeRangeResult(
             filterByRoutes(transportDailyData, selectedRoutes),
             timeRange
         ).sort((a, b) => a.date.localeCompare(b.date))
     }, [selectedRoutes, timeRange])
 
     const filteredIncidents = useMemo(() => {
-        return filterByTimeRange(
+        return filterByTimeRangeResult(
             filterByRoutes(transportIncidentsData, selectedRoutes),
             timeRange
         ).filter((incident) => incident.type !== "route_deviation")
@@ -203,21 +202,7 @@ export function TransportServiceAnalytics() {
 
     return (
         <div className="h-full overflow-auto p-6 space-y-6">
-            <div className="flex flex-wrap items-center gap-3">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <Select value={timeRange} onValueChange={(value) => setTimeRange(value as TimeRange)}>
-                    <SelectTrigger className="w-[160px]">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {TIME_RANGES.map((range) => (
-                            <SelectItem key={range.value} value={range.value}>
-                                {range.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
+            <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button variant="outline" className="gap-2">
@@ -254,7 +239,7 @@ export function TransportServiceAnalytics() {
                         </div>
                     </PopoverContent>
                 </Popover>
-            </div>
+            </TimeRangeFilter>
 
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <Card className="bg-gradient-to-br from-rose-500/10 to-rose-600/5 border-rose-500/20">

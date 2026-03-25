@@ -28,12 +28,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { TimeRangeFilter, filterByTimeRangeResult, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import {
-    Filter,
     MapPin,
     Baby,
     ShieldAlert,
@@ -43,9 +43,7 @@ import {
     SHORE_LOCATIONS,
     TIME_RANGES,
     safetyData,
-    filterByTimeRange,
     filterByLocations,
-    type TimeRange,
 } from "@/lib/mock/shore-mock-data"
 
 const dailyBarConfig = {
@@ -56,7 +54,7 @@ const dailyBarConfig = {
 const PIE_COLORS = ["hsl(0, 84%, 60%)", "hsl(280, 67%, 50%)"]
 
 export function ShoreSafetyAnalytics() {
-    const [timeRange, setTimeRange] = useState<TimeRange>("week")
+    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "week" })
     const [selectedLocs, setSelectedLocs] = useState<string[]>(
         SHORE_LOCATIONS.map((s) => s.id)
     )
@@ -75,7 +73,7 @@ export function ShoreSafetyAnalytics() {
 
     const filteredData = useMemo(() => {
         const byLoc = filterByLocations(safetyData, selectedLocs)
-        const temporal = filterByTimeRange(byLoc, timeRange)
+        const temporal = filterByTimeRangeResult(byLoc, timeRange)
         return temporal.sort((a, b) => a.date.localeCompare(b.date))
     }, [timeRange, selectedLocs])
 
@@ -130,21 +128,7 @@ export function ShoreSafetyAnalytics() {
 
     return (
         <div className="h-full overflow-auto p-6 space-y-6">
-            <div className="flex flex-wrap items-center gap-3">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <Select value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
-                    <SelectTrigger className="w-[160px]">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {TIME_RANGES.map((tr) => (
-                            <SelectItem key={tr.value} value={tr.value}>
-                                {tr.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
+            <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button variant="outline" className="gap-2">
@@ -181,7 +165,7 @@ export function ShoreSafetyAnalytics() {
                         </div>
                     </PopoverContent>
                 </Popover>
-            </div>
+            </TimeRangeFilter>
 
             {/* KPI Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -26,6 +26,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { TimeRangeFilter, filterByTimeRangeResult, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -33,7 +34,6 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-    Filter,
     MapPin,
     PackageSearch,
     PersonStanding,
@@ -52,7 +52,6 @@ import {
     filterByTimeRange,
     type ParkId,
     type ParkSecurityType,
-    type TimeRange,
 } from "@/lib/mock/park-mock-data"
 
 const dailyConfig = {
@@ -96,7 +95,7 @@ const SEVERITY_LABELS = {
 } as const
 
 export function ParkSecurityAnalytics() {
-    const [timeRange, setTimeRange] = useState<TimeRange>("week")
+    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "week" })
     const [selectedParks, setSelectedParks] = useState<ParkId[]>(
         PARKS.map((park) => park.id)
     )
@@ -116,14 +115,14 @@ export function ParkSecurityAnalytics() {
     }
 
     const filteredDaily = useMemo(() => {
-        return filterByTimeRange(
+        return filterByTimeRangeResult(
             filterByLocations(parkSecurityDailyData, selectedParks),
             timeRange
         ).sort((a, b) => a.date.localeCompare(b.date))
     }, [selectedParks, timeRange])
 
     const filteredIncidents = useMemo(() => {
-        return filterByTimeRange(
+        return filterByTimeRangeResult(
             filterByLocations(parkSecurityIncidentsData, selectedParks),
             timeRange
         )
@@ -209,21 +208,7 @@ export function ParkSecurityAnalytics() {
 
     return (
         <div className="h-full overflow-auto p-6 space-y-6">
-            <div className="flex flex-wrap items-center gap-3">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <Select value={timeRange} onValueChange={(value) => setTimeRange(value as TimeRange)}>
-                    <SelectTrigger className="w-[160px]">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {TIME_RANGES.map((range) => (
-                            <SelectItem key={range.value} value={range.value}>
-                                {range.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
+            <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button variant="outline" className="gap-2">
@@ -260,7 +245,7 @@ export function ParkSecurityAnalytics() {
                         </div>
                     </PopoverContent>
                 </Popover>
-            </div>
+            </TimeRangeFilter>
 
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <Card className="bg-gradient-to-br from-violet-500/10 to-violet-600/5 border-violet-500/20">

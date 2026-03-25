@@ -31,6 +31,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { TimeRangeFilter, filterByDayResult, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -38,7 +39,6 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-    Filter,
     Users2,
     Hammer,
     GlassWater,
@@ -57,7 +57,6 @@ import {
     getPerStopTotals,
     VANDALISM_LABELS,
     type BusStopId,
-    type TimeRange,
     type VandalismType,
 } from "@/lib/mock/vandalism-mock-data"
 
@@ -113,7 +112,7 @@ const DAMAGE_LABELS: Record<string, string> = {
 // ─── Main Component ──────────────────────────────────
 
 export function VandalismAnalytics() {
-    const [timeRange, setTimeRange] = useState<TimeRange>("week")
+    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "week" })
     const [selectedStops, setSelectedStops] = useState<BusStopId[]>(
         BUS_STOPS.map((s) => s.id)
     )
@@ -132,11 +131,11 @@ export function VandalismAnalytics() {
     // ─── Filtered data ─────────────────────────────────
 
     const eventsFiltered = useMemo(() => {
-        return filterByDay(filterByStops(vandalismEventsData, selectedStops), timeRange)
+        return filterByDayResult(filterByStops(vandalismEventsData, selectedStops), timeRange)
     }, [timeRange, selectedStops])
 
     const incidentsFiltered = useMemo(() => {
-        return filterByDay(filterByStops(vandalismIncidentsData, selectedStops), timeRange)
+        return filterByDayResult(filterByStops(vandalismIncidentsData, selectedStops), timeRange)
     }, [timeRange, selectedStops])
 
     // KPI totals
@@ -194,21 +193,7 @@ export function VandalismAnalytics() {
     return (
         <div className="h-full overflow-auto p-6 space-y-6">
             {/* ─── Filter bar ──────────────────────────── */}
-            <div className="flex flex-wrap items-center gap-3">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <Select value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
-                    <SelectTrigger className="w-[160px]">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {TIME_RANGES.map((tr) => (
-                            <SelectItem key={tr.value} value={tr.value}>
-                                {tr.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
+            <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button variant="outline" className="gap-2">
@@ -241,7 +226,7 @@ export function VandalismAnalytics() {
                         </div>
                     </PopoverContent>
                 </Popover>
-            </div>
+            </TimeRangeFilter>
 
             {/* ─── KPI Cards ───────────────────────────── */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

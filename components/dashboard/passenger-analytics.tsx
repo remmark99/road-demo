@@ -31,11 +31,12 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
+import { TimeRangeFilter, filterByDayResult, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
-import { Filter, Users2, Gauge, BarChart3, ArrowUpFromLine, ArrowDownToLine } from "lucide-react"
+import { Users2, Gauge, BarChart3, ArrowUpFromLine, ArrowDownToLine } from "lucide-react"
 import {
     BUS_STOPS,
     TIME_RANGES,
@@ -47,7 +48,6 @@ import {
     filterByStops,
     filterByDay,
     type BusStopId,
-    type TimeRange,
 } from "@/lib/mock/passenger-mock-data"
 
 // ─── Chart Configs ───────────────────────────────────
@@ -75,7 +75,7 @@ const alightingChartConfig = {
 // ─── Main Component ──────────────────────────────────
 
 export function PassengerAnalytics() {
-    const [timeRange, setTimeRange] = useState<TimeRange>("today")
+    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
     const [selectedStops, setSelectedStops] = useState<BusStopId[]>(
         BUS_STOPS.map((s) => s.id)
     )
@@ -98,7 +98,7 @@ export function PassengerAnalytics() {
 
     const flowFiltered = useMemo(() => {
         const byStops = filterByStops(hourlyFlowData, selectedStops)
-        const byDay = filterByDay(byStops, timeRange)
+        const byDay = filterByDayResult(byStops, timeRange)
         // Aggregate by hour
         const map = new Map<string, { arrivals: number; departures: number; count: number }>()
         for (const d of byDay) {
@@ -126,7 +126,7 @@ export function PassengerAnalytics() {
 
     const densityFiltered = useMemo(() => {
         const byStops = filterByStops(queueDensityData, selectedStops)
-        const byDay = filterByDay(byStops, timeRange)
+        const byDay = filterByDayResult(byStops, timeRange)
         const map = new Map<string, { density: number; count: number }>()
         for (const d of byDay) {
             const existing = map.get(d.hour)
@@ -146,7 +146,7 @@ export function PassengerAnalytics() {
     }, [timeRange, selectedStops])
 
     const boardingFiltered = useMemo(() => {
-        const byDay = filterByDay(boardingData, timeRange)
+        const byDay = filterByDayResult(boardingData, timeRange)
         const byStops = filterByStops(byDay, selectedStops)
         // Pivot: per hour, one key per stop
         const map = new Map<string, Record<string, number>>()
@@ -161,7 +161,7 @@ export function PassengerAnalytics() {
     }, [timeRange, selectedStops])
 
     const alightingFiltered = useMemo(() => {
-        const byDay = filterByDay(alightingData, timeRange)
+        const byDay = filterByDayResult(alightingData, timeRange)
         const byStops = filterByStops(byDay, selectedStops)
         // Aggregate by stop
         const map = new Map<string, { total: number; count: number; name: string }>()
@@ -204,21 +204,7 @@ export function PassengerAnalytics() {
     return (
         <div className="h-full overflow-auto p-6 space-y-6">
             {/* ─── Filter bar ──────────────────────────── */}
-            <div className="flex flex-wrap items-center gap-3">
-                <Filter className="h-4 w-4 text-muted-foreground" />
-                <Select value={timeRange} onValueChange={(v) => setTimeRange(v as TimeRange)}>
-                    <SelectTrigger className="w-[160px]">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {TIME_RANGES.map((tr) => (
-                            <SelectItem key={tr.value} value={tr.value}>
-                                {tr.label}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-
+            <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button variant="outline" className="gap-2">
@@ -255,7 +241,7 @@ export function PassengerAnalytics() {
                         </div>
                     </PopoverContent>
                 </Popover>
-            </div>
+            </TimeRangeFilter>
 
             {/* ─── Charts grid ─────────────────────────── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
