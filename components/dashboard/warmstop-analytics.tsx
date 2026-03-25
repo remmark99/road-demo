@@ -255,7 +255,7 @@ export function WarmStopAnalytics() {
                     <CardContent className="pt-4 pb-3 px-4">
                         <div className="flex items-center gap-2 mb-1">
                             <DoorClosed className="h-4 w-4 text-amber-500" />
-                            <span className="text-xs text-muted-foreground">Ср. % открыта</span>
+                            <span className="text-xs text-muted-foreground">Средний % открыта</span>
                         </div>
                         <div className="text-2xl font-bold">{kpi.avgOpenPct}%</div>
                     </CardContent>
@@ -406,8 +406,8 @@ export function WarmStopAnalytics() {
                                                 <Badge
                                                     variant="outline"
                                                     className={`text-[10px] px-1.5 py-0 ${inc.type === "door_long"
-                                                            ? "border-red-500/50 text-red-500"
-                                                            : "border-purple-500/50 text-purple-500"
+                                                        ? "border-red-500/50 text-red-500"
+                                                        : "border-purple-500/50 text-purple-500"
                                                         }`}
                                                 >
                                                     {inc.type === "door_long" ? "Долго открыта" : inc.detail}

@@ -10,7 +10,7 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'СургутДороги - Мониторинг состояния дорог',
+  title: 'Вектор Города - Мониторинг состояния дорог',
   description: 'Система мониторинга состояния дорог города Сургута с использованием камер видеонаблюдения',
   generator: 'v0.app',
   icons: {
