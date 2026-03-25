@@ -7,12 +7,14 @@ import { fetchCameras } from "@/lib/api/cameras"
 import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
-import type { Camera, RoadStatus } from "@/lib/types"
+import { fetchAnchorsGeoJSON } from "@/lib/api/anchors"
+import type { Camera, RoadStatus, AnchorsGeoJSON } from "@/lib/types"
 import { VideoModal } from "./video-modal"
 import { BusStopModal, type SelectedBusStop } from "./bus-stop-modal"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useModuleAccess } from "@/components/providers/module-context"
+import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 
@@ -104,6 +106,28 @@ function generateFovPolygon(
   return points
 }
 
+// Generate circular polygon for anchor detection radius
+function generateCirclePolygon(lat: number, lng: number, radius: number): [number, number][] {
+  const points: [number, number][] = []
+  const numPoints = 64 // smoother circle
+  const R = 6371000
+  const latRad = lat * (Math.PI / 180)
+  const metersPerDegLat = (Math.PI * R) / 180
+  const metersPerDegLng = metersPerDegLat * Math.cos(latRad)
+
+  for (let i = 0; i < numPoints; i++) {
+    const bearing = (i / numPoints) * Math.PI * 2
+    const dNorth = radius * Math.cos(bearing)
+    const dEast = radius * Math.sin(bearing)
+    const dLat = dNorth / metersPerDegLat
+    const dLng = dEast / metersPerDegLng
+    points.push([lng + dLng, lat + dLat])
+  }
+  // Close polygon
+  points.push(points[0])
+  return points
+}
+
 interface SurgutMapProps {
   selectedTime?: Date
   statusOverride?: Record<string, RoadStatus>
@@ -164,6 +188,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
   const [busStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
   const [parksData, setParksData] = useState<any>(null)
+  const [anchorsData, setAnchorsData] = useState<AnchorsGeoJSON | null>(null)
 
   // Filter States
   const [cameraFilters, setCameraFilters] = useState({ online: true, offline: false })
@@ -1010,7 +1035,34 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     } else {
       setParksData({ type: "FeatureCollection", features: [] })
     }
+
+    if (hasModule('transport')) {
+      fetchAnchorsGeoJSON().then(setAnchorsData)
+    } else {
+      setAnchorsData({ type: "FeatureCollection", features: [] })
+    }
   }, [modules, hasModule, modulesLoading])
+
+  // Realtime subscription for anchors
+  useEffect(() => {
+    if (!hasModule('transport')) return
+
+    const supabase = createClient()
+    const channel = supabase
+      .channel('anchors-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'anchors' },
+        () => {
+          fetchAnchorsGeoJSON().then(setAnchorsData)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [hasModule])
 
   // Watch for theme changes
   useEffect(() => {
@@ -1043,6 +1095,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       addRoads()
       addBusStops()
       addCameraLayers()
+      addAnchors()
     })
   }, [isDark, addRoads, addBusStops, addCameraLayers, addParks, mapLoaded])
 
@@ -1074,6 +1127,11 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         const busImg = new window.Image(14, 14)
         busImg.onload = () => map.current?.addImage('bus-icon', busImg)
         busImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(busSvg)
+
+        const anchorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0ea5e9" stroke="#ffffff" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="#ffffff"/><path d="M12 8v-2m0 12v-2m4-4h2m-12 0h2m7.4-3.4 1.4-1.4m-10.8 10.8 1.4-1.4m0-8 1.4 1.4m8 8 1.4 1.4" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/></svg>`
+        const anchorImg = new window.Image(24, 24)
+        anchorImg.onload = () => map.current?.addImage('anchor-icon', anchorImg)
+        anchorImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(anchorSvg)
       }
       setMapLoaded(true)
     })
@@ -1085,6 +1143,100 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const addAnchors = useCallback(() => {
+    if (!map.current) return
+
+    const sourceId = "anchors"
+    const radiusSourceId = "anchors-radius"
+
+    if (map.current.getSource(sourceId)) return
+
+    // Source for the anchor points
+    map.current.addSource(sourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    })
+
+    // Source for the detection radius polygons
+    map.current.addSource(radiusSourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    })
+
+    // Layer for detection radius (fill)
+    map.current.addLayer({
+      id: "anchors-radius-layer",
+      type: "fill",
+      source: radiusSourceId,
+      paint: {
+        "fill-color": "#0ea5e9",
+        "fill-opacity": 0.15,
+        "fill-outline-color": "#0ea5e9"
+      }
+    })
+
+    // Layer for detection radius border (line)
+    map.current.addLayer({
+      id: "anchors-radius-outline",
+      type: "line",
+      source: radiusSourceId,
+      paint: {
+        "line-color": "#0ea5e9",
+        "line-width": 1,
+        "line-dasharray": [2, 2],
+        "line-opacity": 0.5
+      }
+    })
+
+    // Layer for anchor icons
+    map.current.addLayer({
+      id: "anchors-points-layer",
+      type: "symbol",
+      source: sourceId,
+      layout: {
+        "icon-image": "anchor-icon",
+        "icon-allow-overlap": true,
+        "icon-size": 1.2
+      }
+    })
+
+    // Simple tooltip for anchors
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 10,
+    })
+
+    map.current.on("mouseenter", "anchors-points-layer", (e) => {
+      map.current!.getCanvas().style.cursor = "pointer"
+      const feature = e.features?.[0]
+      if (feature) {
+        const props = feature.properties as any
+        console.log('[Map] Hovered Anchor Props:', props)
+        popup
+          .setLngLat((e as any).lngLat)
+          .setHTML(
+            `<div class="p-2 text-sm">
+                <div class="font-semibold text-sky-500 flex items-center gap-1.5 mb-0.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5V3m0 18v-2M5 12H3m18 0h-2M7.05 7.05 5.64 5.64m12.72 12.72-1.41-1.41M7.05 16.95l-1.41 1.41m12.72-12.72-1.41 1.41M12 12a2 2 0 1 0 0 4 2 2 0 1 0 0-4z"/></svg>
+                  Якорь: ${props.name} <span class="text-[10px] text-muted-foreground opacity-50">#${props.id}</span>
+                </div>
+                <div class="text-xs text-muted-foreground">${props.description || 'Нет описания'}</div>
+                <div class="mt-1.5 text-[10px] font-medium bg-sky-500/10 text-sky-500 px-1.5 py-0.5 rounded-full inline-block border border-sky-500/20">
+                  Радиус: ${props.detection_radius}м
+                </div>
+              </div>`
+          )
+          .addTo(map.current!)
+      }
+    })
+
+    map.current.on("mouseleave", "anchors-points-layer", () => {
+      map.current!.getCanvas().style.cursor = ""
+      popup.remove()
+    })
+  }, [])
+
   // Add base map layers when map loads
   useEffect(() => {
     if (!mapLoaded) return
@@ -1092,6 +1244,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     addRoads()
     addBusStops()
     addCameraLayers()
+    addAnchors()
 
     // Global click listener to close spiderify if clicked elsewhere
     if (map.current) {
@@ -1111,7 +1264,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         map.current?.off('click', clickHandler)
       }
     }
-  }, [mapLoaded, addRoads, addBusStops, addCameraLayers, addParks])
+  }, [mapLoaded, addRoads, addBusStops, addCameraLayers, addParks, addAnchors])
 
   // Sync parks data to source
   useEffect(() => {
@@ -1123,6 +1276,43 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       map.current.setLayoutProperty("parks-line", "visibility", hasModule("parks") ? "visible" : "none")
     }
   }, [mapLoaded, parksData, hasModule])
+
+  // Sync anchors data to source (including radius polygons)
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !anchorsData) return
+    const source = map.current.getSource("anchors") as maplibregl.GeoJSONSource
+    const radiusSource = map.current.getSource("anchors-radius") as maplibregl.GeoJSONSource
+
+    if (source && radiusSource) {
+      console.log(`[Map] Syncing ${anchorsData.features.length} anchors. First properties:`, anchorsData.features[0]?.properties)
+      // Points are straightforward
+      source.setData(anchorsData)
+
+      // Radii need polygons
+      const radiusGeoJSON: any = {
+        type: "FeatureCollection",
+        features: anchorsData.features.map(f => ({
+          type: "Feature",
+          properties: f.properties,
+          geometry: {
+            type: "Polygon",
+            coordinates: [generateCirclePolygon(
+              Number(f.properties.lat),
+              Number(f.properties.lng),
+              Number(f.properties.detection_radius)
+            )]
+          }
+        }))
+      }
+      radiusSource.setData(radiusGeoJSON)
+
+      // Visibility based on module
+      const visibility = hasModule('transport') ? 'visible' : 'none'
+      if (map.current.getLayer('anchors-radius-layer')) map.current.setLayoutProperty('anchors-radius-layer', 'visibility', visibility)
+      if (map.current.getLayer('anchors-radius-outline')) map.current.setLayoutProperty('anchors-radius-outline', 'visibility', visibility)
+      if (map.current.getLayer('anchors-points-layer')) map.current.setLayoutProperty('anchors-points-layer', 'visibility', visibility)
+    }
+  }, [mapLoaded, anchorsData, hasModule])
 
   // Sync camera data to the GeoJSON source
   useEffect(() => {

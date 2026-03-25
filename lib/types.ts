@@ -66,3 +66,25 @@ export interface Alert {
   created_at: string | null
   camera_index: number | null
 }
+
+export interface Anchor {
+  id: number
+  name: string
+  description: string | null
+  lat: number
+  lng: number
+  detection_radius: number // in meters
+  status: 'active' | 'inactive'
+}
+
+export interface AnchorsGeoJSON {
+  type: 'FeatureCollection'
+  features: {
+    type: 'Feature'
+    properties: Anchor
+    geometry: {
+      type: 'Point'
+      coordinates: [number, number]
+    }
+  }[]
+}
