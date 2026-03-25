@@ -6,7 +6,6 @@ import { useRef, useEffect, useState, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import jsPDF from "jspdf"
 import * as htmlToImage from 'html-to-image'
-import { imageUrlToBase64 } from "@/lib/pdf-utils"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -60,6 +59,68 @@ const STATUS_STEPS = [
     { icon: FileText, text: "Формирую ответ..." }
 ];
 
+const TOOL_TAG_PATTERN = /\[ИСПОЛЬЗУЙ:\s*[\w-]+\]\s*\n*/g;
+
+const cleanChatText = (text: string) => text.replace(TOOL_TAG_PATTERN, "").trim();
+
+type ChatMessagePart = {
+    type: string;
+    text?: string;
+    toolName?: string;
+};
+
+type RenderableChatMessage = {
+    id: string;
+    role: "system" | "user" | "assistant";
+    content?: string;
+    parts?: ChatMessagePart[];
+};
+
+const isChatMessagePart = (part: unknown): part is ChatMessagePart => {
+    if (typeof part !== "object" || part === null) {
+        return false;
+    }
+
+    const candidate = part as {
+        type?: unknown;
+        text?: unknown;
+        toolName?: unknown;
+    };
+
+    return (
+        typeof candidate.type === "string" &&
+        (candidate.text === undefined || typeof candidate.text === "string") &&
+        (candidate.toolName === undefined || typeof candidate.toolName === "string")
+    );
+};
+
+const getMessageParts = (message: RenderableChatMessage): ChatMessagePart[] =>
+    Array.isArray(message.parts) ? message.parts.filter(isChatMessagePart) : [];
+
+const getMessageText = (message: RenderableChatMessage, separator = "\n") =>
+    typeof message.content === "string"
+        ? message.content
+        : getMessageParts(message)
+            .filter((part) => part.type === "text" && typeof part.text === "string")
+            .map((part) => part.text ?? "")
+            .join(separator);
+
+const hasMessageContent = (message: RenderableChatMessage) =>
+    (typeof message.content === "string" && message.content.trim().length > 0) ||
+    getMessageParts(message).some((part) =>
+        (part.type === "text" && (part.text ?? "").trim().length > 0) ||
+        part.type === "tool-invocation" ||
+        part.type === "tool-result" ||
+        part.type === "dynamic-tool" ||
+        part.type.startsWith("tool-")
+    );
+
+const WELCOME_MESSAGE: RenderableChatMessage = {
+    id: "welcome",
+    role: "assistant",
+    content: "Привет! Я AI-ассистент для анализа дорожной ситуации в Сургуте. Задайте мне вопрос о состоянии дорог, статистике или прогнозах.",
+};
+
 interface AIChatbotProps {
     fullHeight?: boolean;
 }
@@ -81,28 +142,21 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
     // Используем currentSessionId если есть (загрузка существующей сессии), иначе новый sessionId
     const activeSessionId = currentSessionId || sessionId;
 
-    // Получаем initialMessages из localStorage при смене сессии
-    const getInitialMessages = useCallback(() => {
-        if (!currentSessionId) return [];
-        const sessions = chatStorage.getSessions();
-        const session = sessions.find(s => s.id === currentSessionId);
-        return session?.messages || [];
-    }, [currentSessionId]);
-
     const { messages, sendMessage, status, error, setMessages } = useChat({
         id: activeSessionId,
         transport: new DefaultChatTransport({ api: "/api/chat" }),
-        initialMessages: getInitialMessages(),
-    } as any)
+    })
 
-    // Load sessions on mount и устанавливаем начальный sessionId
+    // Load sessions on mount
     useEffect(() => {
         setSessions(chatStorage.getSessions());
-        // Устанавливаем currentSessionId сразу при монтировании
+    }, []);
+
+    useEffect(() => {
         if (!currentSessionId) {
             setCurrentSessionId(sessionId);
         }
-    }, []);
+    }, [currentSessionId, sessionId]);
 
     // Загружаем сообщения при смене сессии
     useEffect(() => {
@@ -116,24 +170,14 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
     }, [currentSessionId, setMessages]);
 
     // Убираем служебные теги [ИСПОЛЬЗУЙ: ...] из текста
-    const cleanDisplayText = (text: string) => {
-        return text.replace(/\[ИСПОЛЬЗУЙ:\s*\w+\]\s*\n*/g, '').trim();
-    };
+    const cleanDisplayText = (text: string) => cleanChatText(text);
 
     // Save current session when messages change
     useEffect(() => {
         if (messages.length > 0 && currentSessionId) {
-            const firstMessage = messages[0];
-            let text = "Новый чат";
-
-            if ('content' in firstMessage && typeof firstMessage.content === 'string' && firstMessage.content.length > 0) {
-                text = firstMessage.content;
-            } else if ('parts' in firstMessage && Array.isArray((firstMessage as any).parts)) {
-                const textPart = (firstMessage as any).parts.find((p: any) => p.type === 'text');
-                if (textPart && 'text' in textPart) {
-                    text = textPart.text;
-                }
-            }
+            const firstMessage = messages[0] as RenderableChatMessage;
+            const rawTitleText = getMessageText(firstMessage, " ");
+            const text = rawTitleText.length > 0 ? rawTitleText : "Новый чат";
 
             // Очищаем текст от служебных тегов перед сохранением заголовка
             const cleanedText = cleanDisplayText(text);
@@ -164,7 +208,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
         if (messages.length === 0) return;
         const text = messages.map(m => {
             const role = m.role === 'user' ? 'Пользователь' : 'AI-ассистент';
-            const content = 'content' in m ? m.content : (m as any).parts?.filter((p: any) => p.type === 'text').map((p: any) => p.text).join(' ');
+            const content = getMessageText(m as RenderableChatMessage, ' ');
             return `[${role}]:\n${content}\n`;
         }).join('\n---\n\n');
 
@@ -282,7 +326,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                     История анализа дорожной ситуации
                 </h1>
                 <p style="font-size: 10px; color: #64748b; margin: 0;">
-                    Сессия: ${currentSessionId || 'новая'} | Дата: ${new Date().toLocaleString('ru-RU')}
+                    Дата экспорта: ${new Date().toLocaleString('ru-RU')}
                 </p>
             `;
             tempContainer.appendChild(headerDiv);
@@ -299,14 +343,11 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             // Process each message
             for (const message of allMessages) {
                 // Skip empty messages
-                const contentText = "content" in message
-                    ? message.content
-                    : (message as any).parts?.filter((p: any) => p.type === 'text').map((p: any) => p.text || '').join('\n');
+                const rawContentText = getMessageText(message, '\n');
+                const contentText = cleanChatText(rawContentText || '');
 
                 if (!contentText || !contentText.trim()) continue;
 
-                // Явный URL MCP-сервера для графиков
-                const MCP_BASE_URL = "http://89.124.74.27:8000";
                 const parts = contentText.split(/(\/plots\/plot_\d+\.png)/g);
 
                 // Process each part of the message separately (text blocks and images)
@@ -465,12 +506,6 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
         refreshQuestions();
     }, [refreshQuestions]);
 
-    const welcomeMessage = {
-        id: "welcome",
-        role: "assistant" as const,
-        content: "Привет! Я AI-ассистент для анализа дорожной ситуации в Сургуте. Задайте мне вопрос о состоянии дорог, статистике или прогнозах.",
-    }
-
     const renderContentWithImages = (text: string) => {
         // Очищаем текст от служебных тегов перед рендерингом
         const cleanedText = cleanDisplayText(text);
@@ -531,7 +566,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
     };
 
     // Combine welcome message with chat messages
-    const allMessages = useMemo(() => [welcomeMessage, ...messages], [messages])
+    const allMessages = useMemo<RenderableChatMessage[]>(() => [WELCOME_MESSAGE, ...messages], [messages])
 
     const isLoading = status === "streaming" || status === "submitted"
 
@@ -682,12 +717,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                     <ScrollArea className="flex-1 p-4 min-h-0">
                         <div ref={chatRef} className="space-y-4 bg-background p-4">
                             {allMessages.map((message) => {
-                                const hasContent = ("content" in message && typeof message.content === 'string' && message.content.trim().length > 0) ||
-                                    ((message as any).parts && (message as any).parts.some((p: any) =>
-                                        (p.type === 'text' && p.text.trim().length > 0) ||
-                                        p.type === 'tool-invocation' ||
-                                        p.type === 'tool-result'
-                                    ));
+                                const hasContent = hasMessageContent(message);
 
                                 if (!hasContent) return null;
 
@@ -715,9 +745,9 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                                                 }`}
                                         >
                                             <div className="text-sm markdown-content">
-                                                {"content" in message
+                                                {typeof message.content === "string"
                                                     ? renderContentWithImages(message.content)
-                                                    : message.parts?.map((part: { type: string; text?: string; toolName?: string }, i: number) => {
+                                                    : getMessageParts(message).map((part, i: number) => {
                                                         if (part.type === "text") {
                                                             return (
                                                                 <div key={i}>
