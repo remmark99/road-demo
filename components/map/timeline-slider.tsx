@@ -11,10 +11,10 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 import { Play, Pause, SkipBack, SkipForward, Clock, CalendarIcon } from "lucide-react"
-import { generateStatusHistory } from "@/lib/mock-data"
 
-const DEMO_SEGMENT_IDS = ["demo-1", "demo-2", "demo-3"]
+
 import type { RoadStatus } from "@/lib/types"
+
 import { format, addDays, differenceInHours } from "date-fns"
 import { ru } from "date-fns/locale"
 import { type DateRange } from "react-day-picker"
@@ -36,13 +36,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
     to: now,
   })
 
-  // Calculate hours for history generation based on date range
-  const hoursRange = useMemo(() => {
-    if (!dateRange?.from || !dateRange?.to) return 24
-    return Math.max(1, differenceInHours(dateRange.to, dateRange.from))
-  }, [dateRange])
 
-  const history = useMemo(() => generateStatusHistory(hoursRange), [hoursRange])
 
   const startTime = useMemo(() => dateRange?.from ?? new Date(now.getTime() - 24 * 60 * 60 * 1000), [dateRange, now])
   const endTime = useMemo(() => dateRange?.to ?? now, [dateRange, now])
@@ -58,18 +52,11 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
   }, [value, startTime, rangeDuration])
 
   const getStatusAtTime = useCallback((time: Date): Record<string, RoadStatus> => {
-    const result: Record<string, RoadStatus> = {}
+    // We now handle simulation in SurgutMap based on selectedTime, 
+    // but we can still provide overrides here if needed.
+    return {}
+  }, [])
 
-    for (const segmentId of DEMO_SEGMENT_IDS) {
-      const segmentHistory = history
-        .filter(h => h.segmentId === segmentId && h.timestamp <= time)
-        .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-
-      result[segmentId] = segmentHistory[0]?.status ?? "unknown"
-    }
-
-    return result
-  }, [history])
 
   const handleSliderChange = useCallback((newValue: number[]) => {
     setValue(newValue)

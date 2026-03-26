@@ -165,7 +165,20 @@ function buildStatusOpacityExpression(): any {
   ]
 }
 
-export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: SurgutMapProps) {
+// Deterministic status simulation for the timeline
+function getSimulatedStatusAtTime(osmId: number, time: Date): RoadStatus {
+  // Use a 30-minute bucket for stability
+  const timeOffset = Math.floor(time.getTime() / (30 * 60 * 1000));
+  // Simple hash combining osmId and time
+  const hash = Math.abs(((osmId * 2654435761 + timeOffset * 198491317) >>> 0) % 100);
+
+  if (hash < 60) return "clean";
+  if (hash < 85) return "warning";
+  return "dirty";
+}
+
+export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHoverSegment }: SurgutMapProps) {
+
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
@@ -1442,22 +1455,29 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
     if (source) {
       let features = roadsData.features;
 
-      // Apply external status override locally (from Timeline)
-      if (statusOverride && Object.keys(statusOverride).length > 0) {
-        features = features.map((f: any) => {
-          const override = statusOverride[f.properties.osm_id.toString()];
-          if (override) {
-            return {
-              ...f,
-              properties: {
-                ...f.properties,
-                status: override
-              }
-            }
-          }
-          return f;
-        })
-      }
+      // Apply dynamic status simulation or external override
+      features = features.map((f: any) => {
+        const osmId = f.properties.osm_id;
+        const segmentId = osmId.toString();
+
+        // Check for external override (e.g. from specific demo logic)
+        if (statusOverride && statusOverride[segmentId]) {
+          return {
+            ...f,
+            properties: { ...f.properties, status: statusOverride[segmentId] }
+          };
+        }
+
+        // Fallback to time-based simulation if selectedTime is provided
+        if (selectedTime) {
+          return {
+            ...f,
+            properties: { ...f.properties, status: getSimulatedStatusAtTime(osmId, selectedTime) }
+          };
+        }
+
+        return f;
+      })
 
       // Apply contractor filter
       if (selectedContractor !== "all") {
@@ -1470,7 +1490,8 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       }
       source.setData(dataToSet)
     }
-  }, [roadsData, mapLoaded, addRoads, statusOverride, selectedContractor])
+  }, [roadsData, mapLoaded, addRoads, statusOverride, selectedContractor, selectedTime])
+
 
   // Sync bus stops data to the GeoJSON source
   useEffect(() => {
