@@ -2,11 +2,12 @@
 
 import { useMemo, useState } from "react"
 import {
-    Area,
-    AreaChart,
     Bar,
     BarChart,
     CartesianGrid,
+    ComposedChart,
+    Line,
+    ReferenceLine,
     XAxis,
     YAxis,
 } from "recharts"
@@ -19,13 +20,6 @@ import {
     ChartTooltipContent,
     type ChartConfig,
 } from "@/components/ui/chart"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
 import { TimeRangeFilter, filterByTimeRangeResult, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Button } from "@/components/ui/button"
@@ -34,51 +28,193 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-    MapPin,
-    Trash2,
+    Activity,
+    AlertCircle,
     CameraOff,
-    LightbulbOff,
     Car,
-    AlertTriangle,
+    Gauge,
+    LightbulbOff,
+    MapPin,
+    MoveRight,
+    ShieldCheck,
+    Trash2,
+    TriangleAlert,
+    Users2,
+    type LucideIcon,
 } from "lucide-react"
 import {
     PARKS,
-    TIME_RANGES,
     PARK_OPERATIONS_LABELS,
+    filterByLocations,
+    getParkNameById,
+    getParkOperationsDailyReadiness,
+    getParkOperationsIssueMix,
+    getParkOperationsOverview,
+    getParkOperationsPriorityParks,
+    getParkOperationsZoneHotspots,
     parkOperationsDailyData,
     parkOperationsIncidentsData,
-    filterByLocations,
-    filterByTimeRange,
     type ParkId,
+    type ParkOperationalTone,
+    type ParkOperationsParkPriority,
     type ParkOperationsType,
 } from "@/lib/mock/park-mock-data"
+import { cn } from "@/lib/utils"
 
-const operationsConfig = {
-    trash_overflow: { label: "Урны", color: "hsl(38, 92%, 50%)" },
-    camera_obstruction: { label: "Камеры", color: "hsl(0, 84%, 60%)" },
-    light_off: { label: "Освещение", color: "hsl(220, 14%, 65%)" },
-    vehicle_detect: { label: "Авто", color: "hsl(201, 96%, 52%)" },
+const readinessTrendConfig = {
+    readinessScore: { label: "Индекс готовности", color: "hsl(152, 57%, 40%)" },
+    issueCount: { label: "Все проблемы", color: "hsl(38, 92%, 50%)" },
+    unresolvedCount: { label: "Открытые", color: "hsl(0, 84%, 60%)" },
 } satisfies ChartConfig
 
-const compareConfig = {
-    trash_overflow: { label: "Урны", color: "hsl(38, 92%, 50%)" },
-    camera_obstruction: { label: "Камеры", color: "hsl(0, 84%, 60%)" },
-    light_off: { label: "Освещение", color: "hsl(220, 14%, 65%)" },
-    vehicle_detect: { label: "Авто", color: "hsl(201, 96%, 52%)" },
+const issueMixConfig = {
+    totalCount: { label: "Все проблемы", color: "hsl(201, 92%, 47%)" },
+    unresolvedCount: { label: "Открытые", color: "hsl(38, 92%, 50%)" },
+    highCount: { label: "Высокий приоритет", color: "hsl(0, 84%, 60%)" },
 } satisfies ChartConfig
 
-const TYPE_ICONS: Record<ParkOperationsType, typeof Trash2> = {
-    trash_overflow: Trash2,
-    camera_obstruction: CameraOff,
-    light_off: LightbulbOff,
-    vehicle_detect: Car,
+const TONE_META: Record<
+    ParkOperationalTone,
+    {
+        label: string
+        barClassName: string
+        badgeClassName: string
+        panelClassName: string
+        textClassName: string
+    }
+> = {
+    healthy: {
+        label: "Устойчиво",
+        barClassName: "bg-emerald-500",
+        badgeClassName: "border-emerald-500/20 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+        panelClassName: "border-emerald-500/20 bg-emerald-500/[0.07]",
+        textClassName: "text-emerald-600 dark:text-emerald-400",
+    },
+    attention: {
+        label: "Под нагрузкой",
+        barClassName: "bg-amber-500",
+        badgeClassName: "border-amber-500/20 bg-amber-500/12 text-amber-700 dark:text-amber-300",
+        panelClassName: "border-amber-500/20 bg-amber-500/[0.07]",
+        textClassName: "text-amber-600 dark:text-amber-400",
+    },
+    critical: {
+        label: "Нужен выезд",
+        barClassName: "bg-red-500",
+        badgeClassName: "border-red-500/20 bg-red-500/12 text-red-700 dark:text-red-300",
+        panelClassName: "border-red-500/20 bg-red-500/[0.07]",
+        textClassName: "text-red-600 dark:text-red-400",
+    },
 }
 
-const TYPE_COLORS: Record<ParkOperationsType, string> = {
-    trash_overflow: "text-amber-500",
-    camera_obstruction: "text-red-500",
-    light_off: "text-zinc-500",
-    vehicle_detect: "text-sky-500",
+const TYPE_META: Record<
+    ParkOperationsType,
+    {
+        label: string
+        shortLabel: string
+        icon: LucideIcon
+        iconClassName: string
+        panelClassName: string
+    }
+> = {
+    trash_overflow: {
+        label: PARK_OPERATIONS_LABELS.trash_overflow,
+        shortLabel: "Урны",
+        icon: Trash2,
+        iconClassName: "text-amber-500",
+        panelClassName: "border-amber-500/20 bg-amber-500/[0.06]",
+    },
+    camera_obstruction: {
+        label: PARK_OPERATIONS_LABELS.camera_obstruction,
+        shortLabel: "Камеры",
+        icon: CameraOff,
+        iconClassName: "text-red-500",
+        panelClassName: "border-red-500/20 bg-red-500/[0.06]",
+    },
+    light_off: {
+        label: PARK_OPERATIONS_LABELS.light_off,
+        shortLabel: "Свет",
+        icon: LightbulbOff,
+        iconClassName: "text-slate-500",
+        panelClassName: "border-slate-500/20 bg-slate-500/[0.06]",
+    },
+    vehicle_detect: {
+        label: PARK_OPERATIONS_LABELS.vehicle_detect,
+        shortLabel: "Авто",
+        icon: Car,
+        iconClassName: "text-sky-500",
+        panelClassName: "border-sky-500/20 bg-sky-500/[0.06]",
+    },
+}
+
+function filterSelectedParks<T extends { locationId: ParkId }>(data: T[], selectedParks: ParkId[]) {
+    if (selectedParks.length === 0) return [] as T[]
+    if (selectedParks.length === PARKS.length) return data
+    return filterByLocations(data, selectedParks)
+}
+
+function ScoreBar({
+    value,
+    tone,
+    className,
+}: {
+    value: number
+    tone: ParkOperationalTone
+    className?: string
+}) {
+    return (
+        <div className={cn("h-2 overflow-hidden rounded-full bg-muted/70", className)}>
+            <div
+                className={cn("h-full rounded-full transition-all", TONE_META[tone].barClassName)}
+                style={{ width: `${value}%` }}
+            />
+        </div>
+    )
+}
+
+function ToneBadge({ tone }: { tone: ParkOperationalTone }) {
+    return (
+        <Badge
+            variant="outline"
+            className={cn(
+                "border px-2.5 py-1 text-[11px] font-semibold tracking-wide",
+                TONE_META[tone].badgeClassName
+            )}
+        >
+            {TONE_META[tone].label}
+        </Badge>
+    )
+}
+
+function getActionTitle(park: ParkOperationsParkPriority) {
+    if (park.issueCount === 0) {
+        return `Сохранить плановый режим обслуживания в ${park.parkName}`
+    }
+
+    const area = park.hotspotZone ?? park.parkName
+
+    if (park.unresolvedHighCount > 0 && park.dominantType === "camera_obstruction") {
+        return `Восстановить обзор камер и закрыть высокий приоритет в зоне ${area}`
+    }
+    if (park.unresolvedHighCount > 0 && park.dominantType === "light_off") {
+        return `Вернуть освещение и проверить электроконтур в зоне ${area}`
+    }
+    if (park.dominantType === "trash_overflow") {
+        return `Снять санитарный долг и пересмотреть график уборки в зоне ${area}`
+    }
+    if (park.dominantType === "vehicle_detect") {
+        return `Ограничить проезд и проверить периметр в зоне ${area}`
+    }
+
+    return `Закрыть сервисный долг и удержать готовность территории в зоне ${area}`
+}
+
+function getActionDetail(park: ParkOperationsParkPriority) {
+    if (park.issueCount === 0) {
+        return `${park.parkName}: новых эксплуатационных проблем не зафиксировано, достаточно штатного обслуживания и профилактического обхода.`
+    }
+
+    const hotspot = park.hotspotZone ? `${park.hotspotZone}, ` : ""
+    return `${park.parkName}: ${hotspot}${park.unresolvedCount} открытых задач, сервисный долг ${park.serviceDebt}, доминирует ${park.dominantTypeLabel.toLowerCase()}.`
 }
 
 export function ParkOperationsAnalytics() {
@@ -103,285 +239,617 @@ export function ParkOperationsAnalytics() {
 
     const filteredDaily = useMemo(() => {
         return filterByTimeRangeResult(
-            filterByLocations(parkOperationsDailyData, selectedParks),
+            filterSelectedParks(parkOperationsDailyData, selectedParks),
             timeRange
-        ).sort((a, b) => a.date.localeCompare(b.date))
+        ).sort((left, right) => left.date.localeCompare(right.date))
     }, [selectedParks, timeRange])
 
     const filteredIncidents = useMemo(() => {
         return filterByTimeRangeResult(
-            filterByLocations(parkOperationsIncidentsData, selectedParks),
+            filterSelectedParks(parkOperationsIncidentsData, selectedParks),
             timeRange
         )
     }, [selectedParks, timeRange])
 
-    const dailyData = useMemo(() => {
-        const map = new Map<
-            string,
-            {
-                dateLabel: string
-                trash_overflow: number
-                camera_obstruction: number
-                light_off: number
-                vehicle_detect: number
-            }
-        >()
-
-        for (const item of filteredDaily) {
-            const dateLabel = new Date(item.date).toLocaleDateString("ru-RU", {
-                day: "2-digit",
-                month: "2-digit",
-            })
-
-            if (!map.has(item.date)) {
-                map.set(item.date, {
-                    dateLabel,
-                    trash_overflow: 0,
-                    camera_obstruction: 0,
-                    light_off: 0,
-                    vehicle_detect: 0,
-                })
-            }
-
-            const row = map.get(item.date)!
-            row.trash_overflow += item.trash_overflow
-            row.camera_obstruction += item.camera_obstruction
-            row.light_off += item.light_off
-            row.vehicle_detect += item.vehicle_detect
-        }
-
-        return Array.from(map.values())
-    }, [filteredDaily])
-
-    const compareData = useMemo(() => {
-        return PARKS.filter((park) => selectedParks.includes(park.id)).map((park) => {
-            const rows = filteredDaily.filter((item) => item.locationId === park.id)
-            return {
-                park: park.name,
-                trash_overflow: rows.reduce((sum, item) => sum + item.trash_overflow, 0),
-                camera_obstruction: rows.reduce((sum, item) => sum + item.camera_obstruction, 0),
-                light_off: rows.reduce((sum, item) => sum + item.light_off, 0),
-                vehicle_detect: rows.reduce((sum, item) => sum + item.vehicle_detect, 0),
-            }
-        })
-    }, [filteredDaily, selectedParks])
-
-    const totals = useMemo(() => {
-        return filteredDaily.reduce(
-            (acc, item) => {
-                acc.trash_overflow += item.trash_overflow
-                acc.camera_obstruction += item.camera_obstruction
-                acc.light_off += item.light_off
-                acc.vehicle_detect += item.vehicle_detect
-                return acc
-            },
-            {
-                trash_overflow: 0,
-                camera_obstruction: 0,
-                light_off: 0,
-                vehicle_detect: 0,
-            }
-        )
-    }, [filteredDaily])
-
+    const overview = useMemo(
+        () => getParkOperationsOverview(filteredDaily, filteredIncidents),
+        [filteredDaily, filteredIncidents]
+    )
+    const readinessTrend = useMemo(
+        () => getParkOperationsDailyReadiness(filteredDaily, filteredIncidents),
+        [filteredDaily, filteredIncidents]
+    )
+    const issueMix = useMemo(
+        () => getParkOperationsIssueMix(filteredIncidents),
+        [filteredIncidents]
+    )
+    const priorityParks = useMemo(
+        () => getParkOperationsPriorityParks(filteredDaily, filteredIncidents),
+        [filteredDaily, filteredIncidents]
+    )
+    const zoneHotspots = useMemo(
+        () => getParkOperationsZoneHotspots(filteredIncidents),
+        [filteredIncidents]
+    )
 
     const selectedLabel =
         selectedParks.length === PARKS.length
             ? "Все парки"
             : selectedParks.length === 0
                 ? "Не выбрано"
-                : `${selectedParks.length} из ${PARKS.length}`
+                : selectedParks.length === 1
+                    ? getParkNameById(selectedParks[0])
+                    : `${selectedParks.length} из ${PARKS.length}`
 
-    const getParkName = (parkId: ParkId) =>
-        PARKS.find((park) => park.id === parkId)?.name ?? parkId
+    const issueMixChartData = issueMix.map((item) => ({
+        ...item,
+        shortLabel: TYPE_META[item.type].shortLabel,
+    }))
+    const worstPark = priorityParks[0] ?? null
+    const hasData = filteredDaily.length > 0 || filteredIncidents.length > 0
+    const actionQueue = useMemo(() => {
+        const candidateParks = priorityParks.filter(
+            (park) => park.tone !== "healthy" || park.unresolvedCount > 0 || park.serviceDebt > 0
+        )
+
+        return (candidateParks.length > 0 ? candidateParks : priorityParks)
+            .slice(0, 4)
+            .map((park) => ({
+                park,
+                title: getActionTitle(park),
+                detail: getActionDetail(park),
+            }))
+    }, [priorityParks])
 
     return (
-        <div className="h-full overflow-auto p-6 space-y-6">
-            <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button variant="outline" className="gap-2">
-                            <MapPin className="h-4 w-4" />
-                            {selectedLabel}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80" align="start">
-                        <div className="space-y-3">
-                            <div className="flex items-center space-x-2">
-                                <Checkbox
-                                    id="all-parks-ops"
-                                    checked={selectedParks.length === PARKS.length}
-                                    onCheckedChange={toggleAll}
-                                />
-                                <Label htmlFor="all-parks-ops" className="font-medium">
-                                    Все парки
-                                </Label>
+        <div className="h-full overflow-auto bg-gradient-to-b from-emerald-500/[0.05] via-background to-background">
+            <div className="p-6 space-y-6">
+                <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant="outline" className="gap-2">
+                                <Users2 className="h-4 w-4" />
+                                {selectedLabel}
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-80" align="start">
+                            <div className="space-y-3">
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox
+                                        id="all-parks-operations"
+                                        checked={selectedParks.length === PARKS.length}
+                                        onCheckedChange={toggleAll}
+                                    />
+                                    <Label htmlFor="all-parks-operations" className="font-medium">
+                                        Все парки
+                                    </Label>
+                                </div>
+                                <div className="border-t pt-2 space-y-2">
+                                    {PARKS.map((park) => (
+                                        <div key={park.id} className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id={`park-operations-${park.id}`}
+                                                checked={selectedParks.includes(park.id)}
+                                                onCheckedChange={() => togglePark(park.id)}
+                                            />
+                                            <Label htmlFor={`park-operations-${park.id}`} className="text-sm">
+                                                {park.name}
+                                            </Label>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
-                            <div className="border-t pt-2 space-y-2">
-                                {PARKS.map((park) => (
-                                    <div key={park.id} className="flex items-center space-x-2">
-                                        <Checkbox
-                                            id={`park-ops-${park.id}`}
-                                            checked={selectedParks.includes(park.id)}
-                                            onCheckedChange={() => togglePark(park.id)}
-                                        />
-                                        <Label htmlFor={`park-ops-${park.id}`} className="text-sm">
-                                            {park.name}
-                                        </Label>
+                        </PopoverContent>
+                    </Popover>
+                </TimeRangeFilter>
+
+                {selectedParks.length === 0 ? (
+                    <Card className="border-dashed">
+                        <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                            <div className="rounded-full bg-muted p-4">
+                                <AlertCircle className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-semibold">Выберите хотя бы один парк</h3>
+                                <p className="max-w-md text-sm text-muted-foreground">
+                                    Экран покажет готовность территории, накопленный сервисный долг и
+                                    приоритетные зоны только для выбранных парков.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : !hasData ? (
+                    <Card className="border-dashed">
+                        <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                            <div className="rounded-full bg-muted p-4">
+                                <ShieldCheck className="h-8 w-8 text-muted-foreground" />
+                            </div>
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-semibold">За выбранный период нет событий</h3>
+                                <p className="max-w-md text-sm text-muted-foreground">
+                                    Смените период или состав парков, чтобы увидеть сервисный долг,
+                                    проблемные зоны и динамику деградации.
+                                </p>
+                            </div>
+                        </CardContent>
+                    </Card>
+                ) : (
+                    <>
+                        <div className="grid gap-4 xl:grid-cols-12">
+                            <Card className="xl:col-span-5 border-emerald-500/20 bg-gradient-to-br from-slate-950/[0.03] via-emerald-500/[0.07] to-amber-500/[0.12] dark:from-slate-950 dark:via-emerald-950/40 dark:to-amber-950/30">
+                                <CardContent className="p-6">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                                                <Gauge className="h-4 w-4" />
+                                                Готовность территории к эксплуатации
+                                            </div>
+                                            <div className="flex items-end gap-3">
+                                                <span className="text-5xl font-semibold tracking-tight tabular-nums">
+                                                    {overview.readinessScore}
+                                                </span>
+                                                <span className="pb-1 text-lg text-muted-foreground">/100</span>
+                                            </div>
+                                            <p className="max-w-lg text-sm leading-relaxed text-muted-foreground">
+                                                Индекс учитывает объём инцидентов, незакрытые задачи и долю
+                                                высокого приоритета. Сейчас больше всего сервисного внимания требует{" "}
+                                                <span className="font-medium text-foreground">
+                                                    {overview.worstParkName ?? "выбранная территория"}
+                                                </span>
+                                                , а ключевой драйвер деградации связан с типом{" "}
+                                                <span className="font-medium text-foreground">
+                                                    {overview.dominantTypeLabel.toLowerCase()}
+                                                </span>
+                                                .
+                                            </p>
+                                        </div>
+                                        <ToneBadge tone={worstPark?.tone ?? "healthy"} />
+                                    </div>
+
+                                    <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                                        <div className="rounded-2xl border border-emerald-500/20 bg-background/70 p-4">
+                                            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                                                Устойчиво
+                                            </div>
+                                            <div className="mt-2 text-3xl font-semibold tabular-nums">
+                                                {overview.healthyParks}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-2xl border border-amber-500/20 bg-background/70 p-4">
+                                            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                                                Под нагрузкой
+                                            </div>
+                                            <div className="mt-2 text-3xl font-semibold tabular-nums">
+                                                {overview.attentionParks}
+                                            </div>
+                                        </div>
+                                        <div className="rounded-2xl border border-red-500/20 bg-background/70 p-4">
+                                            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                                                Нужен выезд
+                                            </div>
+                                            <div className="mt-2 text-3xl font-semibold tabular-nums">
+                                                {overview.criticalParks}
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-5 space-y-2">
+                                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                            <span>Распределение по паркам</span>
+                                            <span>{overview.monitoredParks} под контролем</span>
+                                        </div>
+                                        <div className="flex h-2 overflow-hidden rounded-full bg-background/70">
+                                            {[
+                                                { value: overview.healthyParks, className: "bg-emerald-500" },
+                                                { value: overview.attentionParks, className: "bg-amber-500" },
+                                                { value: overview.criticalParks, className: "bg-red-500" },
+                                            ].map((segment, index) => (
+                                                <div
+                                                    key={index}
+                                                    className={segment.className}
+                                                    style={{
+                                                        width: overview.monitoredParks
+                                                            ? `${(segment.value / overview.monitoredParks) * 100}%`
+                                                            : "0%",
+                                                    }}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    {worstPark && (
+                                        <div className="mt-5 rounded-2xl border border-background/60 bg-background/70 p-4">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <div>
+                                                    <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                                                        Главный сервисный долг
+                                                    </div>
+                                                    <div className="mt-1 flex items-center gap-2">
+                                                        <span className="text-base font-semibold">{worstPark.parkName}</span>
+                                                        <ToneBadge tone={worstPark.tone} />
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-3xl font-semibold tabular-nums">
+                                                        {worstPark.readinessScore}
+                                                    </div>
+                                                    <div className="text-xs text-muted-foreground">индекс</div>
+                                                </div>
+                                            </div>
+                                            <div className="mt-4 space-y-2">
+                                                <ScoreBar value={worstPark.readinessScore} tone={worstPark.tone} />
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                    <span>{worstPark.dominantTypeLabel}</span>
+                                                    <span>·</span>
+                                                    <span>{worstPark.unresolvedCount} открытых задач</span>
+                                                    <span>·</span>
+                                                    <span>долг {worstPark.serviceDebt}</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+
+                            <Card className="xl:col-span-2 border-amber-500/20 bg-gradient-to-br from-amber-500/[0.10] to-background">
+                                <CardContent className="p-5">
+                                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                                        <TriangleAlert className="h-4 w-4 text-amber-500" />
+                                        Под нагрузкой
+                                    </div>
+                                    <div className="mt-4 text-4xl font-semibold tabular-nums">
+                                        {overview.atRiskParks}
+                                    </div>
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                        Столько парков уже нельзя вести только в штатном режиме.
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="xl:col-span-2 border-red-500/20 bg-gradient-to-br from-red-500/[0.10] to-background">
+                                <CardContent className="p-5">
+                                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                                        <Trash2 className="h-4 w-4 text-red-500" />
+                                        Сервисный долг
+                                    </div>
+                                    <div className="mt-4 text-4xl font-semibold tabular-nums">
+                                        {overview.serviceDebt}
+                                    </div>
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                        Открытые и высокоприоритетные задачи, которые уже тянут готовность вниз.
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="xl:col-span-3 border-slate-500/20 bg-gradient-to-br from-slate-950/[0.03] via-slate-500/[0.06] to-background dark:from-slate-950 dark:via-slate-900">
+                                <CardContent className="p-5">
+                                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                                        <MapPin className="h-4 w-4 text-sky-500" />
+                                        Главная проблемная зона
+                                    </div>
+                                    <div className="mt-4 text-2xl font-semibold">
+                                        {overview.worstZoneLabel}
+                                    </div>
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                        {overview.worstZoneParkName ?? "По выбранным паркам"}.
+                                        {" "}Здесь быстрее всего накапливается долг по обслуживанию.
+                                    </p>
+                                    <div className="mt-4 text-xs text-muted-foreground">
+                                        Высокий приоритет в работе:{" "}
+                                        <span className="font-medium text-foreground">
+                                            {overview.unresolvedHighPriority}
+                                        </span>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <div className="grid gap-6 xl:grid-cols-12">
+                            <Card className="xl:col-span-8">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="flex items-center gap-2 text-base">
+                                        <Activity className="h-5 w-5 text-emerald-500" />
+                                        Динамика эксплуатационной готовности
+                                    </CardTitle>
+                                    <CardDescription>
+                                        По каким дням сервисный долг рос быстрее всего и когда территория уходила
+                                        из штатного режима.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <ChartContainer config={readinessTrendConfig} className="h-[320px] w-full">
+                                        <ComposedChart
+                                            data={readinessTrend}
+                                            margin={{ left: 0, right: 12, top: 12, bottom: 0 }}
+                                        >
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                            <XAxis dataKey="dateLabel" tickLine={false} axisLine={false} tickMargin={8} />
+                                            <YAxis
+                                                yAxisId="score"
+                                                tickLine={false}
+                                                axisLine={false}
+                                                tickMargin={8}
+                                                domain={[0, 100]}
+                                            />
+                                            <YAxis
+                                                yAxisId="issues"
+                                                orientation="right"
+                                                tickLine={false}
+                                                axisLine={false}
+                                                tickMargin={8}
+                                                allowDecimals={false}
+                                            />
+                                            <ChartTooltip content={<ChartTooltipContent />} />
+                                            <ChartLegend content={<ChartLegendContent />} />
+                                            <ReferenceLine
+                                                yAxisId="score"
+                                                y={78}
+                                                stroke="hsl(152, 57%, 40%)"
+                                                strokeDasharray="4 4"
+                                                strokeWidth={1.5}
+                                                label={{
+                                                    value: "Целевая зона",
+                                                    position: "insideTopRight",
+                                                    fill: "hsl(152, 57%, 40%)",
+                                                    fontSize: 10,
+                                                }}
+                                            />
+                                            <Bar
+                                                yAxisId="issues"
+                                                dataKey="issueCount"
+                                                fill="var(--color-issueCount)"
+                                                radius={[6, 6, 0, 0]}
+                                                maxBarSize={18}
+                                                opacity={0.75}
+                                            />
+                                            <Line
+                                                yAxisId="score"
+                                                type="monotone"
+                                                dataKey="readinessScore"
+                                                stroke="var(--color-readinessScore)"
+                                                strokeWidth={2.5}
+                                                dot={{ r: 3 }}
+                                            />
+                                            <Line
+                                                yAxisId="issues"
+                                                type="monotone"
+                                                dataKey="unresolvedCount"
+                                                stroke="var(--color-unresolvedCount)"
+                                                strokeWidth={2}
+                                                dot={false}
+                                            />
+                                        </ComposedChart>
+                                    </ChartContainer>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="xl:col-span-4">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="flex items-center gap-2 text-base">
+                                        <TriangleAlert className="h-5 w-5 text-amber-500" />
+                                        Структура сервисного долга
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Какие типы проблем чаще других остаются открытыми и требуют выездов.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <ChartContainer config={issueMixConfig} className="h-[320px] w-full">
+                                        <BarChart
+                                            data={issueMixChartData}
+                                            layout="vertical"
+                                            margin={{ left: 4, right: 12, top: 8, bottom: 0 }}
+                                        >
+                                            <CartesianGrid horizontal={false} strokeDasharray="3 3" />
+                                            <XAxis type="number" tickLine={false} axisLine={false} allowDecimals={false} />
+                                            <YAxis
+                                                dataKey="shortLabel"
+                                                type="category"
+                                                tickLine={false}
+                                                axisLine={false}
+                                                width={78}
+                                            />
+                                            <ChartTooltip content={<ChartTooltipContent />} />
+                                            <ChartLegend content={<ChartLegendContent />} />
+                                            <Bar dataKey="totalCount" fill="var(--color-totalCount)" radius={[4, 4, 4, 4]} />
+                                            <Bar dataKey="unresolvedCount" fill="var(--color-unresolvedCount)" radius={[4, 4, 4, 4]} />
+                                            <Bar dataKey="highCount" fill="var(--color-highCount)" radius={[4, 4, 4, 4]} />
+                                        </BarChart>
+                                    </ChartContainer>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <div className="grid gap-6 xl:grid-cols-12">
+                            <Card className="xl:col-span-7">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="flex items-center gap-2 text-base">
+                                        <Gauge className="h-5 w-5 text-emerald-500" />
+                                        Парки приоритетного обслуживания
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Где уже накопился долг и какой именно тип работ нужно усиливать первым.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-4">
+                                    {priorityParks.map((park) => {
+                                        const TypeIcon = park.dominantType ? TYPE_META[park.dominantType].icon : ShieldCheck
+
+                                        return (
+                                            <div
+                                                key={park.parkId}
+                                                className={cn(
+                                                    "rounded-2xl border p-4",
+                                                    TONE_META[park.tone].panelClassName
+                                                )}
+                                            >
+                                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                                    <div className="space-y-2">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <h3 className="text-base font-semibold">{park.parkName}</h3>
+                                                            <ToneBadge tone={park.tone} />
+                                                        </div>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            {park.hotspotZone
+                                                                ? `${park.hotspotZone} формирует основной объём сервисного долга.`
+                                                                : "Выраженной проблемной зоны пока нет."}
+                                                        </p>
+                                                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                            <Badge variant="outline" className="gap-1.5">
+                                                                <TypeIcon
+                                                                    className={cn(
+                                                                        "h-3.5 w-3.5",
+                                                                        park.dominantType
+                                                                            ? TYPE_META[park.dominantType].iconClassName
+                                                                            : "text-emerald-500"
+                                                                    )}
+                                                                />
+                                                                {park.dominantTypeLabel}
+                                                            </Badge>
+                                                            <span>{park.issueCount} проблем</span>
+                                                            <span>·</span>
+                                                            <span>{park.unresolvedCount} открытых</span>
+                                                            <span>·</span>
+                                                            <span>долг {park.serviceDebt}</span>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="min-w-36 text-left lg:text-right">
+                                                        <div className="text-3xl font-semibold tabular-nums">
+                                                            {park.readinessScore}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">индекс</div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-4 space-y-2">
+                                                    <ScoreBar value={park.readinessScore} tone={park.tone} />
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                        <span>{park.unresolvedHighCount} высокого приоритета</span>
+                                                        <span>·</span>
+                                                        <span>
+                                                            hotspot {park.hotspotZone ?? "не выделен"} ({park.hotspotCount})
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}
+                                </CardContent>
+                            </Card>
+
+                            <Card className="xl:col-span-5">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="flex items-center gap-2 text-base">
+                                        <MapPin className="h-5 w-5 text-sky-500" />
+                                        Зоны накопления долга
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Места, где эксплуатационные проблемы возвращаются и требуют отдельного маршрута.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <ScrollArea className="h-[360px] pr-4">
+                                        <div className="space-y-3">
+                                            {zoneHotspots.slice(0, 6).map((zone) => {
+                                                const TypeIcon = zone.dominantType ? TYPE_META[zone.dominantType].icon : ShieldCheck
+
+                                                return (
+                                                    <div
+                                                        key={zone.id}
+                                                        className={cn(
+                                                            "rounded-2xl border p-4",
+                                                            TONE_META[zone.tone].panelClassName
+                                                        )}
+                                                    >
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="space-y-1">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <span className="font-semibold">{zone.zone}</span>
+                                                                    <ToneBadge tone={zone.tone} />
+                                                                </div>
+                                                                <div className="text-sm text-muted-foreground">
+                                                                    {zone.parkName}
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right">
+                                                                <div className="text-2xl font-semibold tabular-nums">
+                                                                    {zone.readinessScore}
+                                                                </div>
+                                                                <div className="text-xs text-muted-foreground">индекс</div>
+                                                            </div>
+                                                        </div>
+                                                        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                            <Badge variant="outline" className="gap-1.5">
+                                                                <TypeIcon
+                                                                    className={cn(
+                                                                        "h-3.5 w-3.5",
+                                                                        zone.dominantType
+                                                                            ? TYPE_META[zone.dominantType].iconClassName
+                                                                            : "text-emerald-500"
+                                                                    )}
+                                                                />
+                                                                {zone.dominantTypeLabel}
+                                                            </Badge>
+                                                            <span>{zone.issueCount} проблем</span>
+                                                            <span>·</span>
+                                                            <span>{zone.unresolvedCount} открытых</span>
+                                                            <span>·</span>
+                                                            <span>{zone.highCount} высокий приоритет</span>
+                                                        </div>
+                                                        <div className="mt-3">
+                                                            <ScoreBar value={zone.readinessScore} tone={zone.tone} />
+                                                        </div>
+                                                    </div>
+                                                )
+                                            })}
+                                        </div>
+                                    </ScrollArea>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center gap-2 text-base">
+                                    <MoveRight className="h-5 w-5 text-emerald-500" />
+                                    Очередь действий для эксплуатации
+                                </CardTitle>
+                                <CardDescription>
+                                    С чего начать, чтобы быстрее всего поднять готовность территории.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {actionQueue.map(({ park, title, detail }, index) => (
+                                    <div
+                                        key={`${park.parkId}-${index}`}
+                                        className={cn(
+                                            "rounded-2xl border p-4",
+                                            TONE_META[park.tone].panelClassName
+                                        )}
+                                    >
+                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                            <div className="space-y-2">
+                                                <div className="flex flex-wrap items-center gap-2">
+                                                    <Badge variant="outline">Приоритет {index + 1}</Badge>
+                                                    <ToneBadge tone={park.tone} />
+                                                </div>
+                                                <div className="text-base font-semibold">{title}</div>
+                                                <p className="text-sm text-muted-foreground">{detail}</p>
+                                            </div>
+                                            <div className="min-w-40 text-left lg:text-right">
+                                                <div className="text-sm font-medium">{park.parkName}</div>
+                                                <div className="mt-1 text-xs text-muted-foreground">
+                                                    {park.hotspotZone ?? "Без выделенной зоны"}
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 ))}
-                            </div>
-                        </div>
-                    </PopoverContent>
-                </Popover>
-            </TimeRangeFilter>
-
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Trash2 className="h-4 w-4 text-amber-500" />
-                            <span className="text-xs text-muted-foreground">Урны</span>
-                        </div>
-                        <div className="text-2xl font-bold">{totals.trash_overflow}</div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-red-500/10 to-red-600/5 border-red-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <CameraOff className="h-4 w-4 text-red-500" />
-                            <span className="text-xs text-muted-foreground">Камеры</span>
-                        </div>
-                        <div className="text-2xl font-bold">{totals.camera_obstruction}</div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-zinc-500/10 to-zinc-600/5 border-zinc-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <LightbulbOff className="h-4 w-4 text-zinc-500" />
-                            <span className="text-xs text-muted-foreground">Освещение</span>
-                        </div>
-                        <div className="text-2xl font-bold">{totals.light_off}</div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-sky-500/10 to-sky-600/5 border-sky-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Car className="h-4 w-4 text-sky-500" />
-                            <span className="text-xs text-muted-foreground">Проезд авто</span>
-                        </div>
-                        <div className="text-2xl font-bold">{totals.vehicle_detect}</div>
-                    </CardContent>
-                </Card>
+                            </CardContent>
+                        </Card>
+                    </>
+                )}
             </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                <Card className="xl:col-span-2">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <AlertTriangle className="h-5 w-5 text-amber-500" />
-                            Эксплуатационные проблемы по дням
-                        </CardTitle>
-                        <CardDescription>
-                            Тренд урн, камер, освещения и проезда машин по территории парка
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <ChartContainer config={operationsConfig} className="h-[300px] w-full">
-                            <AreaChart data={dailyData} margin={{ left: 0, right: 12, top: 10, bottom: 0 }}>
-                                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                                <XAxis dataKey="dateLabel" tickLine={false} axisLine={false} />
-                                <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
-                                <ChartTooltip content={<ChartTooltipContent />} />
-                                <ChartLegend content={<ChartLegendContent />} />
-                                <Area type="monotone" dataKey="trash_overflow" fill="var(--color-trash_overflow)" fillOpacity={0.12} stroke="var(--color-trash_overflow)" strokeWidth={2} />
-                                <Area type="monotone" dataKey="camera_obstruction" fill="var(--color-camera_obstruction)" fillOpacity={0.12} stroke="var(--color-camera_obstruction)" strokeWidth={2} />
-                                <Area type="monotone" dataKey="light_off" fill="var(--color-light_off)" fillOpacity={0.12} stroke="var(--color-light_off)" strokeWidth={2} />
-                                <Area type="monotone" dataKey="vehicle_detect" fill="var(--color-vehicle_detect)" fillOpacity={0.12} stroke="var(--color-vehicle_detect)" strokeWidth={2} />
-                            </AreaChart>
-                        </ChartContainer>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base flex items-center gap-2">
-                            <MapPin className="h-5 w-5 text-muted-foreground" />
-                            Нагрузка по паркам
-                        </CardTitle>
-                        <CardDescription>
-                            Где концентрация эксплуатационных проблем выше
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <ChartContainer config={compareConfig} className="h-[300px] w-full">
-                            <BarChart data={compareData} margin={{ left: 0, right: 12, top: 10, bottom: 0 }}>
-                                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                                <XAxis dataKey="park" tickLine={false} axisLine={false} />
-                                <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
-                                <ChartTooltip content={<ChartTooltipContent />} />
-                                <ChartLegend content={<ChartLegendContent />} />
-                                <Bar dataKey="trash_overflow" fill="var(--color-trash_overflow)" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="camera_obstruction" fill="var(--color-camera_obstruction)" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="light_off" fill="var(--color-light_off)" radius={[4, 4, 0, 0]} />
-                                <Bar dataKey="vehicle_detect" fill="var(--color-vehicle_detect)" radius={[4, 4, 0, 0]} />
-                            </BarChart>
-                        </ChartContainer>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <Card>
-                <CardHeader className="pb-2">
-                    <CardTitle className="text-base">Последние эксплуатационные инциденты</CardTitle>
-                    <CardDescription>
-                        Проблемы, которые влияют на обслуживание и безопасность территории
-                    </CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <ScrollArea className="h-[260px] pr-4">
-                        <div className="space-y-3">
-                            {filteredIncidents.slice(0, 12).map((incident) => {
-                                const Icon = TYPE_ICONS[incident.type]
-                                return (
-                                    <div
-                                        key={incident.id}
-                                        className="flex flex-col gap-2 rounded-lg border border-border p-3 md:flex-row md:items-center md:justify-between"
-                                    >
-                                        <div className="space-y-1">
-                                            <div className="flex flex-wrap items-center gap-2">
-                                                <Badge variant="outline" className="gap-1.5">
-                                                    <Icon className={`h-3.5 w-3.5 ${TYPE_COLORS[incident.type]}`} />
-                                                    {PARK_OPERATIONS_LABELS[incident.type]}
-                                                </Badge>
-                                                <Badge variant={incident.resolved ? "secondary" : "outline"}>
-                                                    {incident.resolved ? "Закрыт" : "Требует реакции"}
-                                                </Badge>
-                                            </div>
-                                            <div className="text-sm font-medium">
-                                                {getParkName(incident.locationId)} · {incident.zone}
-                                            </div>
-                                            <div className="text-xs text-muted-foreground">
-                                                {new Date(incident.date).toLocaleDateString("ru-RU", {
-                                                    day: "2-digit",
-                                                    month: "long",
-                                                })}
-                                            </div>
-                                        </div>
-
-                                        <div className="text-sm text-muted-foreground">
-                                            Приоритет:{" "}
-                                            <span className="font-medium text-foreground">
-                                                {incident.severity === "high" ? "Высокий" : "Средний"}
-                                            </span>
-                                        </div>
-                                    </div>
-                                )
-                            })}
-                        </div>
-                    </ScrollArea>
-                </CardContent>
-            </Card>
         </div>
     )
 }

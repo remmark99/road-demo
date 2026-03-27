@@ -123,7 +123,8 @@ export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: str
             'park_trash_overflow',
             'park_camera_obstruction',
             'park_light_off',
-            'park_vehicle_detect'
+            'park_vehicle_detect',
+            'park_dirty_road'
         ]
     },
     transport_monitoring: {
@@ -316,6 +317,12 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         label: 'Проезд автомобиля',
         icon: 'car',
         color: 'text-sky-400 bg-sky-500/20 border-sky-500/30',
+        category: 'park_monitoring'
+    },
+    park_dirty_road: {
+        label: 'Неубранная дорога',
+        icon: 'cloud',
+        color: 'text-amber-500 bg-amber-500/20 border-amber-500/30',
         category: 'park_monitoring'
     },
     // Контроль транспорта
