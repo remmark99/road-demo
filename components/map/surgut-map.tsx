@@ -8,7 +8,9 @@ import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
 import { fetchAnchorsGeoJSON } from "@/lib/api/anchors"
+import { SHORELINE_GEOJSON } from "@/lib/mock/shoreline"
 import type { Camera, RoadStatus, AnchorsGeoJSON } from "@/lib/types"
+
 import { VideoModal } from "./video-modal"
 import { BusStopModal, type SelectedBusStop } from "./bus-stop-modal"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -1026,136 +1028,6 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     })
   }, [])
 
-  // Fetch data based on allowed modules
-  useEffect(() => {
-    if (modulesLoading) return
-    fetchCameras(modules).then(setCameras)
-
-    if (hasModule('roads')) {
-      fetchRoadsGeoJSON().then(setRoadsData)
-    } else {
-      setRoadsData({ type: "FeatureCollection", features: [] })
-    }
-
-    if (hasModule('stops')) {
-      fetchBusStopsGeoJSON().then(setBusStopsData)
-    } else {
-      setBusStopsData({ type: "FeatureCollection", features: [] })
-    }
-
-    if (hasModule('parks')) {
-      fetchParksGeoJSON().then(setParksData)
-    } else {
-      setParksData({ type: "FeatureCollection", features: [] })
-    }
-
-    if (hasModule('transport')) {
-      fetchAnchorsGeoJSON().then(setAnchorsData)
-    } else {
-      setAnchorsData({ type: "FeatureCollection", features: [] })
-    }
-  }, [modules, hasModule, modulesLoading])
-
-  // Realtime subscription for anchors
-  useEffect(() => {
-    if (!hasModule('transport')) return
-
-    const supabase = createClient()
-    const channel = supabase
-      .channel('anchors-realtime')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'anchors' },
-        () => {
-          fetchAnchorsGeoJSON().then(setAnchorsData)
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
-  }, [hasModule])
-
-  // Watch for theme changes
-  useEffect(() => {
-    const checkTheme = () => {
-      const dark = document.documentElement.classList.contains("dark")
-      setIsDark(dark)
-    }
-
-    checkTheme()
-
-    const observer = new MutationObserver(checkTheme)
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["class"]
-    })
-
-    return () => observer.disconnect()
-  }, [])
-
-  // Update map style when theme changes
-  useEffect(() => {
-    if (!map.current || !mapLoaded) return
-    if (lastThemeRef.current === isDark) return
-
-    lastThemeRef.current = isDark
-    map.current.setStyle(getMapStyle(isDark))
-
-    map.current.once("style.load", () => {
-      addParks()
-      addRoads()
-      addBusStops()
-      addCameraLayers()
-      addAnchors()
-    })
-  }, [isDark, addRoads, addBusStops, addCameraLayers, addParks, mapLoaded])
-
-  // Initialize map - this should only run once
-  useEffect(() => {
-    if (!mapContainer.current || map.current) return
-
-    const initialDark = document.documentElement.classList.contains("dark")
-
-    map.current = new maplibregl.Map({
-      container: mapContainer.current,
-      style: getMapStyle(initialDark),
-      center: [73.406, 61.253],
-      zoom: 15
-    })
-
-    map.current.addControl(new maplibregl.NavigationControl(), "top-right")
-
-    map.current.on("load", () => {
-      // Add custom SVG icons
-      if (map.current) {
-        const camSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`
-        const busSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>`
-
-        const camImg = new window.Image(14, 14)
-        camImg.onload = () => map.current?.addImage('cam-icon', camImg)
-        camImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(camSvg)
-
-        const busImg = new window.Image(14, 14)
-        busImg.onload = () => map.current?.addImage('bus-icon', busImg)
-        busImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(busSvg)
-
-        const anchorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0ea5e9" stroke="#ffffff" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="#ffffff"/><path d="M12 8v-2m0 12v-2m4-4h2m-12 0h2m7.4-3.4 1.4-1.4m-10.8 10.8 1.4-1.4m0-8 1.4 1.4m8 8 1.4 1.4" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/></svg>`
-        const anchorImg = new window.Image(24, 24)
-        anchorImg.onload = () => map.current?.addImage('anchor-icon', anchorImg)
-        anchorImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(anchorSvg)
-      }
-      setMapLoaded(true)
-    })
-
-    return () => {
-      map.current?.remove()
-      map.current = null
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   const addAnchors = useCallback(() => {
     if (!map.current) return
 
@@ -1250,7 +1122,172 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     })
   }, [])
 
+  const addShoreline = useCallback(() => {
+    if (!map.current) return
+
+    const sourceId = "shoreline"
+    const layerId = "shoreline-layer"
+
+    if (map.current.getSource(sourceId)) return
+
+    map.current.addSource(sourceId, {
+      type: "geojson",
+      data: SHORELINE_GEOJSON
+    })
+
+    map.current.addLayer({
+      id: layerId,
+      type: "line",
+      source: sourceId,
+      paint: {
+        "line-color": ["get", "stroke"],
+        "line-width": ["to-number", ["get", "stroke-width"]],
+        "line-opacity": ["to-number", ["get", "stroke-opacity"]]
+      },
+      layout: {
+        "visibility": hasModule('shore') ? 'visible' : 'none'
+      }
+    })
+  }, [hasModule])
+
+  // Fetch data based on allowed modules
+
+  useEffect(() => {
+    if (modulesLoading) return
+    fetchCameras(modules).then(setCameras)
+
+    if (hasModule('roads')) {
+      fetchRoadsGeoJSON().then(setRoadsData)
+    } else {
+      setRoadsData({ type: "FeatureCollection", features: [] })
+    }
+
+    if (hasModule('stops')) {
+      fetchBusStopsGeoJSON().then(setBusStopsData)
+    } else {
+      setBusStopsData({ type: "FeatureCollection", features: [] })
+    }
+
+    if (hasModule('parks')) {
+      fetchParksGeoJSON().then(setParksData)
+    } else {
+      setParksData({ type: "FeatureCollection", features: [] })
+    }
+
+    if (hasModule('transport')) {
+      fetchAnchorsGeoJSON().then(setAnchorsData)
+    } else {
+      setAnchorsData({ type: "FeatureCollection", features: [] })
+    }
+  }, [modules, hasModule, modulesLoading])
+
+  // Realtime subscription for anchors
+  useEffect(() => {
+    if (!hasModule('transport')) return
+
+    const supabase = createClient()
+    const channel = supabase
+      .channel('anchors-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'anchors' },
+        () => {
+          fetchAnchorsGeoJSON().then(setAnchorsData)
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [hasModule])
+
+  // Watch for theme changes
+  useEffect(() => {
+    const checkTheme = () => {
+      const dark = document.documentElement.classList.contains("dark")
+      setIsDark(dark)
+    }
+
+    checkTheme()
+
+    const observer = new MutationObserver(checkTheme)
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["class"]
+    })
+
+    return () => observer.disconnect()
+  }, [])
+
+  // Update map style when theme changes
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+    if (lastThemeRef.current === isDark) return
+
+    lastThemeRef.current = isDark
+    map.current.setStyle(getMapStyle(isDark))
+
+    map.current.once("style.load", () => {
+      addParks()
+      addRoads()
+      addBusStops()
+      addCameraLayers()
+      addAnchors()
+      addShoreline()
+    })
+  }, [isDark, addRoads, addBusStops, addCameraLayers, addParks, addAnchors, addShoreline, mapLoaded])
+
+  // Initialize map - this should only run once
+  useEffect(() => {
+    if (!mapContainer.current || map.current) return
+
+    const initialDark = document.documentElement.classList.contains("dark")
+
+    map.current = new maplibregl.Map({
+      container: mapContainer.current,
+      style: getMapStyle(initialDark),
+      center: [73.406, 61.253],
+      zoom: 15
+    })
+
+    map.current.addControl(new maplibregl.NavigationControl(), "top-right")
+
+    map.current.on("load", () => {
+      // Add custom SVG icons
+      if (map.current) {
+        const camSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`
+        const busSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>`
+
+        const camImg = new window.Image(14, 14)
+        camImg.onload = () => map.current?.addImage('cam-icon', camImg)
+        camImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(camSvg)
+
+        const busImg = new window.Image(14, 14)
+        busImg.onload = () => map.current?.addImage('bus-icon', busImg)
+        busImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(busSvg)
+
+        const anchorSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" fill="#0ea5e9" stroke="#ffffff" stroke-width="2"/><circle cx="12" cy="12" r="2.5" fill="#ffffff"/><path d="M12 8v-2m0 12v-2m4-4h2m-12 0h2m7.4-3.4 1.4-1.4m-10.8 10.8 1.4-1.4m0-8 1.4 1.4m8 8 1.4 1.4" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/></svg>`
+        const anchorImg = new window.Image(24, 24)
+        anchorImg.onload = () => map.current?.addImage('anchor-icon', anchorImg)
+        anchorImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(anchorSvg)
+      }
+      setMapLoaded(true)
+    })
+
+    return () => {
+      map.current?.remove()
+      map.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+
+
+
+
   // Add base map layers when map loads
+
   useEffect(() => {
     if (!mapLoaded) return
     addParks()
@@ -1258,8 +1295,10 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     addBusStops()
     addCameraLayers()
     addAnchors()
+    addShoreline()
 
     // Global click listener to close spiderify if clicked elsewhere
+
     if (map.current) {
       const clickHandler = (e: any) => {
         const features = map.current?.queryRenderedFeatures(e.point, {
@@ -1327,7 +1366,16 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     }
   }, [mapLoaded, anchorsData, hasModule])
 
+  // Sync shoreline visibility
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+    if (map.current.getLayer('shoreline-layer')) {
+      map.current.setLayoutProperty('shoreline-layer', 'visibility', hasModule('shore') ? 'visible' : 'none')
+    }
+  }, [mapLoaded, hasModule])
+
   // Sync camera data to the GeoJSON source
+
   useEffect(() => {
     if (!map.current || !mapLoaded) return
 
