@@ -47,8 +47,8 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react"
-import { SensorPopover } from "@/components/sensors/sensor-readings"
 import { createClient } from "@/lib/supabase/client"
+import { cn } from "@/lib/utils"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
 import { useModuleAccess } from "@/components/providers/module-context"
 
@@ -92,11 +92,6 @@ export function Navigation() {
 
     return () => subscription.unsubscribe()
   }, [])
-
-  // Close mobile menu on route change
-  useEffect(() => {
-    setMobileOpen(false)
-  }, [pathname])
 
   const handleSignOut = async () => {
     const supabase = createClient()
@@ -305,8 +300,11 @@ export function Navigation() {
                     return (
                       <div
                         key={moduleId}
-                        className={`flex items-center justify-between py-1.5 px-2 rounded-md transition-colors ${isActive ? '' : 'opacity-50'
-                          }`}
+                        className={`group flex items-center justify-between py-1.5 px-2 rounded-md transition-colors ${
+                          canDisable
+                            ? "hover:bg-accent/60"
+                            : ""
+                        } ${isActive ? "" : "opacity-50"}`}
                       >
                         <div className="flex items-center gap-2 text-sm">
                           {isActive ? (
@@ -320,7 +318,10 @@ export function Navigation() {
                           checked={isActive}
                           disabled={!canDisable}
                           onCheckedChange={() => toggleModule(moduleId)}
-                          className="scale-90"
+                          className={cn(
+                            "scale-90 transition-all",
+                            canDisable && "group-hover:ring-4 group-hover:ring-primary/10 group-hover:shadow-sm"
+                          )}
                         />
                       </div>
                     )

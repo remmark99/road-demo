@@ -25,6 +25,7 @@ import {
   Trash2,
   Route,
   DoorClosed,
+  ChevronRight,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -188,9 +189,17 @@ const STOPS_DASHBOARDS = ["kpi_bus_stops", "districts", "passenger", "security",
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]
 const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]
+const SIDEBAR_SECTION_DEFAULTS = {
+  roads: true,
+  stops: true,
+  shore: true,
+  parks: true,
+  transport: true,
+}
 
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<DashboardView>("general")
+  const [expandedSections, setExpandedSections] = useState(SIDEBAR_SECTION_DEFAULTS)
   const { hasModule, loading: modulesLoading } = useModuleAccess()
 
   const filteredDashboards = DASHBOARDS.filter(d => {
@@ -210,6 +219,20 @@ export default function DashboardPage() {
   const resolvedActiveView =
     filteredDashboards.find((dashboard) => dashboard.id === activeView)?.id ??
     filteredDashboards[0]?.id
+  const sidebarSections = [
+    { key: "roads", title: "Состояние дорог", dashboards: roadsDashboardsList },
+    { key: "stops", title: "Остановки", dashboards: stopsDashboardsList },
+    { key: "shore", title: "Безопасный берег", dashboards: shoreDashboardsList },
+    { key: "parks", title: "Безопасный парк", dashboards: parkDashboardsList },
+    { key: "transport", title: "Контроль транспорта", dashboards: transportDashboardsList },
+  ].filter((section) => section.dashboards.length > 0)
+
+  const toggleSection = (sectionKey: keyof typeof SIDEBAR_SECTION_DEFAULTS) => {
+    setExpandedSections((current) => ({
+      ...current,
+      [sectionKey]: !current[sectionKey],
+    }))
+  }
 
   return (
     <main className="h-screen w-full bg-background flex flex-col">
@@ -248,115 +271,51 @@ export default function DashboardPage() {
                 <div className="w-full md:w-64 flex-shrink-0 flex md:flex-col gap-0 pb-2 md:pb-0 min-h-0">
                   <ScrollArea className="flex-1 min-h-0">
                     <div className="flex md:flex-col gap-6 pr-3 pb-4">
-                      {roadsDashboardsList.length > 0 && (
-                        <div className="space-y-2">
-                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Состояние дорог</h4>
-                          <div className="flex flex-col gap-1">
-                            {roadsDashboardsList.map((dashboard) => (
-                              <Button
-                                key={dashboard.id}
-                                variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
+                      {sidebarSections.map((section) => {
+                        const isExpanded = expandedSections[section.key as keyof typeof SIDEBAR_SECTION_DEFAULTS]
+                        return (
+                          <div key={section.key} className="space-y-2">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              className="h-auto w-full justify-start gap-2 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+                              onClick={() => toggleSection(section.key as keyof typeof SIDEBAR_SECTION_DEFAULTS)}
+                              aria-expanded={isExpanded}
+                              aria-controls={`dashboard-section-${section.key}`}
+                            >
+                              <ChevronRight
                                 className={cn(
-                                  "justify-start gap-3 h-auto py-3 w-full",
-                                  resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                                  "h-3.5 w-3.5 transition-transform",
+                                  isExpanded && "rotate-90 text-primary"
                                 )}
-                                onClick={() => setActiveView(dashboard.id)}
-                              >
-                                <dashboard.icon className="h-4 w-4" />
-                                <span>{dashboard.label}</span>
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                              />
+                              <span>{section.title}</span>
+                            </Button>
 
-                      {stopsDashboardsList.length > 0 && (
-                        <div className="space-y-2">
-                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Остановки</h4>
-                          <div className="flex flex-col gap-1">
-                            {stopsDashboardsList.map((dashboard) => (
-                              <Button
-                                key={dashboard.id}
-                                variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
-                                className={cn(
-                                  "justify-start gap-3 h-auto py-3 w-full",
-                                  resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
-                                )}
-                                onClick={() => setActiveView(dashboard.id)}
+                            {isExpanded && (
+                              <div
+                                id={`dashboard-section-${section.key}`}
+                                className="flex flex-col gap-1"
                               >
-                                <dashboard.icon className="h-4 w-4" />
-                                <span>{dashboard.label}</span>
-                              </Button>
-                            ))}
+                                {section.dashboards.map((dashboard) => (
+                                  <Button
+                                    key={dashboard.id}
+                                    variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
+                                    className={cn(
+                                      "justify-start gap-3 h-auto py-3 w-full",
+                                      resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
+                                    )}
+                                    onClick={() => setActiveView(dashboard.id)}
+                                  >
+                                    <dashboard.icon className="h-4 w-4" />
+                                    <span>{dashboard.label}</span>
+                                  </Button>
+                                ))}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
-
-                      {shoreDashboardsList.length > 0 && (
-                        <div className="space-y-2">
-                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Безопасный берег</h4>
-                          <div className="flex flex-col gap-1">
-                            {shoreDashboardsList.map((dashboard) => (
-                              <Button
-                                key={dashboard.id}
-                                variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
-                                className={cn(
-                                  "justify-start gap-3 h-auto py-3 w-full",
-                                  resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
-                                )}
-                                onClick={() => setActiveView(dashboard.id)}
-                              >
-                                <dashboard.icon className="h-4 w-4" />
-                                <span>{dashboard.label}</span>
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {parkDashboardsList.length > 0 && (
-                        <div className="space-y-2">
-                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Безопасный парк</h4>
-                          <div className="flex flex-col gap-1">
-                            {parkDashboardsList.map((dashboard) => (
-                              <Button
-                                key={dashboard.id}
-                                variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
-                                className={cn(
-                                  "justify-start gap-3 h-auto py-3 w-full",
-                                  resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
-                                )}
-                                onClick={() => setActiveView(dashboard.id)}
-                              >
-                                <dashboard.icon className="h-4 w-4" />
-                                <span>{dashboard.label}</span>
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {transportDashboardsList.length > 0 && (
-                        <div className="space-y-2">
-                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">Контроль транспорта</h4>
-                          <div className="flex flex-col gap-1">
-                            {transportDashboardsList.map((dashboard) => (
-                              <Button
-                                key={dashboard.id}
-                                variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
-                                className={cn(
-                                  "justify-start gap-3 h-auto py-3 w-full",
-                                  resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
-                                )}
-                                onClick={() => setActiveView(dashboard.id)}
-                              >
-                                <dashboard.icon className="h-4 w-4" />
-                                <span>{dashboard.label}</span>
-                              </Button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                        )
+                      })}
                     </div>
                   </ScrollArea>
 

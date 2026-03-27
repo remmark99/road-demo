@@ -277,6 +277,8 @@ export function filterByTimeRange<T extends { date: string }>(
         }
         case "month":
             return data
+        default:
+            return data
     }
 }
 
@@ -285,4 +287,764 @@ export function filterByLocations<T extends { locationId: ParkId }>(
     locations: ParkId[]
 ): T[] {
     return data.filter((item) => locations.includes(item.locationId))
+}
+
+export type ParkOperationalTone = "healthy" | "attention" | "critical"
+
+export interface ParkSecurityDailyRiskPoint {
+    date: string
+    dateLabel: string
+    incidentCount: number
+    unresolvedCount: number
+    criticalCount: number
+    avgResponse: number
+    riskScore: number
+}
+
+export interface ParkSecurityIssueMixItem {
+    type: ParkSecurityType
+    label: string
+    totalCount: number
+    unresolvedCount: number
+    criticalCount: number
+}
+
+export interface ParkSecurityParkPriority {
+    parkId: ParkId
+    parkName: string
+    safetyScore: number
+    tone: ParkOperationalTone
+    incidentCount: number
+    unresolvedCount: number
+    criticalOpenCount: number
+    avgResponse: number
+    dominantType: ParkSecurityType | null
+    dominantTypeLabel: string
+    hotspotZone: string | null
+    hotspotCount: number
+}
+
+export interface ParkSecurityZoneHotspot {
+    id: string
+    parkId: ParkId
+    parkName: string
+    zone: string
+    riskScore: number
+    tone: ParkOperationalTone
+    incidentCount: number
+    unresolvedCount: number
+    criticalCount: number
+    avgResponse: number
+    dominantType: ParkSecurityType | null
+    dominantTypeLabel: string
+}
+
+export interface ParkSecurityOverview {
+    monitoredParks: number
+    safetyScore: number
+    healthyParks: number
+    attentionParks: number
+    criticalParks: number
+    atRiskParks: number
+    unresolvedIncidents: number
+    criticalOpenIncidents: number
+    avgResponse: number
+    dominantType: ParkSecurityType | null
+    dominantTypeLabel: string
+    worstParkName: string | null
+    worstZoneLabel: string
+    worstZoneParkName: string | null
+    worstDateLabel: string | null
+    lowestDailyScore: number | null
+}
+
+export interface ParkOperationsDailyReadinessPoint {
+    date: string
+    dateLabel: string
+    issueCount: number
+    unresolvedCount: number
+    highCount: number
+    readinessScore: number
+}
+
+export interface ParkOperationsIssueMixItem {
+    type: ParkOperationsType
+    label: string
+    totalCount: number
+    unresolvedCount: number
+    highCount: number
+}
+
+export interface ParkOperationsParkPriority {
+    parkId: ParkId
+    parkName: string
+    readinessScore: number
+    tone: ParkOperationalTone
+    issueCount: number
+    unresolvedCount: number
+    unresolvedHighCount: number
+    serviceDebt: number
+    dominantType: ParkOperationsType | null
+    dominantTypeLabel: string
+    hotspotZone: string | null
+    hotspotCount: number
+}
+
+export interface ParkOperationsZoneHotspot {
+    id: string
+    parkId: ParkId
+    parkName: string
+    zone: string
+    readinessScore: number
+    tone: ParkOperationalTone
+    issueCount: number
+    unresolvedCount: number
+    highCount: number
+    dominantType: ParkOperationsType | null
+    dominantTypeLabel: string
+}
+
+export interface ParkOperationsOverview {
+    monitoredParks: number
+    readinessScore: number
+    healthyParks: number
+    attentionParks: number
+    criticalParks: number
+    atRiskParks: number
+    backlogIssues: number
+    unresolvedHighPriority: number
+    serviceDebt: number
+    dominantType: ParkOperationsType | null
+    dominantTypeLabel: string
+    worstParkName: string | null
+    worstZoneLabel: string
+    worstZoneParkName: string | null
+    worstDateLabel: string | null
+    lowestDailyScore: number | null
+}
+
+const SECURITY_IMPACT: Record<ParkSecurityType, number> = {
+    left_item: 1,
+    person_down: 3,
+    fight: 4,
+    fire: 6,
+}
+
+const OPERATIONS_IMPACT: Record<ParkOperationsType, number> = {
+    trash_overflow: 2,
+    camera_obstruction: 4,
+    light_off: 4,
+    vehicle_detect: 3,
+}
+
+function clamp(value: number, min: number, max: number) {
+    return Math.min(max, Math.max(min, value))
+}
+
+function round(value: number) {
+    return Math.round(value)
+}
+
+function ensureArray<T>(value: T[] | null | undefined): T[] {
+    return Array.isArray(value) ? value : []
+}
+
+function average(values: number[]) {
+    if (values.length === 0) return 0
+    return round(values.reduce((sum, value) => sum + value, 0) / values.length)
+}
+
+function getDateLabel(date: string) {
+    return new Date(date).toLocaleDateString("ru-RU", {
+        day: "2-digit",
+        month: "short",
+    })
+}
+
+function getActiveParkIds<T extends { locationId: ParkId }>(...sources: T[][]) {
+    const ids = new Set<ParkId>()
+
+    for (const source of sources) {
+        for (const item of ensureArray(source)) {
+            ids.add(item.locationId)
+        }
+    }
+
+    return Array.from(ids)
+}
+
+function getPeriodDays<T extends { date: string }>(...sources: T[][]) {
+    const days = new Set<string>()
+
+    for (const source of sources) {
+        for (const item of ensureArray(source)) {
+            days.add(item.date)
+        }
+    }
+
+    return days.size || 1
+}
+
+function getTopKey<K extends string>(
+    counters: Partial<Record<K, number>>
+): K | null {
+    let topKey: K | null = null
+    let topValue = -Infinity
+
+    for (const [key, value] of Object.entries(counters) as Array<[K, number | undefined]>) {
+        const safeValue = value ?? 0
+
+        if (safeValue > topValue) {
+            topKey = key
+            topValue = safeValue
+        }
+    }
+
+    return topValue > 0 ? topKey : null
+}
+
+function getTopZone<T extends { zone: string }>(items: T[]) {
+    const counters: Record<string, number> = {}
+
+    for (const item of items) {
+        counters[item.zone] = (counters[item.zone] ?? 0) + 1
+    }
+
+    const topZone = getTopKey(counters)
+
+    return {
+        zone: topZone,
+        count: topZone ? counters[topZone] : 0,
+    }
+}
+
+function getDominantSecurityType(
+    incidents: ParkSecurityIncident[]
+): ParkSecurityType | null {
+    const counters: Partial<Record<ParkSecurityType, number>> = {}
+
+    for (const incident of incidents) {
+        const weight =
+            SECURITY_IMPACT[incident.type] +
+            (incident.resolved ? 0 : 2) +
+            (incident.severity === "critical" ? 3 : incident.severity === "high" ? 1 : 0)
+
+        counters[incident.type] = (counters[incident.type] ?? 0) + weight
+    }
+
+    return getTopKey(counters)
+}
+
+function getDominantOperationsType(
+    incidents: ParkOperationsIncident[]
+): ParkOperationsType | null {
+    const counters: Partial<Record<ParkOperationsType, number>> = {}
+
+    for (const incident of incidents) {
+        const weight =
+            OPERATIONS_IMPACT[incident.type] +
+            (incident.resolved ? 0 : 2) +
+            (incident.severity === "high" ? 2 : 0)
+
+        counters[incident.type] = (counters[incident.type] ?? 0) + weight
+    }
+
+    return getTopKey(counters)
+}
+
+function getSecurityParkScore(
+    incidents: ParkSecurityIncident[],
+    periodDays: number
+) {
+    const incidentCount = incidents.length
+    const unresolvedCount = incidents.filter((incident) => !incident.resolved).length
+    const criticalCount = incidents.filter((incident) => incident.severity === "critical").length
+    const criticalOpenCount = incidents.filter(
+        (incident) => incident.severity === "critical" && !incident.resolved
+    ).length
+    const avgResponse = average(incidents.map((incident) => incident.responseMinutes))
+
+    const incidentPressure = (incidentCount / periodDays) * 12
+    const unresolvedPressure = (unresolvedCount / periodDays) * 24
+    const criticalPressure = (criticalCount / periodDays) * 18
+    const openCriticalPressure = criticalOpenCount * 8
+    const responsePressure = Math.max(avgResponse - 6, 0) * 1.7
+
+    return round(
+        clamp(
+            100 -
+            incidentPressure -
+            unresolvedPressure -
+            criticalPressure -
+            openCriticalPressure -
+            responsePressure,
+            12,
+            99
+        )
+    )
+}
+
+function getSecurityDailyScore(incidents: ParkSecurityIncident[]) {
+    const incidentCount = incidents.length
+    const unresolvedCount = incidents.filter((incident) => !incident.resolved).length
+    const criticalCount = incidents.filter((incident) => incident.severity === "critical").length
+    const avgResponse = average(incidents.map((incident) => incident.responseMinutes))
+
+    return round(
+        clamp(
+            100 -
+            incidentCount * 9 -
+            unresolvedCount * 14 -
+            criticalCount * 18 -
+            Math.max(avgResponse - 7, 0) * 1.8,
+            18,
+            99
+        )
+    )
+}
+
+function getSecurityZoneScore(incidents: ParkSecurityIncident[]) {
+    const incidentCount = incidents.length
+    const unresolvedCount = incidents.filter((incident) => !incident.resolved).length
+    const criticalCount = incidents.filter((incident) => incident.severity === "critical").length
+    const avgResponse = average(incidents.map((incident) => incident.responseMinutes))
+
+    return round(
+        clamp(
+            100 -
+            incidentCount * 7 -
+            unresolvedCount * 12 -
+            criticalCount * 16 -
+            Math.max(avgResponse - 8, 0) * 2,
+            8,
+            98
+        )
+    )
+}
+
+function getOperationsParkScore(
+    incidents: ParkOperationsIncident[],
+    periodDays: number
+) {
+    const issueCount = incidents.length
+    const unresolvedCount = incidents.filter((incident) => !incident.resolved).length
+    const highCount = incidents.filter((incident) => incident.severity === "high").length
+    const unresolvedHighCount = incidents.filter(
+        (incident) => incident.severity === "high" && !incident.resolved
+    ).length
+
+    return round(
+        clamp(
+            100 -
+            (issueCount / periodDays) * 8 -
+            (unresolvedCount / periodDays) * 16 -
+            (highCount / periodDays) * 12 -
+            unresolvedHighCount * 5,
+            18,
+            99
+        )
+    )
+}
+
+function getOperationsDailyScore(incidents: ParkOperationsIncident[]) {
+    const issueCount = incidents.length
+    const unresolvedCount = incidents.filter((incident) => !incident.resolved).length
+    const highCount = incidents.filter((incident) => incident.severity === "high").length
+
+    return round(
+        clamp(
+            100 - issueCount * 7 - unresolvedCount * 12 - highCount * 14,
+            18,
+            99
+        )
+    )
+}
+
+function getOperationsZoneScore(incidents: ParkOperationsIncident[]) {
+    const issueCount = incidents.length
+    const unresolvedCount = incidents.filter((incident) => !incident.resolved).length
+    const highCount = incidents.filter((incident) => incident.severity === "high").length
+
+    return round(
+        clamp(
+            100 - issueCount * 7 - unresolvedCount * 13 - highCount * 15,
+            12,
+            98
+        )
+    )
+}
+
+export function getParkNameById(parkId: ParkId) {
+    return PARKS.find((park) => park.id === parkId)?.name ?? parkId
+}
+
+export function getParkTone(score: number): ParkOperationalTone {
+    if (score >= 72) return "healthy"
+    if (score >= 52) return "attention"
+    return "critical"
+}
+
+export function getParkSecurityDailyRisk(
+    daily: ParkSecurityDailyEntry[],
+    incidents: ParkSecurityIncident[]
+): ParkSecurityDailyRiskPoint[] {
+    const safeDaily = ensureArray(daily)
+    const safeIncidents = ensureArray(incidents)
+    const dates = new Set<string>()
+
+    for (const row of safeDaily) dates.add(row.date)
+    for (const incident of safeIncidents) dates.add(incident.date)
+
+    return Array.from(dates)
+        .sort((left, right) => left.localeCompare(right))
+        .map((date) => {
+            const dayIncidents = safeIncidents.filter((incident) => incident.date === date)
+
+            return {
+                date,
+                dateLabel: getDateLabel(date),
+                incidentCount: dayIncidents.length,
+                unresolvedCount: dayIncidents.filter((incident) => !incident.resolved).length,
+                criticalCount: dayIncidents.filter((incident) => incident.severity === "critical").length,
+                avgResponse: average(dayIncidents.map((incident) => incident.responseMinutes)),
+                riskScore: getSecurityDailyScore(dayIncidents),
+            }
+        })
+}
+
+export function getParkSecurityIssueMix(
+    incidents: ParkSecurityIncident[]
+): ParkSecurityIssueMixItem[] {
+    const safeIncidents = ensureArray(incidents)
+
+    return (Object.keys(PARK_SECURITY_LABELS) as ParkSecurityType[])
+        .map((type) => {
+            const typeIncidents = safeIncidents.filter((incident) => incident.type === type)
+
+            return {
+                type,
+                label: PARK_SECURITY_LABELS[type],
+                totalCount: typeIncidents.length,
+                unresolvedCount: typeIncidents.filter((incident) => !incident.resolved).length,
+                criticalCount: typeIncidents.filter((incident) => incident.severity === "critical").length,
+            }
+        })
+        .sort((left, right) => {
+            const rightWeight = right.totalCount + right.unresolvedCount * 2 + right.criticalCount * 3
+            const leftWeight = left.totalCount + left.unresolvedCount * 2 + left.criticalCount * 3
+            return rightWeight - leftWeight
+        })
+}
+
+export function getParkSecurityPriorityParks(
+    daily: ParkSecurityDailyEntry[],
+    incidents: ParkSecurityIncident[]
+): ParkSecurityParkPriority[] {
+    const safeDaily = ensureArray(daily)
+    const safeIncidents = ensureArray(incidents)
+    const periodDays = getPeriodDays(safeDaily, safeIncidents)
+    const activeParkIds = getActiveParkIds(safeDaily, safeIncidents)
+
+    return activeParkIds
+        .map((parkId) => {
+            const parkIncidents = safeIncidents.filter((incident) => incident.locationId === parkId)
+            const dominantType = getDominantSecurityType(parkIncidents)
+            const hotspot = getTopZone(parkIncidents)
+            const safetyScore = getSecurityParkScore(parkIncidents, periodDays)
+
+            return {
+                parkId,
+                parkName: getParkNameById(parkId),
+                safetyScore,
+                tone: getParkTone(safetyScore),
+                incidentCount: parkIncidents.length,
+                unresolvedCount: parkIncidents.filter((incident) => !incident.resolved).length,
+                criticalOpenCount: parkIncidents.filter(
+                    (incident) => incident.severity === "critical" && !incident.resolved
+                ).length,
+                avgResponse: average(parkIncidents.map((incident) => incident.responseMinutes)),
+                dominantType,
+                dominantTypeLabel: dominantType
+                    ? PARK_SECURITY_LABELS[dominantType]
+                    : "Ситуация стабильна",
+                hotspotZone: hotspot.zone,
+                hotspotCount: hotspot.count,
+            }
+        })
+        .sort((left, right) =>
+            left.safetyScore - right.safetyScore ||
+            right.criticalOpenCount - left.criticalOpenCount ||
+            right.unresolvedCount - left.unresolvedCount ||
+            right.incidentCount - left.incidentCount
+        )
+}
+
+export function getParkSecurityZoneHotspots(
+    incidents: ParkSecurityIncident[]
+): ParkSecurityZoneHotspot[] {
+    const safeIncidents = ensureArray(incidents)
+    const grouped = new Map<string, ParkSecurityIncident[]>()
+
+    for (const incident of safeIncidents) {
+        const key = `${incident.locationId}:${incident.zone}`
+        const existing = grouped.get(key)
+
+        if (existing) {
+            existing.push(incident)
+        } else {
+            grouped.set(key, [incident])
+        }
+    }
+
+    return Array.from(grouped.entries())
+        .map(([key, zoneIncidents]) => {
+            const [parkId, zone] = key.split(":") as [ParkId, string]
+            const dominantType = getDominantSecurityType(zoneIncidents)
+            const riskScore = getSecurityZoneScore(zoneIncidents)
+
+            return {
+                id: key,
+                parkId,
+                parkName: getParkNameById(parkId),
+                zone,
+                riskScore,
+                tone: getParkTone(riskScore),
+                incidentCount: zoneIncidents.length,
+                unresolvedCount: zoneIncidents.filter((incident) => !incident.resolved).length,
+                criticalCount: zoneIncidents.filter((incident) => incident.severity === "critical").length,
+                avgResponse: average(zoneIncidents.map((incident) => incident.responseMinutes)),
+                dominantType,
+                dominantTypeLabel: dominantType
+                    ? PARK_SECURITY_LABELS[dominantType]
+                    : "Стабильная обстановка",
+            }
+        })
+        .sort((left, right) =>
+            left.riskScore - right.riskScore ||
+            right.criticalCount - left.criticalCount ||
+            right.unresolvedCount - left.unresolvedCount ||
+            right.incidentCount - left.incidentCount
+        )
+}
+
+export function getParkSecurityOverview(
+    daily: ParkSecurityDailyEntry[],
+    incidents: ParkSecurityIncident[]
+): ParkSecurityOverview {
+    const safeIncidents = ensureArray(incidents)
+    const priorityParks = getParkSecurityPriorityParks(daily, safeIncidents)
+    const zoneHotspots = getParkSecurityZoneHotspots(safeIncidents)
+    const dailyRisk = getParkSecurityDailyRisk(daily, safeIncidents)
+    const issueMix = getParkSecurityIssueMix(safeIncidents)
+    const safetyScore = priorityParks.length
+        ? round(priorityParks.reduce((sum, park) => sum + park.safetyScore, 0) / priorityParks.length)
+        : 100
+    const worstDay = dailyRisk
+        .slice()
+        .sort((left, right) => left.riskScore - right.riskScore)[0] ?? null
+    const topIssue = issueMix.find((item) => item.totalCount > 0) ?? null
+
+    return {
+        monitoredParks: priorityParks.length,
+        safetyScore,
+        healthyParks: priorityParks.filter((park) => park.tone === "healthy").length,
+        attentionParks: priorityParks.filter((park) => park.tone === "attention").length,
+        criticalParks: priorityParks.filter((park) => park.tone === "critical").length,
+        atRiskParks: priorityParks.filter((park) => park.tone !== "healthy").length,
+        unresolvedIncidents: safeIncidents.filter((incident) => !incident.resolved).length,
+        criticalOpenIncidents: safeIncidents.filter(
+            (incident) => incident.severity === "critical" && !incident.resolved
+        ).length,
+        avgResponse: average(safeIncidents.map((incident) => incident.responseMinutes)),
+        dominantType: topIssue?.type ?? null,
+        dominantTypeLabel: topIssue?.label ?? "Ситуация стабильна",
+        worstParkName: priorityParks[0]?.parkName ?? null,
+        worstZoneLabel: zoneHotspots[0]?.zone ?? "Нет выраженной зоны риска",
+        worstZoneParkName: zoneHotspots[0]?.parkName ?? null,
+        worstDateLabel: worstDay?.dateLabel ?? null,
+        lowestDailyScore: worstDay?.riskScore ?? null,
+    }
+}
+
+export function getParkOperationsDailyReadiness(
+    daily: ParkOperationsDailyEntry[],
+    incidents: ParkOperationsIncident[]
+): ParkOperationsDailyReadinessPoint[] {
+    const safeDaily = ensureArray(daily)
+    const safeIncidents = ensureArray(incidents)
+    const dates = new Set<string>()
+
+    for (const row of safeDaily) dates.add(row.date)
+    for (const incident of safeIncidents) dates.add(incident.date)
+
+    return Array.from(dates)
+        .sort((left, right) => left.localeCompare(right))
+        .map((date) => {
+            const dayIncidents = safeIncidents.filter((incident) => incident.date === date)
+
+            return {
+                date,
+                dateLabel: getDateLabel(date),
+                issueCount: dayIncidents.length,
+                unresolvedCount: dayIncidents.filter((incident) => !incident.resolved).length,
+                highCount: dayIncidents.filter((incident) => incident.severity === "high").length,
+                readinessScore: getOperationsDailyScore(dayIncidents),
+            }
+        })
+}
+
+export function getParkOperationsIssueMix(
+    incidents: ParkOperationsIncident[]
+): ParkOperationsIssueMixItem[] {
+    const safeIncidents = ensureArray(incidents)
+
+    return (Object.keys(PARK_OPERATIONS_LABELS) as ParkOperationsType[])
+        .map((type) => {
+            const typeIncidents = safeIncidents.filter((incident) => incident.type === type)
+
+            return {
+                type,
+                label: PARK_OPERATIONS_LABELS[type],
+                totalCount: typeIncidents.length,
+                unresolvedCount: typeIncidents.filter((incident) => !incident.resolved).length,
+                highCount: typeIncidents.filter((incident) => incident.severity === "high").length,
+            }
+        })
+        .sort((left, right) => {
+            const rightWeight = right.totalCount + right.unresolvedCount * 2 + right.highCount * 2
+            const leftWeight = left.totalCount + left.unresolvedCount * 2 + left.highCount * 2
+            return rightWeight - leftWeight
+        })
+}
+
+export function getParkOperationsPriorityParks(
+    daily: ParkOperationsDailyEntry[],
+    incidents: ParkOperationsIncident[]
+): ParkOperationsParkPriority[] {
+    const safeDaily = ensureArray(daily)
+    const safeIncidents = ensureArray(incidents)
+    const periodDays = getPeriodDays(safeDaily, safeIncidents)
+    const activeParkIds = getActiveParkIds(safeDaily, safeIncidents)
+
+    return activeParkIds
+        .map((parkId) => {
+            const parkIncidents = safeIncidents.filter((incident) => incident.locationId === parkId)
+            const dominantType = getDominantOperationsType(parkIncidents)
+            const hotspot = getTopZone(parkIncidents)
+            const readinessScore = getOperationsParkScore(parkIncidents, periodDays)
+            const unresolvedCount = parkIncidents.filter((incident) => !incident.resolved).length
+            const unresolvedHighCount = parkIncidents.filter(
+                (incident) => incident.severity === "high" && !incident.resolved
+            ).length
+
+            return {
+                parkId,
+                parkName: getParkNameById(parkId),
+                readinessScore,
+                tone: getParkTone(readinessScore),
+                issueCount: parkIncidents.length,
+                unresolvedCount,
+                unresolvedHighCount,
+                serviceDebt: unresolvedCount + unresolvedHighCount,
+                dominantType,
+                dominantTypeLabel: dominantType
+                    ? PARK_OPERATIONS_LABELS[dominantType]
+                    : "Территория стабильна",
+                hotspotZone: hotspot.zone,
+                hotspotCount: hotspot.count,
+            }
+        })
+        .sort((left, right) =>
+            left.readinessScore - right.readinessScore ||
+            right.serviceDebt - left.serviceDebt ||
+            right.issueCount - left.issueCount
+        )
+}
+
+export function getParkOperationsZoneHotspots(
+    incidents: ParkOperationsIncident[]
+): ParkOperationsZoneHotspot[] {
+    const safeIncidents = ensureArray(incidents)
+    const grouped = new Map<string, ParkOperationsIncident[]>()
+
+    for (const incident of safeIncidents) {
+        const key = `${incident.locationId}:${incident.zone}`
+        const existing = grouped.get(key)
+
+        if (existing) {
+            existing.push(incident)
+        } else {
+            grouped.set(key, [incident])
+        }
+    }
+
+    return Array.from(grouped.entries())
+        .map(([key, zoneIncidents]) => {
+            const [parkId, zone] = key.split(":") as [ParkId, string]
+            const dominantType = getDominantOperationsType(zoneIncidents)
+            const readinessScore = getOperationsZoneScore(zoneIncidents)
+
+            return {
+                id: key,
+                parkId,
+                parkName: getParkNameById(parkId),
+                zone,
+                readinessScore,
+                tone: getParkTone(readinessScore),
+                issueCount: zoneIncidents.length,
+                unresolvedCount: zoneIncidents.filter((incident) => !incident.resolved).length,
+                highCount: zoneIncidents.filter((incident) => incident.severity === "high").length,
+                dominantType,
+                dominantTypeLabel: dominantType
+                    ? PARK_OPERATIONS_LABELS[dominantType]
+                    : "Профилактический режим",
+            }
+        })
+        .sort((left, right) =>
+            left.readinessScore - right.readinessScore ||
+            right.unresolvedCount - left.unresolvedCount ||
+            right.highCount - left.highCount ||
+            right.issueCount - left.issueCount
+        )
+}
+
+export function getParkOperationsOverview(
+    daily: ParkOperationsDailyEntry[],
+    incidents: ParkOperationsIncident[]
+): ParkOperationsOverview {
+    const safeIncidents = ensureArray(incidents)
+    const priorityParks = getParkOperationsPriorityParks(daily, safeIncidents)
+    const zoneHotspots = getParkOperationsZoneHotspots(safeIncidents)
+    const readinessTrend = getParkOperationsDailyReadiness(daily, safeIncidents)
+    const issueMix = getParkOperationsIssueMix(safeIncidents)
+    const readinessScore = priorityParks.length
+        ? round(priorityParks.reduce((sum, park) => sum + park.readinessScore, 0) / priorityParks.length)
+        : 100
+    const worstDay = readinessTrend
+        .slice()
+        .sort((left, right) => left.readinessScore - right.readinessScore)[0] ?? null
+    const backlogIssues = safeIncidents.filter((incident) => !incident.resolved).length
+    const unresolvedHighPriority = safeIncidents.filter(
+        (incident) => incident.severity === "high" && !incident.resolved
+    ).length
+    const topIssue = issueMix.find((item) => item.totalCount > 0) ?? null
+
+    return {
+        monitoredParks: priorityParks.length,
+        readinessScore,
+        healthyParks: priorityParks.filter((park) => park.tone === "healthy").length,
+        attentionParks: priorityParks.filter((park) => park.tone === "attention").length,
+        criticalParks: priorityParks.filter((park) => park.tone === "critical").length,
+        atRiskParks: priorityParks.filter((park) => park.tone !== "healthy").length,
+        backlogIssues,
+        unresolvedHighPriority,
+        serviceDebt: backlogIssues + unresolvedHighPriority,
+        dominantType: topIssue?.type ?? null,
+        dominantTypeLabel: topIssue?.label ?? "Сервисный фон стабилен",
+        worstParkName: priorityParks[0]?.parkName ?? null,
+        worstZoneLabel: zoneHotspots[0]?.zone ?? "Нет выраженной проблемной зоны",
+        worstZoneParkName: zoneHotspots[0]?.parkName ?? null,
+        worstDateLabel: worstDay?.dateLabel ?? null,
+        lowestDailyScore: worstDay?.readinessScore ?? null,
+    }
 }

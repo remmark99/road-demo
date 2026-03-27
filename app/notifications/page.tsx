@@ -107,6 +107,7 @@ const alertIcons: Record<string, LucideIcon> = {
   park_camera_obstruction: CameraOff,
   park_light_off: LightbulbOff,
   park_vehicle_detect: Car,
+  park_dirty_road: Cloud,
   transport_route_deviation: Route,
   transport_wait_overrun: Clock,
   transport_doors_not_opened: DoorClosed,
@@ -194,6 +195,15 @@ const DEMO_ALERT_SEEDS: DemoAlertSeed[] = [
     message: "На пешеходной дорожке зафиксирован проезд автомобиля",
     severity: 0.76,
     minutesAgo: 68,
+  },
+  {
+    id: "park-dirty-road",
+    module: "parks",
+    moduleName: "park_monitoring",
+    alertType: "park_dirty_road",
+    message: "На сервисной дороге парка требуется уборка покрытия",
+    severity: 0.47,
+    minutesAgo: 74,
   },
   {
     id: "transport-route-deviation",
@@ -1216,13 +1226,13 @@ function ControllerAlertsTab() {
       ) : (
         <div className="space-y-2">
           {/* Table header */}
-          <div className="hidden md:grid md:grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            <div className="col-span-2">Время</div>
-            <div className="col-span-2">Датчик</div>
-            <div className="col-span-2">Категория</div>
-            <div className="col-span-2">Значение</div>
-            <div className="col-span-2">Статус</div>
-            <div className="col-span-2">Сообщение</div>
+          <div className="hidden md:grid md:grid-cols-[minmax(8rem,_1fr)_minmax(10rem,_1.3fr)_minmax(8rem,_1fr)_minmax(6rem,_0.8fr)_minmax(12rem,_1.6fr)_minmax(0,_1.5fr)] gap-4 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <div className="min-w-0">Время</div>
+            <div className="min-w-0">Датчик</div>
+            <div className="min-w-0">Категория</div>
+            <div className="min-w-0">Значение</div>
+            <div className="min-w-0">Статус</div>
+            <div className="min-w-0">Сообщение</div>
           </div>
 
           {alerts.map((alert) => {
@@ -1243,9 +1253,9 @@ function ControllerAlertsTab() {
                 className="transition-colors hover:border-primary/50"
               >
                 <CardContent className="p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                  <div className="grid grid-cols-1 gap-4 items-center md:grid-cols-[minmax(8rem,_1fr)_minmax(10rem,_1.3fr)_minmax(8rem,_1fr)_minmax(6rem,_0.8fr)_minmax(12rem,_1.6fr)_minmax(0,_1.5fr)]">
                     {/* Time */}
-                    <div className="md:col-span-2 flex items-center gap-2 text-sm">
+                    <div className="min-w-0 flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
                       <span className="text-muted-foreground md:text-foreground">
                         {formatTimeAgo(alert.created_at)}
@@ -1253,7 +1263,7 @@ function ControllerAlertsTab() {
                     </div>
 
                     {/* Sensor */}
-                    <div className="md:col-span-2 text-sm">
+                    <div className="min-w-0 text-sm truncate">
                       <span className="text-muted-foreground md:hidden">
                         Датчик:{" "}
                       </span>
@@ -1261,10 +1271,10 @@ function ControllerAlertsTab() {
                     </div>
 
                     {/* Category */}
-                    <div className="md:col-span-2">
+                    <div className="min-w-0">
                       <Badge
                         variant="outline"
-                        className="gap-1.5"
+                        className="max-w-full gap-1.5 overflow-hidden"
                       >
                         {alert.category === "temperature" ? (
                           <Thermometer className="h-3 w-3" />
@@ -1275,12 +1285,12 @@ function ControllerAlertsTab() {
                         ) : (
                           <Zap className="h-3 w-3" />
                         )}
-                        {categoryLabel}
+                        <span className="truncate">{categoryLabel}</span>
                       </Badge>
                     </div>
 
                     {/* Value */}
-                    <div className="md:col-span-2 text-sm">
+                    <div className="min-w-0 text-sm">
                       <span className="font-bold tabular-nums text-base">
                         {alert.value.toFixed(1)}
                       </span>
@@ -1288,7 +1298,7 @@ function ControllerAlertsTab() {
                     </div>
 
                     {/* Alarm status with transition */}
-                    <div className="md:col-span-2 flex items-center gap-1.5">
+                    <div className="min-w-0 flex flex-wrap items-center gap-1.5">
                       {prevAlarmCfg && alert.prev_alarm !== alert.alarm && (
                         <>
                           <Badge
@@ -1305,7 +1315,7 @@ function ControllerAlertsTab() {
                     </div>
 
                     {/* Message */}
-                    <div className="md:col-span-2 text-sm text-muted-foreground truncate">
+                    <div className="min-w-0 text-sm text-muted-foreground truncate">
                       {alert.message}
                     </div>
                   </div>
