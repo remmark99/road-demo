@@ -19,12 +19,10 @@ export default function LoginPage() {
 
         try {
             const supabase = createClient()
-            const { error } = await Promise.race([
-                supabase.auth.signInWithPassword({ email, password }),
-                new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('timeout')), 10000)
-                ),
-            ])
+            const { error } = await supabase.auth.signInWithPassword({
+                email,
+                password,
+            })
 
             if (error) {
                 setError(error.message)

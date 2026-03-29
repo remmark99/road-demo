@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/server'
 import type { BusStopsGeoJSON } from '@/lib/api/bus-stops'
 
 let serverCache: BusStopsGeoJSON | null = null
 
 export async function GET(request: Request) {
+    const supabase = await createClient()
     const url = new URL(request.url)
     const forceRefresh = url.searchParams.has('refresh')
 

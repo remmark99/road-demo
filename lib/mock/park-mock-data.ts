@@ -1,3 +1,16 @@
+import {
+    RATING_ATTENTION,
+    RATING_CURVE_DIVISOR,
+    RATING_MAX,
+    RATING_TARGET,
+    formatRating,
+    getRating,
+    getRatingBandLabel,
+    getRatingTone,
+    roundRating,
+    type RatingTone,
+} from "@/lib/analytics/rating"
+
 export type TimeRange = "today" | "yesterday" | "week" | "month"
 
 export const TIME_RANGES: { value: TimeRange; label: string }[] = [
@@ -15,8 +28,8 @@ export const PARKS = [
 export type ParkId = (typeof PARKS)[number]["id"]
 
 const PARK_ZONES: Record<ParkId, string[]> = {
-    "park-1": ["Центральная аллея", "Детская площадка", "Входная группа", "Павильон №2"],
-    "park-2": ["Озёрная дорожка", "Спортивная зона", "Сцена", "Северный вход"],
+    "park-1": ["Центральная аллея", "Детская площадка", "Главный вход", "Зона отдыха"],
+    "park-2": ["Озерная дорожка", "Спортивная зона", "Центральная площадь", "Северный вход"],
 }
 
 function seededRandom(seed: number): number {
@@ -289,7 +302,7 @@ export function filterByLocations<T extends { locationId: ParkId }>(
     return data.filter((item) => locations.includes(item.locationId))
 }
 
-export type ParkOperationalTone = "healthy" | "attention" | "critical"
+export type ParkOperationalTone = RatingTone
 
 export interface ParkSecurityDailyRiskPoint {
     date: string
@@ -437,11 +450,16 @@ const OPERATIONS_IMPACT: Record<ParkOperationsType, number> = {
     vehicle_detect: 3,
 }
 
-function clamp(value: number, min: number, max: number) {
-    return Math.min(max, Math.max(min, value))
-}
+export const PARK_RATING_MAX = RATING_MAX
+export const PARK_RATING_TARGET = RATING_TARGET
+export const PARK_RATING_ATTENTION = RATING_ATTENTION
+export const PARK_RATING_CURVE_DIVISOR = RATING_CURVE_DIVISOR
+export const formatParkRating = formatRating
+export const getParkRating = getRating
+export const getParkRatingBandLabel = getRatingBandLabel
+export const getParkTone = getRatingTone
 
-function round(value: number) {
+function roundInt(value: number) {
     return Math.round(value)
 }
 
@@ -451,7 +469,7 @@ function ensureArray<T>(value: T[] | null | undefined): T[] {
 
 function average(values: number[]) {
     if (values.length === 0) return 0
-    return round(values.reduce((sum, value) => sum + value, 0) / values.length)
+    return roundInt(values.reduce((sum, value) => sum + value, 0) / values.length)
 }
 
 function getDateLabel(date: string) {
@@ -461,7 +479,7 @@ function getDateLabel(date: string) {
     })
 }
 
-function getActiveParkIds<T extends { locationId: ParkId }>(...sources: T[][]) {
+function getActiveParkIds(...sources: Array<Array<{ locationId: ParkId }>>) {
     const ids = new Set<ParkId>()
 
     for (const source of sources) {
@@ -473,7 +491,7 @@ function getActiveParkIds<T extends { locationId: ParkId }>(...sources: T[][]) {
     return Array.from(ids)
 }
 
-function getPeriodDays<T extends { date: string }>(...sources: T[][]) {
+function getPeriodDays(...sources: Array<Array<{ date: string }>>) {
     const days = new Set<string>()
 
     for (const source of sources) {
@@ -564,23 +582,18 @@ function getSecurityParkScore(
     ).length
     const avgResponse = average(incidents.map((incident) => incident.responseMinutes))
 
-    const incidentPressure = (incidentCount / periodDays) * 12
-    const unresolvedPressure = (unresolvedCount / periodDays) * 24
-    const criticalPressure = (criticalCount / periodDays) * 18
-    const openCriticalPressure = criticalOpenCount * 8
-    const responsePressure = Math.max(avgResponse - 6, 0) * 1.7
+    const incidentPressure = (incidentCount / periodDays) * 1.15
+    const unresolvedPressure = (unresolvedCount / periodDays) * 2.3
+    const criticalPressure = (criticalCount / periodDays) * 3.1
+    const openCriticalPressure = criticalOpenCount * 0.8
+    const responsePressure = Math.max(avgResponse - 6, 0) * 0.12
 
-    return round(
-        clamp(
-            100 -
-            incidentPressure -
-            unresolvedPressure -
-            criticalPressure -
-            openCriticalPressure -
-            responsePressure,
-            12,
-            99
-        )
+    return getParkRating(
+        incidentPressure +
+        unresolvedPressure +
+        criticalPressure +
+        openCriticalPressure +
+        responsePressure
     )
 }
 
@@ -590,16 +603,11 @@ function getSecurityDailyScore(incidents: ParkSecurityIncident[]) {
     const criticalCount = incidents.filter((incident) => incident.severity === "critical").length
     const avgResponse = average(incidents.map((incident) => incident.responseMinutes))
 
-    return round(
-        clamp(
-            100 -
-            incidentCount * 9 -
-            unresolvedCount * 14 -
-            criticalCount * 18 -
-            Math.max(avgResponse - 7, 0) * 1.8,
-            18,
-            99
-        )
+    return getParkRating(
+        incidentCount * 0.85 +
+        unresolvedCount * 1.5 +
+        criticalCount * 2.2 +
+        Math.max(avgResponse - 7, 0) * 0.14
     )
 }
 
@@ -609,16 +617,11 @@ function getSecurityZoneScore(incidents: ParkSecurityIncident[]) {
     const criticalCount = incidents.filter((incident) => incident.severity === "critical").length
     const avgResponse = average(incidents.map((incident) => incident.responseMinutes))
 
-    return round(
-        clamp(
-            100 -
-            incidentCount * 7 -
-            unresolvedCount * 12 -
-            criticalCount * 16 -
-            Math.max(avgResponse - 8, 0) * 2,
-            8,
-            98
-        )
+    return getParkRating(
+        incidentCount * 0.75 +
+        unresolvedCount * 1.45 +
+        criticalCount * 2.1 +
+        Math.max(avgResponse - 8, 0) * 0.13
     )
 }
 
@@ -633,16 +636,11 @@ function getOperationsParkScore(
         (incident) => incident.severity === "high" && !incident.resolved
     ).length
 
-    return round(
-        clamp(
-            100 -
-            (issueCount / periodDays) * 8 -
-            (unresolvedCount / periodDays) * 16 -
-            (highCount / periodDays) * 12 -
-            unresolvedHighCount * 5,
-            18,
-            99
-        )
+    return getParkRating(
+        (issueCount / periodDays) * 0.95 +
+        (unresolvedCount / periodDays) * 1.9 +
+        (highCount / periodDays) * 1.6 +
+        unresolvedHighCount * 0.75
     )
 }
 
@@ -651,12 +649,10 @@ function getOperationsDailyScore(incidents: ParkOperationsIncident[]) {
     const unresolvedCount = incidents.filter((incident) => !incident.resolved).length
     const highCount = incidents.filter((incident) => incident.severity === "high").length
 
-    return round(
-        clamp(
-            100 - issueCount * 7 - unresolvedCount * 12 - highCount * 14,
-            18,
-            99
-        )
+    return getParkRating(
+        issueCount * 0.75 +
+        unresolvedCount * 1.45 +
+        highCount * 1.7
     )
 }
 
@@ -665,23 +661,15 @@ function getOperationsZoneScore(incidents: ParkOperationsIncident[]) {
     const unresolvedCount = incidents.filter((incident) => !incident.resolved).length
     const highCount = incidents.filter((incident) => incident.severity === "high").length
 
-    return round(
-        clamp(
-            100 - issueCount * 7 - unresolvedCount * 13 - highCount * 15,
-            12,
-            98
-        )
+    return getParkRating(
+        issueCount * 0.7 +
+        unresolvedCount * 1.5 +
+        highCount * 1.8
     )
 }
 
 export function getParkNameById(parkId: ParkId) {
     return PARKS.find((park) => park.id === parkId)?.name ?? parkId
-}
-
-export function getParkTone(score: number): ParkOperationalTone {
-    if (score >= 72) return "healthy"
-    if (score >= 52) return "attention"
-    return "critical"
 }
 
 export function getParkSecurityDailyRisk(
@@ -837,8 +825,8 @@ export function getParkSecurityOverview(
     const dailyRisk = getParkSecurityDailyRisk(daily, safeIncidents)
     const issueMix = getParkSecurityIssueMix(safeIncidents)
     const safetyScore = priorityParks.length
-        ? round(priorityParks.reduce((sum, park) => sum + park.safetyScore, 0) / priorityParks.length)
-        : 100
+        ? roundRating(priorityParks.reduce((sum, park) => sum + park.safetyScore, 0) / priorityParks.length)
+        : PARK_RATING_MAX
     const worstDay = dailyRisk
         .slice()
         .sort((left, right) => left.riskScore - right.riskScore)[0] ?? null
@@ -1018,8 +1006,8 @@ export function getParkOperationsOverview(
     const readinessTrend = getParkOperationsDailyReadiness(daily, safeIncidents)
     const issueMix = getParkOperationsIssueMix(safeIncidents)
     const readinessScore = priorityParks.length
-        ? round(priorityParks.reduce((sum, park) => sum + park.readinessScore, 0) / priorityParks.length)
-        : 100
+        ? roundRating(priorityParks.reduce((sum, park) => sum + park.readinessScore, 0) / priorityParks.length)
+        : PARK_RATING_MAX
     const worstDay = readinessTrend
         .slice()
         .sort((left, right) => left.readinessScore - right.readinessScore)[0] ?? null

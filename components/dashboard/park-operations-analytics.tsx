@@ -44,9 +44,14 @@ import {
 } from "lucide-react"
 import {
     PARKS,
+    PARK_RATING_MAX,
+    PARK_RATING_TARGET,
     PARK_OPERATIONS_LABELS,
     filterByLocations,
+    formatParkRating,
+    getParkRatingBandLabel,
     getParkNameById,
+    getParkTone,
     getParkOperationsDailyReadiness,
     getParkOperationsIssueMix,
     getParkOperationsOverview,
@@ -62,7 +67,7 @@ import {
 import { cn } from "@/lib/utils"
 
 const readinessTrendConfig = {
-    readinessScore: { label: "Индекс готовности", color: "hsl(152, 57%, 40%)" },
+    readinessScore: { label: "Рейтинг эксплуатации", color: "hsl(152, 57%, 40%)" },
     issueCount: { label: "Все проблемы", color: "hsl(38, 92%, 50%)" },
     unresolvedCount: { label: "Открытые", color: "hsl(0, 84%, 60%)" },
 } satisfies ChartConfig
@@ -84,14 +89,14 @@ const TONE_META: Record<
     }
 > = {
     healthy: {
-        label: "Устойчиво",
+        label: "Нормально",
         barClassName: "bg-emerald-500",
         badgeClassName: "border-emerald-500/20 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
         panelClassName: "border-emerald-500/20 bg-emerald-500/[0.07]",
         textClassName: "text-emerald-600 dark:text-emerald-400",
     },
     attention: {
-        label: "Под нагрузкой",
+        label: "Нужно внимание",
         barClassName: "bg-amber-500",
         badgeClassName: "border-amber-500/20 bg-amber-500/12 text-amber-700 dark:text-amber-300",
         panelClassName: "border-amber-500/20 bg-amber-500/[0.07]",
@@ -146,6 +151,34 @@ const TYPE_META: Record<
     },
 }
 
+const OVERVIEW_CARD_META: Record<
+    ParkOperationalTone,
+    {
+        cardClassName: string
+        titleClassName: string
+        valueClassName: string
+    }
+> = {
+    healthy: {
+        cardClassName:
+            "border-emerald-500/25 bg-gradient-to-br from-emerald-500/[0.18] via-background to-emerald-500/[0.05] dark:from-emerald-950/45 dark:via-background dark:to-emerald-900/20",
+        titleClassName: "text-emerald-700 dark:text-emerald-300",
+        valueClassName: "text-emerald-950 dark:text-emerald-50",
+    },
+    attention: {
+        cardClassName:
+            "border-amber-500/25 bg-gradient-to-br from-amber-500/[0.18] via-background to-amber-500/[0.05] dark:from-amber-950/45 dark:via-background dark:to-amber-900/20",
+        titleClassName: "text-amber-700 dark:text-amber-300",
+        valueClassName: "text-amber-950 dark:text-amber-50",
+    },
+    critical: {
+        cardClassName:
+            "border-red-500/25 bg-gradient-to-br from-red-500/[0.18] via-background to-red-500/[0.05] dark:from-red-950/45 dark:via-background dark:to-red-900/20",
+        titleClassName: "text-red-700 dark:text-red-300",
+        valueClassName: "text-red-950 dark:text-red-50",
+    },
+}
+
 function filterSelectedParks<T extends { locationId: ParkId }>(data: T[], selectedParks: ParkId[]) {
     if (selectedParks.length === 0) return [] as T[]
     if (selectedParks.length === PARKS.length) return data
@@ -165,10 +198,28 @@ function ScoreBar({
         <div className={cn("h-2 overflow-hidden rounded-full bg-muted/70", className)}>
             <div
                 className={cn("h-full rounded-full transition-all", TONE_META[tone].barClassName)}
-                style={{ width: `${value}%` }}
+                style={{ width: `${(value / PARK_RATING_MAX) * 100}%` }}
             />
         </div>
     )
+}
+
+function formatRatingTick(value: number) {
+    return formatParkRating(value)
+}
+
+function getCountLabel(count: number, one: string, few: string, many: string) {
+    const abs = Math.abs(count) % 100
+    const lastDigit = abs % 10
+
+    if (abs > 10 && abs < 20) return many
+    if (lastDigit === 1) return one
+    if (lastDigit >= 2 && lastDigit <= 4) return few
+    return many
+}
+
+function formatOpenTasksLabel(count: number) {
+    return `${count} ${getCountLabel(count, "открытая задача", "открытые задачи", "открытых задач")}`
 }
 
 function ToneBadge({ tone }: { tone: ParkOperationalTone }) {
@@ -214,7 +265,7 @@ function getActionDetail(park: ParkOperationsParkPriority) {
     }
 
     const hotspot = park.hotspotZone ? `${park.hotspotZone}, ` : ""
-    return `${park.parkName}: ${hotspot}${park.unresolvedCount} открытых задач, сервисный долг ${park.serviceDebt}, доминирует ${park.dominantTypeLabel.toLowerCase()}.`
+    return `${park.parkName}: ${hotspot}${formatOpenTasksLabel(park.unresolvedCount)}, сервисный долг ${park.serviceDebt}, доминирует ${park.dominantTypeLabel.toLowerCase()}.`
 }
 
 export function ParkOperationsAnalytics() {
@@ -286,6 +337,8 @@ export function ParkOperationsAnalytics() {
         shortLabel: TYPE_META[item.type].shortLabel,
     }))
     const worstPark = priorityParks[0] ?? null
+    const overviewTone = getParkTone(overview.readinessScore)
+    const overviewLabel = getParkRatingBandLabel(overview.readinessScore)
     const hasData = filteredDaily.length > 0 || filteredIncidents.length > 0
     const actionQueue = useMemo(() => {
         const candidateParks = priorityParks.filter(
@@ -376,34 +429,36 @@ export function ParkOperationsAnalytics() {
                 ) : (
                     <>
                         <div className="grid gap-4 xl:grid-cols-12">
-                            <Card className="xl:col-span-5 border-emerald-500/20 bg-gradient-to-br from-slate-950/[0.03] via-emerald-500/[0.07] to-amber-500/[0.12] dark:from-slate-950 dark:via-emerald-950/40 dark:to-amber-950/30">
+                            <Card className={cn("xl:col-span-5", OVERVIEW_CARD_META[overviewTone].cardClassName)}>
                                 <CardContent className="p-6">
                                     <div className="flex items-start justify-between gap-4">
                                         <div className="space-y-3">
-                                            <div className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+                                            <div className={cn("flex items-center gap-2 text-sm font-medium", OVERVIEW_CARD_META[overviewTone].titleClassName)}>
                                                 <Gauge className="h-4 w-4" />
-                                                Готовность территории к эксплуатации
+                                                Рейтинг эксплуатации парков
                                             </div>
                                             <div className="flex items-end gap-3">
-                                                <span className="text-5xl font-semibold tracking-tight tabular-nums">
-                                                    {overview.readinessScore}
+                                                <span className={cn("text-5xl font-semibold tracking-tight tabular-nums", OVERVIEW_CARD_META[overviewTone].valueClassName)}>
+                                                    {formatParkRating(overview.readinessScore)}
                                                 </span>
-                                                <span className="pb-1 text-lg text-muted-foreground">/100</span>
+                                                <span className="pb-1 text-lg text-muted-foreground">/10</span>
                                             </div>
                                             <p className="max-w-lg text-sm leading-relaxed text-muted-foreground">
-                                                Индекс учитывает объём инцидентов, незакрытые задачи и долю
-                                                высокого приоритета. Сейчас больше всего сервисного внимания требует{" "}
+                                                Текущий рейтинг показывает, насколько территория готова к штатной эксплуатации.
+                                                Чем ниже рейтинг, тем больше открытых задач, повторяющихся проблем и
+                                                накопленного сервисного долга требует выездов. Сейчас больше всего
+                                                внимания требует{" "}
                                                 <span className="font-medium text-foreground">
                                                     {overview.worstParkName ?? "выбранная территория"}
                                                 </span>
-                                                , а ключевой драйвер деградации связан с типом{" "}
+                                                , а сильнее всего тянет рейтинг вниз{" "}
                                                 <span className="font-medium text-foreground">
                                                     {overview.dominantTypeLabel.toLowerCase()}
                                                 </span>
-                                                .
+                                                . Общий статус периода: <span className="font-medium text-foreground">{overviewLabel.toLowerCase()}</span>.
                                             </p>
                                         </div>
-                                        <ToneBadge tone={worstPark?.tone ?? "healthy"} />
+                                        <ToneBadge tone={overviewTone} />
                                     </div>
 
                                     <div className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -462,7 +517,7 @@ export function ParkOperationsAnalytics() {
                                             <div className="flex items-center justify-between gap-3">
                                                 <div>
                                                     <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                                        Главный сервисный долг
+                                                        Парк с самым низким рейтингом
                                                     </div>
                                                     <div className="mt-1 flex items-center gap-2">
                                                         <span className="text-base font-semibold">{worstPark.parkName}</span>
@@ -471,20 +526,20 @@ export function ParkOperationsAnalytics() {
                                                 </div>
                                                 <div className="text-right">
                                                     <div className="text-3xl font-semibold tabular-nums">
-                                                        {worstPark.readinessScore}
+                                                        {formatParkRating(worstPark.readinessScore)}
                                                     </div>
-                                                    <div className="text-xs text-muted-foreground">индекс</div>
+                                                    <div className="text-xs text-muted-foreground">рейтинг / 10</div>
                                                 </div>
                                             </div>
-                                            <div className="mt-4 space-y-2">
-                                                <ScoreBar value={worstPark.readinessScore} tone={worstPark.tone} />
-                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                                    <span>{worstPark.dominantTypeLabel}</span>
-                                                    <span>·</span>
-                                                    <span>{worstPark.unresolvedCount} открытых задач</span>
-                                                    <span>·</span>
-                                                    <span>долг {worstPark.serviceDebt}</span>
-                                                </div>
+                                                <div className="mt-4 space-y-2">
+                                                    <ScoreBar value={worstPark.readinessScore} tone={worstPark.tone} />
+                                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                        <span>{worstPark.dominantTypeLabel}</span>
+                                                        <span>·</span>
+                                                        <span>{formatOpenTasksLabel(worstPark.unresolvedCount)}</span>
+                                                        <span>·</span>
+                                                        <span>долг {worstPark.serviceDebt}</span>
+                                                    </div>
                                             </div>
                                         </div>
                                     )}
@@ -495,13 +550,13 @@ export function ParkOperationsAnalytics() {
                                 <CardContent className="p-5">
                                     <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                                         <TriangleAlert className="h-4 w-4 text-amber-500" />
-                                        Под нагрузкой
+                                        Требуют внимания
                                     </div>
                                     <div className="mt-4 text-4xl font-semibold tabular-nums">
                                         {overview.atRiskParks}
                                     </div>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        Столько парков уже нельзя вести только в штатном режиме.
+                                        Столько парков уже нельзя вести только плановым обслуживанием.
                                     </p>
                                 </CardContent>
                             </Card>
@@ -516,7 +571,7 @@ export function ParkOperationsAnalytics() {
                                         {overview.serviceDebt}
                                     </div>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        Открытые и высокоприоритетные задачи, которые уже тянут готовность вниз.
+                                        Открытые и высокоприоритетные задачи, которые уже тянут рейтинг вниз.
                                     </p>
                                 </CardContent>
                             </Card>
@@ -534,11 +589,27 @@ export function ParkOperationsAnalytics() {
                                         {overview.worstZoneParkName ?? "По выбранным паркам"}.
                                         {" "}Здесь быстрее всего накапливается долг по обслуживанию.
                                     </p>
-                                    <div className="mt-4 text-xs text-muted-foreground">
-                                        Высокий приоритет в работе:{" "}
-                                        <span className="font-medium text-foreground">
-                                            {overview.unresolvedHighPriority}
-                                        </span>
+                                    <div className="mt-4 space-y-1 text-xs text-muted-foreground">
+                                        <div>
+                                            Высокий приоритет в работе:{" "}
+                                            <span className="font-medium text-foreground">
+                                                {overview.unresolvedHighPriority}
+                                            </span>
+                                        </div>
+                                        <div>
+                                            Худший день периода:{" "}
+                                            <span className="font-medium text-foreground">
+                                                {overview.worstDateLabel ?? "нет данных"}
+                                            </span>
+                                            {overview.lowestDailyScore !== null && (
+                                                <>
+                                                    {" "}· рейтинг{" "}
+                                                    <span className="font-medium text-foreground">
+                                                        {formatParkRating(overview.lowestDailyScore)}
+                                                    </span>
+                                                </>
+                                            )}
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -549,11 +620,11 @@ export function ParkOperationsAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <Activity className="h-5 w-5 text-emerald-500" />
-                                        Динамика эксплуатационной готовности
+                                        Рейтинг эксплуатации по дням
                                     </CardTitle>
                                     <CardDescription>
-                                        По каким дням сервисный долг рос быстрее всего и когда территория уходила
-                                        из штатного режима.
+                                        10-балльная шкала помогает быстро увидеть, в какие дни территория
+                                        выпадала из штатного режима и рос сервисный долг.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -569,7 +640,8 @@ export function ParkOperationsAnalytics() {
                                                 tickLine={false}
                                                 axisLine={false}
                                                 tickMargin={8}
-                                                domain={[0, 100]}
+                                                domain={[0, PARK_RATING_MAX]}
+                                                tickFormatter={formatRatingTick}
                                             />
                                             <YAxis
                                                 yAxisId="issues"
@@ -583,12 +655,12 @@ export function ParkOperationsAnalytics() {
                                             <ChartLegend content={<ChartLegendContent />} />
                                             <ReferenceLine
                                                 yAxisId="score"
-                                                y={78}
+                                                y={PARK_RATING_TARGET}
                                                 stroke="hsl(152, 57%, 40%)"
                                                 strokeDasharray="4 4"
                                                 strokeWidth={1.5}
                                                 label={{
-                                                    value: "Целевая зона",
+                                                    value: "Нормальный уровень",
                                                     position: "insideTopRight",
                                                     fill: "hsl(152, 57%, 40%)",
                                                     fontSize: 10,
@@ -627,10 +699,10 @@ export function ParkOperationsAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <TriangleAlert className="h-5 w-5 text-amber-500" />
-                                        Структура сервисного долга
+                                        Что тянет рейтинг вниз
                                     </CardTitle>
                                     <CardDescription>
-                                        Какие типы проблем чаще других остаются открытыми и требуют выездов.
+                                        Какие типы проблем чаще других остаются открытыми и требуют выезда.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -665,10 +737,10 @@ export function ParkOperationsAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <Gauge className="h-5 w-5 text-emerald-500" />
-                                        Парки приоритетного обслуживания
+                                        Где вмешаться в первую очередь
                                     </CardTitle>
                                     <CardDescription>
-                                        Где уже накопился долг и какой именно тип работ нужно усиливать первым.
+                                        Рейтинг, основная причина просадки и краткое пояснение по каждому парку.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
@@ -691,7 +763,7 @@ export function ParkOperationsAnalytics() {
                                                         </div>
                                                         <p className="text-sm text-muted-foreground">
                                                             {park.hotspotZone
-                                                                ? `${park.hotspotZone} формирует основной объём сервисного долга.`
+                                                                ? `${park.hotspotZone} даёт наибольший объём повторяющихся проблем.`
                                                                 : "Выраженной проблемной зоны пока нет."}
                                                         </p>
                                                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -708,7 +780,7 @@ export function ParkOperationsAnalytics() {
                                                             </Badge>
                                                             <span>{park.issueCount} проблем</span>
                                                             <span>·</span>
-                                                            <span>{park.unresolvedCount} открытых</span>
+                                                            <span>{formatOpenTasksLabel(park.unresolvedCount)}</span>
                                                             <span>·</span>
                                                             <span>долг {park.serviceDebt}</span>
                                                         </div>
@@ -716,9 +788,9 @@ export function ParkOperationsAnalytics() {
 
                                                     <div className="min-w-36 text-left lg:text-right">
                                                         <div className="text-3xl font-semibold tabular-nums">
-                                                            {park.readinessScore}
+                                                            {formatParkRating(park.readinessScore)}
                                                         </div>
-                                                        <div className="text-xs text-muted-foreground">индекс</div>
+                                                        <div className="text-xs text-muted-foreground">рейтинг / 10</div>
                                                     </div>
                                                 </div>
                                                 <div className="mt-4 space-y-2">
@@ -727,7 +799,7 @@ export function ParkOperationsAnalytics() {
                                                         <span>{park.unresolvedHighCount} высокого приоритета</span>
                                                         <span>·</span>
                                                         <span>
-                                                            hotspot {park.hotspotZone ?? "не выделен"} ({park.hotspotCount})
+                                                            проблемная зона: {park.hotspotZone ?? "не выделена"} ({park.hotspotCount})
                                                         </span>
                                                     </div>
                                                 </div>
@@ -741,10 +813,10 @@ export function ParkOperationsAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <MapPin className="h-5 w-5 text-sky-500" />
-                                        Зоны накопления долга
+                                        Повторяющиеся проблемные зоны
                                     </CardTitle>
                                     <CardDescription>
-                                        Места, где эксплуатационные проблемы возвращаются и требуют отдельного маршрута.
+                                        Места, где проблемы возвращаются и требуют отдельного маршрута обслуживания.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -773,9 +845,9 @@ export function ParkOperationsAnalytics() {
                                                             </div>
                                                             <div className="text-right">
                                                                 <div className="text-2xl font-semibold tabular-nums">
-                                                                    {zone.readinessScore}
+                                                                    {formatParkRating(zone.readinessScore)}
                                                                 </div>
-                                                                <div className="text-xs text-muted-foreground">индекс</div>
+                                                                <div className="text-xs text-muted-foreground">рейтинг / 10</div>
                                                             </div>
                                                         </div>
                                                         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -792,7 +864,7 @@ export function ParkOperationsAnalytics() {
                                                             </Badge>
                                                             <span>{zone.issueCount} проблем</span>
                                                             <span>·</span>
-                                                            <span>{zone.unresolvedCount} открытых</span>
+                                                            <span>{formatOpenTasksLabel(zone.unresolvedCount)}</span>
                                                             <span>·</span>
                                                             <span>{zone.highCount} высокий приоритет</span>
                                                         </div>
@@ -815,7 +887,7 @@ export function ParkOperationsAnalytics() {
                                     Очередь действий для эксплуатации
                                 </CardTitle>
                                 <CardDescription>
-                                    С чего начать, чтобы быстрее всего поднять готовность территории.
+                                    Последовательность действий, которая быстрее всего поднимет рейтинг эксплуатации.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-3">
