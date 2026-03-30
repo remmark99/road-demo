@@ -30,7 +30,6 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import {
     Activity,
     AlertCircle,
-    Clock,
     Flame,
     MapPin,
     MoveRight,
@@ -71,13 +70,13 @@ import { cn } from "@/lib/utils"
 const riskTrendConfig = {
     riskScore: { label: "Рейтинг безопасности", color: "hsl(201, 92%, 47%)" },
     incidentCount: { label: "Все инциденты", color: "hsl(32, 95%, 53%)" },
-    criticalCount: { label: "Критические", color: "hsl(0, 84%, 60%)" },
+    criticalCount: { label: "Приоритетные", color: "hsl(28, 92%, 54%)" },
 } satisfies ChartConfig
 
 const issueMixConfig = {
     totalCount: { label: "Все события", color: "hsl(201, 92%, 47%)" },
     unresolvedCount: { label: "Не закрыты", color: "hsl(35, 92%, 58%)" },
-    criticalCount: { label: "Критические", color: "hsl(0, 84%, 60%)" },
+    criticalCount: { label: "Приоритетные", color: "hsl(28, 92%, 54%)" },
 } satisfies ChartConfig
 
 const TONE_META: Record<
@@ -106,10 +105,10 @@ const TONE_META: Record<
     },
     critical: {
         label: "Нужен выезд",
-        barClassName: "bg-red-500",
-        badgeClassName: "border-red-500/20 bg-red-500/12 text-red-700 dark:text-red-300",
-        panelClassName: "border-red-500/20 bg-red-500/[0.07]",
-        textClassName: "text-red-600 dark:text-red-400",
+        barClassName: "bg-orange-500",
+        badgeClassName: "border-orange-500/20 bg-orange-500/12 text-orange-700 dark:text-orange-300",
+        panelClassName: "border-orange-500/20 bg-orange-500/[0.07]",
+        textClassName: "text-orange-600 dark:text-orange-400",
     },
 }
 
@@ -134,22 +133,22 @@ const TYPE_META: Record<
         label: PARK_SECURITY_LABELS.person_down,
         shortLabel: "Человек",
         icon: PersonStanding,
-        iconClassName: "text-orange-500",
-        panelClassName: "border-orange-500/20 bg-orange-500/[0.06]",
+        iconClassName: "text-sky-500",
+        panelClassName: "border-sky-500/20 bg-sky-500/[0.06]",
     },
     fight: {
         label: PARK_SECURITY_LABELS.fight,
         shortLabel: "Драка",
         icon: Swords,
-        iconClassName: "text-red-500",
-        panelClassName: "border-red-500/20 bg-red-500/[0.06]",
+        iconClassName: "text-orange-500",
+        panelClassName: "border-orange-500/20 bg-orange-500/[0.06]",
     },
     fire: {
         label: PARK_SECURITY_LABELS.fire,
         shortLabel: "Пожар",
         icon: Flame,
-        iconClassName: "text-rose-500",
-        panelClassName: "border-rose-500/20 bg-rose-500/[0.06]",
+        iconClassName: "text-amber-600",
+        panelClassName: "border-amber-500/20 bg-amber-500/[0.06]",
     },
 }
 
@@ -175,9 +174,9 @@ const OVERVIEW_CARD_META: Record<
     },
     critical: {
         cardClassName:
-            "border-red-500/25 bg-gradient-to-br from-red-500/[0.18] via-background to-red-500/[0.05] dark:from-red-950/45 dark:via-background dark:to-red-900/20",
-        titleClassName: "text-red-700 dark:text-red-300",
-        valueClassName: "text-red-950 dark:text-red-50",
+            "border-orange-500/25 bg-gradient-to-br from-orange-500/[0.18] via-background to-orange-500/[0.05] dark:from-orange-950/45 dark:via-background dark:to-orange-900/20",
+        titleClassName: "text-orange-700 dark:text-orange-300",
+        valueClassName: "text-orange-950 dark:text-orange-50",
     },
 }
 
@@ -246,13 +245,13 @@ function getActionTitle(park: ParkSecurityParkPriority) {
     const area = park.hotspotZone ?? park.parkName
 
     if (park.criticalOpenCount > 0) {
-        return `Закрыть критические инциденты в зоне ${area}`
+        return `Закрыть инциденты приоритетного контура в зоне ${area}`
     }
     if (park.dominantType === "fight") {
         return `Усилить патрулирование и контроль конфликтов в зоне ${area}`
     }
     if (park.dominantType === "person_down") {
-        return `Проверить маршруты обхода и скорость реагирования в зоне ${area}`
+        return `Проверить маршруты обхода и плотность патрулирования в зоне ${area}`
     }
     if (park.dominantType === "fire") {
         return `Перепроверить противопожарный контур и тревожные сценарии в зоне ${area}`
@@ -267,8 +266,12 @@ function getActionDetail(park: ParkSecurityParkPriority) {
     }
 
     const hotspot = park.hotspotZone ? `${park.hotspotZone}, ` : ""
-    const reactionPart = park.avgResponse > 0 ? `средняя реакция ${park.avgResponse} мин` : "реакции не требовалось"
-    return `${park.parkName}: ${hotspot}${formatOpenIncidentsLabel(park.unresolvedCount)}, ${park.criticalOpenCount} критических в работе, ${reactionPart}.`
+    const priorityPart =
+        park.criticalOpenCount > 0
+            ? `${park.criticalOpenCount} в приоритетном контуре`
+            : "без приоритетных инцидентов"
+
+    return `${park.parkName}: ${hotspot}${formatOpenIncidentsLabel(park.unresolvedCount)}, ${priorityPart}, доминирует ${park.dominantTypeLabel.toLowerCase()}.`
 }
 
 export function ParkSecurityAnalytics() {
@@ -358,7 +361,7 @@ export function ParkSecurityAnalytics() {
     }, [priorityParks])
 
     return (
-        <div className="h-full overflow-auto bg-gradient-to-b from-rose-500/[0.04] via-background to-background">
+        <div className="h-full overflow-auto bg-gradient-to-b from-emerald-500/[0.05] via-background to-background">
             <div className="p-6 space-y-6">
                 <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
                     <Popover>
@@ -447,14 +450,14 @@ export function ParkSecurityAnalytics() {
                                                 <span className="pb-1 text-lg text-muted-foreground">/10</span>
                                             </div>
                                             <p className="max-w-lg text-sm leading-relaxed text-muted-foreground">
-                                                Текущий рейтинг показывает, насколько спокойно и управляемо
-                                                выглядит ситуация по выбранным паркам. Чем ниже рейтинг, тем
-                                                больше повторяющихся, открытых и критических инцидентов
-                                                требует вмешательства. Сейчас больше всего внимания требует{" "}
+                                                Текущий рейтинг показывает, насколько уверенно и спокойно
+                                                выглядят выбранные парки в рабочем режиме. Даже в демо здесь
+                                                остаются реальные сигналы внимания, но общий фон должен
+                                                считываться как управляемый. Сейчас больше всего фокуса требует{" "}
                                                 <span className="font-medium text-foreground">
                                                     {overview.worstParkName ?? "выбранная территория"}
                                                 </span>
-                                                , а сильнее всего тянут рейтинг вниз события типа{" "}
+                                                , а чаще всего всплывают события типа{" "}
                                                 <span className="font-medium text-foreground">
                                                     {overview.dominantTypeLabel.toLowerCase()}
                                                 </span>
@@ -475,15 +478,15 @@ export function ParkSecurityAnalytics() {
                                         </div>
                                         <div className="rounded-2xl border border-amber-500/20 bg-background/70 p-4">
                                             <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                                Под давлением
+                                                Под присмотром
                                             </div>
                                             <div className="mt-2 text-3xl font-semibold tabular-nums">
                                                 {overview.attentionParks}
                                             </div>
                                         </div>
-                                        <div className="rounded-2xl border border-red-500/20 bg-background/70 p-4">
+                                        <div className="rounded-2xl border border-orange-500/20 bg-background/70 p-4">
                                             <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                                Эскалация
+                                                Приоритетно
                                             </div>
                                             <div className="mt-2 text-3xl font-semibold tabular-nums">
                                                 {overview.criticalParks}
@@ -500,7 +503,7 @@ export function ParkSecurityAnalytics() {
                                             {[
                                                 { value: overview.healthyParks, className: "bg-emerald-500" },
                                                 { value: overview.attentionParks, className: "bg-amber-500" },
-                                                { value: overview.criticalParks, className: "bg-red-500" },
+                                                { value: overview.criticalParks, className: "bg-orange-500" },
                                             ].map((segment, index) => (
                                                 <div
                                                     key={index}
@@ -534,15 +537,13 @@ export function ParkSecurityAnalytics() {
                                                     <div className="text-xs text-muted-foreground">рейтинг / 10</div>
                                                 </div>
                                             </div>
-                                                <div className="mt-4 space-y-2">
-                                                    <ScoreBar value={worstPark.safetyScore} tone={worstPark.tone} />
-                                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                                        <span>{worstPark.dominantTypeLabel}</span>
-                                                        <span>·</span>
-                                                        <span>{formatOpenIncidentsLabel(worstPark.unresolvedCount)}</span>
-                                                        <span>·</span>
-                                                        <span>{worstPark.avgResponse} мин средняя реакция</span>
-                                                    </div>
+                                            <div className="mt-4 space-y-2">
+                                                <ScoreBar value={worstPark.safetyScore} tone={worstPark.tone} />
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                    <span>{worstPark.dominantTypeLabel}</span>
+                                                    <span>·</span>
+                                                    <span>{formatOpenIncidentsLabel(worstPark.unresolvedCount)}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
@@ -564,17 +565,17 @@ export function ParkSecurityAnalytics() {
                                 </CardContent>
                             </Card>
 
-                            <Card className="xl:col-span-2 border-red-500/20 bg-gradient-to-br from-red-500/[0.10] to-background">
+                            <Card className="xl:col-span-2 border-orange-500/20 bg-gradient-to-br from-orange-500/[0.10] to-background">
                                 <CardContent className="p-5">
                                     <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                        <Siren className="h-4 w-4 text-red-500" />
-                                        Критические в работе
+                                        <Siren className="h-4 w-4 text-orange-500" />
+                                        Приоритет в работе
                                     </div>
                                     <div className="mt-4 text-4xl font-semibold tabular-nums">
                                         {overview.criticalOpenIncidents}
                                     </div>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        Незакрытые критические события, по которым нельзя откладывать реакцию.
+                                        Незакрытые инциденты, которые лучше держать в первом контуре внимания.
                                     </p>
                                 </CardContent>
                             </Card>
@@ -583,20 +584,19 @@ export function ParkSecurityAnalytics() {
                                 <CardContent className="p-5">
                                     <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                                         <MapPin className="h-4 w-4 text-sky-500" />
-                                        Главная проблемная зона
+                                        Зона фокуса
                                     </div>
                                     <div className="mt-4 text-2xl font-semibold">
                                         {overview.worstZoneLabel}
                                     </div>
                                     <p className="mt-2 text-sm text-muted-foreground">
                                         {overview.worstZoneParkName ?? "По выбранным паркам"}.
-                                        {" "}Здесь чаще всего повторяются события, которые формируют общий риск.
+                                        {" "}Здесь чаще всего повторяются сигналы, которые требуют отдельного обхода.
                                     </p>
                                     <div className="mt-4 space-y-1 text-xs text-muted-foreground">
-                                        <div className="flex items-center gap-2">
-                                            <Clock className="h-3.5 w-3.5" />
-                                            Средняя реакция по модулю:{" "}
-                                            <span className="font-medium text-foreground">{overview.avgResponse} мин</span>
+                                        <div>
+                                            Открытых инцидентов в модуле:{" "}
+                                            <span className="font-medium text-foreground">{overview.unresolvedIncidents}</span>
                                         </div>
                                         <div>
                                             Худший день периода:{" "}
@@ -701,10 +701,10 @@ export function ParkSecurityAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <TriangleAlert className="h-5 w-5 text-amber-500" />
-                                        Что тянет рейтинг вниз
+                                        Что формирует текущий риск
                                     </CardTitle>
                                     <CardDescription>
-                                        Какие типы событий формируют основной объём риска и чаще остаются открытыми.
+                                        Какие типы событий чаще других встречаются и попадают в фокус патруля.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -738,11 +738,11 @@ export function ParkSecurityAnalytics() {
                             <Card className="xl:col-span-7">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
-                                        <ShieldAlert className="h-5 w-5 text-rose-500" />
-                                        Где вмешаться в первую очередь
+                                        <ShieldAlert className="h-5 w-5 text-emerald-500" />
+                                        Где держать фокус в первую очередь
                                     </CardTitle>
                                     <CardDescription>
-                                        Рейтинг, причина просадки и краткое пояснение по каждому парку.
+                                        Рейтинг, ведущий тип сигнала и короткое пояснение по каждому парку.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
@@ -783,8 +783,6 @@ export function ParkSecurityAnalytics() {
                                                             <span>{park.incidentCount} событий</span>
                                                             <span>·</span>
                                                             <span>{formatOpenIncidentsLabel(park.unresolvedCount)}</span>
-                                                            <span>·</span>
-                                                            <span>{park.avgResponse} мин реакция</span>
                                                         </div>
                                                     </div>
 
@@ -815,10 +813,10 @@ export function ParkSecurityAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <MapPin className="h-5 w-5 text-sky-500" />
-                                        Повторяющиеся проблемные зоны
+                                        Зоны регулярного внимания
                                     </CardTitle>
                                     <CardDescription>
-                                        Территории, где проблемы возвращаются и требуют отдельного обхода или патруля.
+                                        Территории, где сигналы повторяются и требуют отдельного обхода или патруля.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -867,8 +865,6 @@ export function ParkSecurityAnalytics() {
                                                             <span>{zone.incidentCount} событий</span>
                                                             <span>·</span>
                                                             <span>{formatOpenIncidentsLabel(zone.unresolvedCount)}</span>
-                                                            <span>·</span>
-                                                            <span>{zone.avgResponse} мин</span>
                                                         </div>
                                                         <div className="mt-3">
                                                             <ScoreBar value={zone.riskScore} tone={zone.tone} />
@@ -885,7 +881,7 @@ export function ParkSecurityAnalytics() {
                         <Card>
                             <CardHeader className="pb-2">
                                 <CardTitle className="flex items-center gap-2 text-base">
-                                    <MoveRight className="h-5 w-5 text-rose-500" />
+                                    <MoveRight className="h-5 w-5 text-emerald-500" />
                                     Очередь управленческих действий
                                 </CardTitle>
                                 <CardDescription>

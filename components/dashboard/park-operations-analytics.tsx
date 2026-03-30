@@ -75,7 +75,7 @@ const readinessTrendConfig = {
 const issueMixConfig = {
     totalCount: { label: "Все проблемы", color: "hsl(201, 92%, 47%)" },
     unresolvedCount: { label: "Открытые", color: "hsl(38, 92%, 50%)" },
-    highCount: { label: "Высокий приоритет", color: "hsl(0, 84%, 60%)" },
+    highCount: { label: "Высокий приоритет", color: "hsl(28, 92%, 54%)" },
 } satisfies ChartConfig
 
 const TONE_META: Record<
@@ -104,10 +104,10 @@ const TONE_META: Record<
     },
     critical: {
         label: "Нужен выезд",
-        barClassName: "bg-red-500",
-        badgeClassName: "border-red-500/20 bg-red-500/12 text-red-700 dark:text-red-300",
-        panelClassName: "border-red-500/20 bg-red-500/[0.07]",
-        textClassName: "text-red-600 dark:text-red-400",
+        barClassName: "bg-orange-500",
+        badgeClassName: "border-orange-500/20 bg-orange-500/12 text-orange-700 dark:text-orange-300",
+        panelClassName: "border-orange-500/20 bg-orange-500/[0.07]",
+        textClassName: "text-orange-600 dark:text-orange-400",
     },
 }
 
@@ -132,8 +132,8 @@ const TYPE_META: Record<
         label: PARK_OPERATIONS_LABELS.camera_obstruction,
         shortLabel: "Камеры",
         icon: CameraOff,
-        iconClassName: "text-red-500",
-        panelClassName: "border-red-500/20 bg-red-500/[0.06]",
+        iconClassName: "text-violet-500",
+        panelClassName: "border-violet-500/20 bg-violet-500/[0.06]",
     },
     light_off: {
         label: PARK_OPERATIONS_LABELS.light_off,
@@ -173,9 +173,9 @@ const OVERVIEW_CARD_META: Record<
     },
     critical: {
         cardClassName:
-            "border-red-500/25 bg-gradient-to-br from-red-500/[0.18] via-background to-red-500/[0.05] dark:from-red-950/45 dark:via-background dark:to-red-900/20",
-        titleClassName: "text-red-700 dark:text-red-300",
-        valueClassName: "text-red-950 dark:text-red-50",
+            "border-orange-500/25 bg-gradient-to-br from-orange-500/[0.18] via-background to-orange-500/[0.05] dark:from-orange-950/45 dark:via-background dark:to-orange-900/20",
+        titleClassName: "text-orange-700 dark:text-orange-300",
+        valueClassName: "text-orange-950 dark:text-orange-50",
     },
 }
 
@@ -445,13 +445,13 @@ export function ParkOperationsAnalytics() {
                                             </div>
                                             <p className="max-w-lg text-sm leading-relaxed text-muted-foreground">
                                                 Текущий рейтинг показывает, насколько территория готова к штатной эксплуатации.
-                                                Чем ниже рейтинг, тем больше открытых задач, повторяющихся проблем и
-                                                накопленного сервисного долга требует выездов. Сейчас больше всего
-                                                внимания требует{" "}
+                                                В демо мы оставляем реальные сигналы внимания, но общий фон должен
+                                                считываться как устойчивый и контролируемый. Сейчас больше всего
+                                                фокуса требует{" "}
                                                 <span className="font-medium text-foreground">
                                                     {overview.worstParkName ?? "выбранная территория"}
                                                 </span>
-                                                , а сильнее всего тянет рейтинг вниз{" "}
+                                                , а чаще всего в обслуживании всплывает{" "}
                                                 <span className="font-medium text-foreground">
                                                     {overview.dominantTypeLabel.toLowerCase()}
                                                 </span>
@@ -472,15 +472,15 @@ export function ParkOperationsAnalytics() {
                                         </div>
                                         <div className="rounded-2xl border border-amber-500/20 bg-background/70 p-4">
                                             <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                                Под нагрузкой
+                                                На контроле
                                             </div>
                                             <div className="mt-2 text-3xl font-semibold tabular-nums">
                                                 {overview.attentionParks}
                                             </div>
                                         </div>
-                                        <div className="rounded-2xl border border-red-500/20 bg-background/70 p-4">
+                                        <div className="rounded-2xl border border-orange-500/20 bg-background/70 p-4">
                                             <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                                Нужен выезд
+                                                Точечно усилить
                                             </div>
                                             <div className="mt-2 text-3xl font-semibold tabular-nums">
                                                 {overview.criticalParks}
@@ -497,7 +497,7 @@ export function ParkOperationsAnalytics() {
                                             {[
                                                 { value: overview.healthyParks, className: "bg-emerald-500" },
                                                 { value: overview.attentionParks, className: "bg-amber-500" },
-                                                { value: overview.criticalParks, className: "bg-red-500" },
+                                                { value: overview.criticalParks, className: "bg-orange-500" },
                                             ].map((segment, index) => (
                                                 <div
                                                     key={index}
@@ -531,15 +531,15 @@ export function ParkOperationsAnalytics() {
                                                     <div className="text-xs text-muted-foreground">рейтинг / 10</div>
                                                 </div>
                                             </div>
-                                                <div className="mt-4 space-y-2">
-                                                    <ScoreBar value={worstPark.readinessScore} tone={worstPark.tone} />
-                                                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                                        <span>{worstPark.dominantTypeLabel}</span>
-                                                        <span>·</span>
-                                                        <span>{formatOpenTasksLabel(worstPark.unresolvedCount)}</span>
-                                                        <span>·</span>
-                                                        <span>долг {worstPark.serviceDebt}</span>
-                                                    </div>
+                                            <div className="mt-4 space-y-2">
+                                                <ScoreBar value={worstPark.readinessScore} tone={worstPark.tone} />
+                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                    <span>{worstPark.dominantTypeLabel}</span>
+                                                    <span>·</span>
+                                                    <span>{formatOpenTasksLabel(worstPark.unresolvedCount)}</span>
+                                                    <span>·</span>
+                                                    <span>долг {worstPark.serviceDebt}</span>
+                                                </div>
                                             </div>
                                         </div>
                                     )}
@@ -561,17 +561,17 @@ export function ParkOperationsAnalytics() {
                                 </CardContent>
                             </Card>
 
-                            <Card className="xl:col-span-2 border-red-500/20 bg-gradient-to-br from-red-500/[0.10] to-background">
+                            <Card className="xl:col-span-2 border-emerald-500/20 bg-gradient-to-br from-emerald-500/[0.10] to-background">
                                 <CardContent className="p-5">
                                     <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                        <Trash2 className="h-4 w-4 text-red-500" />
-                                        Сервисный долг
+                                        <Trash2 className="h-4 w-4 text-emerald-500" />
+                                        В работе сейчас
                                     </div>
                                     <div className="mt-4 text-4xl font-semibold tabular-nums">
                                         {overview.serviceDebt}
                                     </div>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        Открытые и высокоприоритетные задачи, которые уже тянут рейтинг вниз.
+                                        Открытые задачи, которые ещё не закрыты и остаются в контуре обслуживания.
                                     </p>
                                 </CardContent>
                             </Card>
@@ -580,7 +580,7 @@ export function ParkOperationsAnalytics() {
                                 <CardContent className="p-5">
                                     <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                                         <MapPin className="h-4 w-4 text-sky-500" />
-                                        Главная проблемная зона
+                                        Зона фокуса
                                     </div>
                                     <div className="mt-4 text-2xl font-semibold">
                                         {overview.worstZoneLabel}
@@ -699,10 +699,10 @@ export function ParkOperationsAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <TriangleAlert className="h-5 w-5 text-amber-500" />
-                                        Что тянет рейтинг вниз
+                                        Что требует обслуживания
                                     </CardTitle>
                                     <CardDescription>
-                                        Какие типы проблем чаще других остаются открытыми и требуют выезда.
+                                        Какие типы задач чаще других возвращаются и требуют отдельного внимания.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -737,10 +737,10 @@ export function ParkOperationsAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <Gauge className="h-5 w-5 text-emerald-500" />
-                                        Где вмешаться в первую очередь
+                                        Где держать фокус в первую очередь
                                     </CardTitle>
                                     <CardDescription>
-                                        Рейтинг, основная причина просадки и краткое пояснение по каждому парку.
+                                        Рейтинг, ведущий тип задач и короткое пояснение по каждому парку.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
@@ -813,10 +813,10 @@ export function ParkOperationsAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <MapPin className="h-5 w-5 text-sky-500" />
-                                        Повторяющиеся проблемные зоны
+                                        Зоны регулярного обслуживания
                                     </CardTitle>
                                     <CardDescription>
-                                        Места, где проблемы возвращаются и требуют отдельного маршрута обслуживания.
+                                        Места, где задачи возвращаются и требуют отдельного маршрута обслуживания.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
