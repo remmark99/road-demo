@@ -993,7 +993,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       map.current!.getCanvas().style.cursor = ""
     })
 
-  }, [])
+  }, [isDark])
 
   const addParks = useCallback(() => {
     if (!map.current) return
@@ -1230,12 +1230,12 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
     map.current.once("style.load", () => {
       addParks()
+      addShoreline()
       addAnchors()
       addRoads()
       addBusStops()
       addCameraLayers()
       addAnchors()
-      addShoreline()
     })
   }, [isDark, addRoads, addBusStops, addCameraLayers, addParks, addAnchors, addShoreline, mapLoaded])
 
@@ -1292,12 +1292,12 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   useEffect(() => {
     if (!mapLoaded) return
     addParks()
+    addShoreline()
     addAnchors()
     addRoads()
     addBusStops()
     addCameraLayers()
     addAnchors()
-    addShoreline()
 
     // Global click listener to close spiderify if clicked elsewhere
 
