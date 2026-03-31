@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/server'
 import { ALLOWED_HIGHWAYS, type RoadsGeoJSON } from '@/lib/api/roads'
 
 // Server-side cache — survives across requests as long as the process is alive
@@ -21,6 +21,7 @@ function getContractor(osmId: number): string {
 }
 
 export async function GET(request: Request) {
+    const supabase = await createClient()
     // Force refresh if query param ?refresh is present, otherwise use cache
     const url = new URL(request.url)
     const forceRefresh = url.searchParams.has('refresh')

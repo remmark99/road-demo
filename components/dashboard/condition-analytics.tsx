@@ -37,7 +37,6 @@ import {
     MoveRight,
     ShieldAlert,
     ShieldCheck,
-    Siren,
     Sparkles,
     TimerReset,
     Trash2,
@@ -77,11 +76,6 @@ const pulseConfig = {
 const issueMixConfig = {
     warningCount: { label: "Предупреждения", color: "hsl(38, 92%, 50%)" },
     criticalCount: { label: "Критические", color: "hsl(0, 84%, 60%)" },
-} satisfies ChartConfig
-
-const compareConfig = {
-    avgTrash: { label: "Средний мусор", color: "hsl(25, 95%, 53%)" },
-    avgFogging: { label: "Среднее запотевание", color: "hsl(200, 80%, 55%)" },
 } satisfies ChartConfig
 
 const STATUS_META: Record<
@@ -299,7 +293,7 @@ export function ConditionAnalytics() {
     }, [priorityStops])
 
     return (
-        <div className="h-full overflow-auto bg-gradient-to-b from-sky-500/[0.04] via-background to-background">
+        <div className="h-full overflow-auto">
             <div className="p-6 space-y-6">
                 <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
                     <Popover>
@@ -359,165 +353,68 @@ export function ConditionAnalytics() {
                     </Card>
                 ) : (
                     <>
-                        <div className="grid gap-4 xl:grid-cols-12">
-                            <Card className="xl:col-span-5 border-sky-500/20 bg-gradient-to-br from-slate-950/[0.03] via-sky-500/[0.06] to-emerald-500/[0.10] dark:from-slate-950 dark:via-sky-950/40 dark:to-emerald-950/30">
-                                <CardContent className="p-6">
-                                    <div className="flex items-start justify-between gap-4">
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-2 text-sm font-medium text-sky-700 dark:text-sky-300">
-                                                <ShieldCheck className="h-4 w-4" />
-                                                Индекс здоровья сети остановок
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            <Card className="bg-gradient-to-br from-sky-500/10 to-emerald-500/5 border-sky-500/20">
+                                <CardContent className="pt-4 pb-3 px-4">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                <ShieldCheck className="h-4 w-4 text-sky-500" />
+                                                Индекс здоровья сети
                                             </div>
-                                            <div className="flex items-end gap-3">
-                                                <span className="text-5xl font-semibold tracking-tight tabular-nums">
-                                                    {overview.networkHealth}
-                                                </span>
-                                                <span className="pb-1 text-lg text-muted-foreground">/100</span>
+                                            <div className="mt-3 flex items-end gap-2">
+                                                <span className="text-3xl font-semibold tabular-nums">{overview.networkHealth}</span>
+                                                <span className="pb-0.5 text-sm text-muted-foreground">/100</span>
                                             </div>
-                                            <p className="max-w-lg text-sm leading-relaxed text-muted-foreground">
-                                                Сводный показатель по состоянию урн, прозрачности остекления
-                                                и частоте тревог. Сейчас сеть находится в{" "}
-                                                <span className={cn("font-medium", STATUS_META[networkTone].textClassName)}>
-                                                    {STATUS_META[networkTone].label.toLowerCase()}
-                                                </span>
-                                                .
-                                            </p>
                                         </div>
                                         <StatusBadge status={networkTone} />
                                     </div>
-
-                                    <div className="mt-6 grid gap-3 sm:grid-cols-3">
-                                        <div className="rounded-2xl border border-emerald-500/20 bg-background/70 p-4">
-                                            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                                Стабильно
-                                            </div>
-                                            <div className="mt-2 text-3xl font-semibold tabular-nums">
-                                                {overview.healthyStops}
-                                            </div>
-                                        </div>
-                                        <div className="rounded-2xl border border-amber-500/20 bg-background/70 p-4">
-                                            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                                Под наблюдением
-                                            </div>
-                                            <div className="mt-2 text-3xl font-semibold tabular-nums">
-                                                {overview.attentionStops}
-                                            </div>
-                                        </div>
-                                        <div className="rounded-2xl border border-red-500/20 bg-background/70 p-4">
-                                            <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                                Нужен выезд
-                                            </div>
-                                            <div className="mt-2 text-3xl font-semibold tabular-nums">
-                                                {overview.criticalStops}
-                                            </div>
-                                        </div>
+                                    <div className="mt-4">
+                                        <HealthBar value={overview.networkHealth} tone={networkTone} />
                                     </div>
-
-                                    <div className="mt-5 space-y-2">
-                                        <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                            <span>Распределение по статусам</span>
-                                            <span>{overview.monitoredStops} остановок под мониторингом</span>
-                                        </div>
-                                        <div className="flex h-2 overflow-hidden rounded-full bg-background/70">
-                                            {[
-                                                { value: overview.healthyStops, className: "bg-emerald-500" },
-                                                { value: overview.attentionStops, className: "bg-amber-500" },
-                                                { value: overview.criticalStops, className: "bg-red-500" },
-                                            ].map((segment, index) => (
-                                                <div
-                                                    key={index}
-                                                    className={segment.className}
-                                                    style={{
-                                                        width: overview.monitoredStops
-                                                            ? `${(segment.value / overview.monitoredStops) * 100}%`
-                                                            : "0%",
-                                                    }}
-                                                />
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {worstStop && (
-                                        <div className="mt-5 rounded-2xl border border-background/60 bg-background/70 p-4">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <div>
-                                                    <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                                        Главный риск сети
-                                                    </div>
-                                                    <div className="mt-1 flex items-center gap-2">
-                                                        <span className="text-base font-semibold">{worstStop.stopName}</span>
-                                                        <StatusBadge status={worstStop.status} />
-                                                    </div>
-                                                </div>
-                                                <div className="text-right">
-                                                    <div className="text-3xl font-semibold tabular-nums">
-                                                        {worstStop.healthScore}
-                                                    </div>
-                                                    <div className="text-xs text-muted-foreground">индекс</div>
-                                                </div>
-                                            </div>
-                                            <div className="mt-4 space-y-2">
-                                                <HealthBar value={worstStop.healthScore} tone={worstStop.status} />
-                                                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                                                    <span>{ISSUE_META[worstStop.dominantIssue].label}</span>
-                                                    <span>·</span>
-                                                    <span>Пик {formatHourWindow(worstStop.peakHour)}</span>
-                                                    <span>·</span>
-                                                    <span>{worstStop.criticalAlerts + worstStop.warningAlerts} тревог</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
+                                    <p className="mt-3 text-sm text-muted-foreground">
+                                        {worstStop
+                                            ? `Главный фокус сейчас: ${worstStop.stopName}.`
+                                            : "Сеть работает в стабильном режиме."}
+                                    </p>
                                 </CardContent>
                             </Card>
 
-                            <Card className="xl:col-span-2 border-amber-500/20 bg-gradient-to-br from-amber-500/[0.10] to-background">
-                                <CardContent className="p-5">
-                                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                            <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border-emerald-500/20">
+                                <CardContent className="pt-4 pb-3 px-4">
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                                        Стабильно
+                                    </div>
+                                    <div className="mt-3 text-3xl font-semibold tabular-nums">{overview.healthyStops}</div>
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                        {overview.monitoredStops} остановок под мониторингом в выбранном периоде.
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
+                                <CardContent className="pt-4 pb-3 px-4">
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                         <TriangleAlert className="h-4 w-4 text-amber-500" />
-                                        В зоне риска
+                                        Нужны действия
                                     </div>
-                                    <div className="mt-4 text-4xl font-semibold tabular-nums">
-                                        {overview.atRiskStops}
-                                    </div>
+                                    <div className="mt-3 text-3xl font-semibold tabular-nums">{overview.atRiskStops}</div>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        {overview.attentionStops} остановки под наблюдением и{" "}
-                                        {overview.criticalStops} требуют срочного внимания.
+                                        {overview.warningAlerts} предупреждений и {overview.criticalAlerts} критических сигналов.
                                     </p>
                                 </CardContent>
                             </Card>
 
-                            <Card className="xl:col-span-2 border-red-500/20 bg-gradient-to-br from-red-500/[0.10] to-background">
-                                <CardContent className="p-5">
-                                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                                        <Siren className="h-4 w-4 text-red-500" />
-                                        Критические эпизоды
-                                    </div>
-                                    <div className="mt-4 text-4xl font-semibold tabular-nums">
-                                        {overview.criticalAlerts}
-                                    </div>
-                                    <p className="mt-2 text-sm text-muted-foreground">
-                                        Всего предупреждений: {overview.warningAlerts}. Сначала стоит разбирать
-                                        окна с повторяющимися критическими срабатываниями.
-                                    </p>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="xl:col-span-3 border-slate-500/20 bg-gradient-to-br from-slate-950/[0.03] via-slate-500/[0.06] to-background dark:from-slate-950 dark:via-slate-900">
-                                <CardContent className="p-5">
-                                    <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                            <Card className="bg-gradient-to-br from-slate-500/10 to-sky-500/5 border-slate-500/20">
+                                <CardContent className="pt-4 pb-3 px-4">
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                         <TimerReset className="h-4 w-4 text-sky-500" />
                                         Пик риска
                                     </div>
-                                    <div className="mt-4 text-2xl font-semibold">
-                                        {formatHourWindow(overview.worstHour)}
-                                    </div>
+                                    <div className="mt-3 text-2xl font-semibold">{formatHourWindow(overview.worstHour)}</div>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        В это окно индекс проседает до{" "}
-                                        <span className="font-semibold text-foreground">
-                                            {overview.lowestHealthScore ?? 0}
-                                        </span>
-                                        . Главный драйвер просадки:{" "}
+                                        Индекс проседает до {overview.lowestHealthScore ?? 0}, основной драйвер:{" "}
                                         <span className="font-medium text-foreground">
                                             {overview.dominantIssueLabel.toLowerCase()}
                                         </span>
@@ -622,7 +519,7 @@ export function ConditionAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <Flame className="h-5 w-5 text-orange-500" />
-                                        Что тянет индекс вниз
+                                        Структура сигналов
                                     </CardTitle>
                                     <CardDescription>
                                         Разбивка тревог по типам проблем и уровню серьёзности.
@@ -792,7 +689,7 @@ export function ConditionAnalytics() {
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
                                         <Gauge className="h-5 w-5 text-violet-500" />
-                                        Статусная матрица остановок
+                                        Снимок по остановкам
                                     </CardTitle>
                                     <CardDescription>
                                         Компактный снимок по каждой точке: индекс, главный драйвер и окно риска.

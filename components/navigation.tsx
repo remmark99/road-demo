@@ -56,7 +56,7 @@ const navItems = [
   { href: "/", label: "Карта", icon: Map },
   { href: "/notifications", label: "Уведомления", icon: Bell },
   { href: "/dashboard", label: "Аналитика", icon: BarChart3 },
-  { href: "/ai-assistant", label: "AI-ассистент", icon: Bot },
+  { href: "/ai-assistant", label: "ИИ-Ассистент", icon: Bot },
 ]
 
 const MODULE_LABELS: Record<string, string> = {
@@ -272,8 +272,8 @@ export function Navigation() {
           {/* Theme toggle (visible on all screens) */}
           <ThemeToggle />
 
-          {/* Module visibility toggle (visible when >1 module) */}
-          {allModules.length > 1 && (
+          {/* Module visibility toggle */}
+          {allModules.length > 0 && (
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -296,14 +296,11 @@ export function Navigation() {
                 <div className="space-y-2">
                   {allModules.map((moduleId) => {
                     const isActive = activeModules.includes(moduleId)
-                    const canDisable = activeModules.length > 1 || !isActive
                     return (
                       <div
                         key={moduleId}
                         className={`group flex items-center justify-between py-1.5 px-2 rounded-md transition-colors ${
-                          canDisable
-                            ? "hover:bg-accent/60"
-                            : ""
+                          "hover:bg-accent/60"
                         } ${isActive ? "" : "opacity-50"}`}
                       >
                         <div className="flex items-center gap-2 text-sm">
@@ -316,17 +313,19 @@ export function Navigation() {
                         </div>
                         <Switch
                           checked={isActive}
-                          disabled={!canDisable}
                           onCheckedChange={() => toggleModule(moduleId)}
                           className={cn(
                             "scale-90 transition-all",
-                            canDisable && "group-hover:ring-4 group-hover:ring-primary/10 group-hover:shadow-sm"
+                            "group-hover:ring-4 group-hover:ring-primary/10 group-hover:shadow-sm"
                           )}
                         />
                       </div>
                     )
                   })}
                 </div>
+                <p className="mt-3 text-xs text-muted-foreground">
+                  Можно скрыть все модули и вернуть их позже в этом же меню.
+                </p>
               </PopoverContent>
             </Popover>
           )}

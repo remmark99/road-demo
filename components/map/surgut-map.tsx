@@ -1022,7 +1022,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       source: sourceId,
       paint: {
         "line-color": ["get", "stroke"],
-        "line-width": 4,
+        "line-width": 2.5,
         "line-opacity": ["to-number", ["get", "stroke-opacity"]]
       }
     })
@@ -1230,6 +1230,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
     map.current.once("style.load", () => {
       addParks()
+      addAnchors()
       addRoads()
       addBusStops()
       addCameraLayers()
@@ -1291,6 +1292,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   useEffect(() => {
     if (!mapLoaded) return
     addParks()
+    addAnchors()
     addRoads()
     addBusStops()
     addCameraLayers()

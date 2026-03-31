@@ -369,6 +369,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const hasTransport = hasModule("transport")
 
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [repairShortcutSelected, setRepairShortcutSelected] = useState(false)
   const [selectedCameras, setSelectedCameras] = useState<number[]>(
     initialCamera ? [parseInt(initialCamera)] : []
   )
@@ -403,12 +404,24 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
     return types
   }, [hasParks, hasRoads, hasShore, hasTransport])
 
+  const repairTypes = ALERT_CATEGORIES.repair.types
+  const effectiveSelectedTypes = useMemo(
+    () =>
+      repairShortcutSelected
+        ? Array.from(new Set([...selectedTypes, ...repairTypes]))
+        : selectedTypes,
+    [repairShortcutSelected, repairTypes, selectedTypes]
+  )
+
   useEffect(() => {
     const request =
       allowedTypes.length === 0
         ? Promise.resolve({ alerts: [], total: 0 })
         : fetchAlerts({
-            types: selectedTypes.length > 0 ? selectedTypes : allowedTypes,
+            types:
+              effectiveSelectedTypes.length > 0
+                ? effectiveSelectedTypes
+                : allowedTypes,
             cameraIndexes:
               selectedCameras.length > 0 ? selectedCameras : undefined,
             limit: pageSize,
@@ -420,7 +433,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
       setTotal(result.total)
       setLoading(false)
     })
-  }, [selectedTypes, selectedCameras, page, pageSize, allowedTypes])
+  }, [effectiveSelectedTypes, selectedCameras, page, pageSize, allowedTypes])
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -433,9 +446,18 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const toggleType = (type: string) => {
     setLoading(true)
     setPage(0)
+    if (repairTypes.includes(type)) {
+      setRepairShortcutSelected(false)
+    }
     setSelectedTypes((prev) =>
       prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
     )
+  }
+
+  const toggleRepairShortcut = () => {
+    setLoading(true)
+    setPage(0)
+    setRepairShortcutSelected((prev) => !prev)
   }
 
   const toggleCamera = (index: number) => {
@@ -450,10 +472,12 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
     setLoading(true)
     setPage(0)
     setSelectedTypes([])
+    setRepairShortcutSelected(false)
     setSelectedCameras([])
   }
 
-  const hasFilters = selectedTypes.length > 0 || selectedCameras.length > 0
+  const hasFilters =
+    selectedTypes.length > 0 || repairShortcutSelected || selectedCameras.length > 0
   const onlineCameras = cameras.filter((c) => c.status === "online")
   const demoAlerts = useMemo<Alert[]>(() => {
     const resolveCameraIndex = (module: DemoAlertSeed["module"]) => {
@@ -493,14 +517,15 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
     () =>
       demoAlerts.filter((alert) => {
         const typeMatches =
-          selectedTypes.length === 0 || selectedTypes.includes(alert.alert_type)
+          effectiveSelectedTypes.length === 0 ||
+          effectiveSelectedTypes.includes(alert.alert_type)
         const cameraMatches =
           selectedCameras.length === 0 ||
           (alert.camera_index !== null &&
             selectedCameras.includes(alert.camera_index))
         return typeMatches && cameraMatches
       }),
-    [demoAlerts, selectedCameras, selectedTypes]
+    [demoAlerts, effectiveSelectedTypes, selectedCameras]
   )
   const visibleAlerts = useMemo(
     () => [...alerts, ...(page === 0 ? filteredDemoAlerts : [])],
@@ -556,19 +581,28 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                       </Button>
                     )
                   })}
+                  <Button
+                    variant={repairShortcutSelected ? "default" : "outline"}
+                    size="sm"
+                    className="gap-2"
+                    onClick={toggleRepairShortcut}
+                  >
+                    <Wrench className="h-3.5 w-3.5" />
+                    Ремонтная техника
+                  </Button>
                 </div>
               </div>
 
               <Separator />
 
-              {/* Уборка */}
+              {/* Ремонт */}
               <div>
                 <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-cyan-400" />
-                  Уборка
+                  <Wrench className="h-4 w-4 text-orange-400" />
+                  Ремонт
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {ALERT_CATEGORIES.cleaning.types.map((type) => {
+                  {ALERT_CATEGORIES.repair.types.map((type) => {
                     const config = ALERT_TYPE_CONFIG[type]
                     if (!config) return null
                     const Icon = alertIcons[type] || Snowflake
@@ -591,14 +625,14 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
 
               <Separator />
 
-              {/* Ремонт */}
+              {/* Уборка */}
               <div>
                 <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
-                  <Wrench className="h-4 w-4 text-orange-400" />
-                  Ремонт
+                  <Sparkles className="h-4 w-4 text-cyan-400" />
+                  Уборка
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {ALERT_CATEGORIES.repair.types.map((type) => {
+                  {ALERT_CATEGORIES.cleaning.types.map((type) => {
                     const config = ALERT_TYPE_CONFIG[type]
                     if (!config) return null
                     const Icon = alertIcons[type] || Snowflake

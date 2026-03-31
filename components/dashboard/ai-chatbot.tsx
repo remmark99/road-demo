@@ -8,49 +8,70 @@ import jsPDF from "jspdf"
 import * as htmlToImage from 'html-to-image'
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Bot, Send, User, Loader2, RefreshCw, Database, Search, BarChart, FileText, Download, Maximize2, Plus, MessageSquare, Trash2, FileDown, ChevronDown, ChevronUp } from "lucide-react"
 import { chatStorage, type ChatSession } from "@/lib/chat-storage"
 import { cn } from "@/lib/utils"
 
-// Маппинг вопросов к аналитическим инструментам MCP
-const QUESTIONS_WITH_TOOLS: Array<{ question: string; tool: string }> = [
+type SuggestedQuestionOption = {
+    question: string
+    category: string
+    tool?: string
+}
+
+// Стартовые вопросы по платформе. Часть из них явно привязана к MCP-инструментам.
+const SUGGESTED_QUESTION_OPTIONS: SuggestedQuestionOption[] = [
     {
+        category: "Дороги",
         question: "У каких подрядчиков и по каким типам инцидентов зафиксированы наиболее длительные задержки реакции за год?",
         tool: "analyze_reaction_tails"
     },
     {
-        question: "Какие категории дорожных проблем вызывали наибольшие сложности с оперативным реагированием в течение года?",
-        tool: "rate_problem_categories"
-    },
-    {
-        question: "В какие часы суток чаще всего нарушаются регламенты реагирования по различным типам инцидентов?",
-        tool: "analyze_hourly_violations"
-    },
-    {
-        question: "В какие дни недели наблюдается снижение дисциплины при обработке дорожных инцидентов?",
-        tool: "analyze_contractor_discipline_weekly"
-    },
-    {
-        question: "Насколько эффективно спецтехника справлялась с устранением выявленных проблем в течение года?",
-        tool: "analyze_machinery_efficiency"
-    },
-    {
-        question: "Как работа спецтехники повлияла на реальное увеличение скорости движения транспорта за год?",
-        tool: "analyze_cleaning_impact_on_traffic"
-    },
-    {
-        question: "Какие камеры имели наибольшие пробелы в данных за год и требуют технического обслуживания?",
-        tool: "monitor_camera_data_quality"
-    },
-    {
+        category: "Дороги",
         question: "Как погодные условия влияли на долю нарушений регламента подрядными организациями в течение года?",
         tool: "analyze_sla_weather_dependency"
+    },
+    {
+        category: "Остановки",
+        question: "Какие показатели есть в модуле «Состояние остановок» и как их правильно интерпретировать?"
+    },
+    {
+        category: "Остановки",
+        question: "Что можно понять по аналитике «Тёплая остановка» без доступа к сырым данным?"
+    },
+    {
+        category: "Остановки",
+        question: "Чем отличаются аналитики остановок: пассажиропоток, безопасность, вандализм и состояние?"
+    },
+    {
+        category: "Парк и берег",
+        question: "Какие индикаторы доступны в модулях «Безопасный парк» и «Безопасный берег»?"
+    },
+    {
+        category: "Транспорт",
+        question: "Как интерпретировать показатели модуля «Маршрутная дисциплина»?"
+    },
+    {
+        category: "Платформа",
+        question: "Какие модули аналитики есть на платформе и за что отвечает каждый?"
     }
 ];
 
-const ALL_QUESTIONS = QUESTIONS_WITH_TOOLS.map(q => q.question);
+const INITIAL_SUGGESTED_QUESTION_TEXTS = [
+    "Какие модули аналитики есть на платформе и за что отвечает каждый?",
+    "У каких подрядчиков и по каким типам инцидентов зафиксированы наиболее длительные задержки реакции за год?",
+    "Как погодные условия влияли на долю нарушений регламента подрядными организациями в течение года?",
+];
+
+const INITIAL_SUGGESTED_QUESTIONS = INITIAL_SUGGESTED_QUESTION_TEXTS
+    .map((question) => SUGGESTED_QUESTION_OPTIONS.find((item) => item.question === question))
+    .filter((item): item is SuggestedQuestionOption => Boolean(item));
+
+const REFRESHABLE_SUGGESTED_QUESTIONS = SUGGESTED_QUESTION_OPTIONS.filter(
+    (item) => !INITIAL_SUGGESTED_QUESTION_TEXTS.includes(item.question)
+);
 
 const STATUS_STEPS = [
     { icon: Search, text: "Анализирую запрос..." },
@@ -118,23 +139,31 @@ const hasMessageContent = (message: RenderableChatMessage) =>
 const WELCOME_MESSAGE: RenderableChatMessage = {
     id: "welcome",
     role: "assistant",
-    content: "Привет! Я AI-ассистент для анализа дорожной ситуации в Сургуте. Задайте мне вопрос о состоянии дорог, статистике или прогнозах.",
+    content: "Привет! Я ИИ-Ассистент платформы городского мониторинга. Могу помочь по дорогам, остановкам, берегу, паркам, транспорту и объяснить, какие показатели есть в аналитике каждого модуля.",
 };
 
 interface AIChatbotProps {
     fullHeight?: boolean;
+    pageScrollable?: boolean;
+    initialQuestionsCollapsed?: boolean;
 }
 
-export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
+export function AIChatbot({
+    fullHeight = false,
+    pageScrollable = false,
+    initialQuestionsCollapsed,
+}: AIChatbotProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const chatRef = useRef<HTMLDivElement>(null)
     const [inputValue, setInputValue] = useState("")
-    const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([])
+    const [suggestedQuestions, setSuggestedQuestions] = useState<SuggestedQuestionOption[]>(INITIAL_SUGGESTED_QUESTIONS)
     const [statusIndex, setStatusIndex] = useState(0)
     const [sessions, setSessions] = useState<ChatSession[]>([])
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
     const [isExporting, setIsExporting] = useState(false)
-    const [isQuestionsCollapsed, setIsQuestionsCollapsed] = useState(false)
+    const [isQuestionsCollapsed, setIsQuestionsCollapsed] = useState(
+        initialQuestionsCollapsed ?? (fullHeight || pageScrollable)
+    )
 
     // Создаём sessionId сразу при монтировании, чтобы useChat всегда работал с валидным id
     const [sessionId] = useState(() => Date.now().toString());
@@ -207,7 +236,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
     const downloadHistory = () => {
         if (messages.length === 0) return;
         const text = messages.map(m => {
-            const role = m.role === 'user' ? 'Пользователь' : 'AI-ассистент';
+            const role = m.role === 'user' ? 'Пользователь' : 'ИИ-Ассистент';
             const content = getMessageText(m as RenderableChatMessage, ' ');
             return `[${role}]:\n${content}\n`;
         }).join('\n---\n\n');
@@ -323,7 +352,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             headerDiv.style.borderBottom = '1px solid #e2e8f0';
             headerDiv.innerHTML = `
                 <h1 style="font-size: 18px; font-weight: bold; color: #1e293b; margin: 0 0 4px 0;">
-                    История анализа дорожной ситуации
+                    История анализа по платформе
                 </h1>
                 <p style="font-size: 10px; color: #64748b; margin: 0;">
                     Дата экспорта: ${new Date().toLocaleString('ru-RU')}
@@ -439,7 +468,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                             roleLabel.style.textTransform = 'uppercase';
                             roleLabel.style.letterSpacing = '0.5px';
                             roleLabel.style.color = message.role === 'user' ? '#2563eb' : '#6b7280';
-                            roleLabel.innerText = message.role === 'user' ? 'Пользователь' : 'AI-ассистент';
+                            roleLabel.innerText = message.role === 'user' ? 'Пользователь' : 'ИИ-Ассистент';
                             textDiv.appendChild(roleLabel);
                         }
 
@@ -498,13 +527,12 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
     }, [status]);
 
     const refreshQuestions = useCallback(() => {
-        const shuffled = [...ALL_QUESTIONS].sort(() => 0.5 - Math.random());
+        const pool = REFRESHABLE_SUGGESTED_QUESTIONS.length > 0
+            ? REFRESHABLE_SUGGESTED_QUESTIONS
+            : SUGGESTED_QUESTION_OPTIONS;
+        const shuffled = [...pool].sort(() => 0.5 - Math.random());
         setSuggestedQuestions(shuffled.slice(0, 3));
     }, []);
-
-    useEffect(() => {
-        refreshQuestions();
-    }, [refreshQuestions]);
 
     const renderContentWithImages = (text: string) => {
         // Очищаем текст от служебных тегов перед рендерингом
@@ -518,9 +546,10 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                 const fullUrl = `/api${part}`;
                 return (
                     <div key={i} className="my-2 relative group">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                             src={fullUrl}
-                            alt="Road Analysis Chart"
+                            alt="Analytics chart"
                             className="rounded-lg border bg-white max-w-full h-auto shadow-sm"
                             crossOrigin="anonymous"
                         />
@@ -607,27 +636,73 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             await new Promise(resolve => setTimeout(resolve, 50));
         }
 
-        // Находим соответствующий инструмент для этого вопроса
-        const questionWithTool = QUESTIONS_WITH_TOOLS.find(q => q.question === question);
+        // Находим соответствующий инструмент для этого вопроса, если он задан
+        const questionOption = SUGGESTED_QUESTION_OPTIONS.find((item) => item.question === question);
 
-        // Формируем сообщение с явной инструкцией какой инструмент использовать
-        const messageText = questionWithTool
-            ? `[ИСПОЛЬЗУЙ: ${questionWithTool.tool}]\n\n${question}`
+        // Формируем сообщение с явной инструкцией, только если вопрос привязан к инструменту
+        const messageText = questionOption?.tool
+            ? `[ИСПОЛЬЗУЙ: ${questionOption.tool}]\n\n${question}`
             : question;
 
         await sendMessage({ text: messageText });
     };
 
-    const heightClass = fullHeight ? "h-full" : "h-[calc(100vh-280px)] min-h-[600px]";
+    const isCompactLayout = fullHeight || pageScrollable
+    const heightClass = pageScrollable
+        ? "h-[min(76vh,760px)] min-h-[620px]"
+        : fullHeight
+            ? "h-full min-h-0"
+            : "h-[calc(100vh-280px)] min-h-[600px]";
+    const historyActions = messages.length > 0 && (
+        <>
+            <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-2"
+                onClick={downloadPDF}
+                disabled={isExporting}
+            >
+                {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+                <span className="hidden sm:inline">PDF</span>
+            </Button>
+            <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-2 text-muted-foreground"
+                onClick={downloadHistory}
+            >
+                <FileText className="h-4 w-4" />
+                <span className="hidden sm:inline">TXT</span>
+            </Button>
+        </>
+    )
 
     return (
-        <div className={`flex gap-4 ${heightClass}`}>
+        <div className={`flex flex-col gap-3 xl:flex-row ${heightClass}`}>
             {/* Sidebar */}
-            <Card className="w-64 flex flex-col shrink-0 bg-muted/30 overflow-hidden pt-0">
-                <CardHeader className="p-6 border-b flex items-center justify-center">
+            <Card
+                className={cn(
+                    "flex w-full shrink-0 flex-col overflow-hidden border-border/60 bg-muted/30 shadow-sm gap-0 py-0",
+                    isCompactLayout ? "xl:w-60 xl:max-w-60" : "xl:w-72 xl:max-w-72"
+                )}
+            >
+                <CardHeader className={cn("border-b px-4", isCompactLayout ? "gap-3 py-4" : "gap-4 py-5")}>
+                    <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                            <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                Сессии
+                            </p>
+                            <p className={cn("mt-1.5 text-muted-foreground", isCompactLayout ? "text-xs leading-5" : "text-sm leading-5")}>
+                                История запросов и быстрый доступ к разборам.
+                            </p>
+                        </div>
+                        <Badge variant="outline" className="rounded-full border-border/60 bg-background/80 px-2.5 py-0.5 text-xs">
+                            {sessions.length}
+                        </Badge>
+                    </div>
                     <Button
                         onClick={createNewChat}
-                        className="w-full flex items-center justify-center gap-2 bg-background border shadow-sm"
+                        className="w-full justify-center gap-2 border bg-background shadow-sm"
                         variant="ghost"
                         disabled={isLoading}
                     >
@@ -635,11 +710,11 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                         <span>Новый чат</span>
                     </Button>
                 </CardHeader>
-                <ScrollArea className="flex-1 w-full">
-                    <div className="p-2 space-y-1 w-full overflow-hidden">
+                <ScrollArea className="max-h-[240px] w-full xl:max-h-none xl:flex-1">
+                    <div className="space-y-2.5 px-4 py-4">
                         {sessions.length === 0 && (
-                            <div className="text-center py-8 text-muted-foreground text-xs italic">
-                                Нет истории чатов
+                            <div className="rounded-2xl border border-dashed border-border/70 bg-background/70 px-4 py-8 text-center text-xs italic text-muted-foreground">
+                                Нет сохранённых диалогов
                             </div>
                         )}
                         {sessions.map((session) => (
@@ -647,25 +722,36 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                                 key={session.id}
                                 onClick={() => !isLoading && loadSession(session)}
                                 className={cn(
-                                    "group flex items-center justify-between p-2 rounded-lg text-sm transition-colors",
+                                    "group flex items-start justify-between gap-3 rounded-2xl border px-3.5 py-3 text-sm transition-all",
                                     currentSessionId === session.id
-                                        ? "bg-primary text-primary-foreground"
-                                        : "hover:bg-muted",
+                                        ? "border-primary/20 bg-primary/10 text-foreground shadow-sm"
+                                        : "border-transparent bg-background/70 hover:border-border/70 hover:bg-muted/60",
                                     isLoading
                                         ? "cursor-not-allowed opacity-50"
                                         : "cursor-pointer"
                                 )}
                             >
-                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <MessageSquare className="h-3.5 w-3.5 shrink-0 flex-shrink-0" />
-                                    <span className="truncate text-ellipsis overflow-hidden whitespace-nowrap max-w-[140px]">{session.title}</span>
+                                <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                                    <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/80" />
+                                    <span
+                                        className="block min-w-0 flex-1 overflow-hidden break-words text-sm leading-5"
+                                        style={{
+                                            display: "-webkit-box",
+                                            WebkitLineClamp: 2,
+                                            WebkitBoxOrient: "vertical",
+                                        }}
+                                    >
+                                        {session.title}
+                                    </span>
                                 </div>
                                 <Button
                                     variant="ghost"
                                     size="icon"
                                     className={cn(
-                                        "h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity",
-                                        currentSessionId === session.id ? "text-primary-foreground hover:bg-primary-foreground/20" : "text-muted-foreground"
+                                        "mt-0.5 h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100",
+                                        currentSessionId === session.id
+                                            ? "text-foreground hover:bg-primary/10"
+                                            : "text-muted-foreground"
                                     )}
                                     onClick={(e) => deleteSession(e, session.id)}
                                 >
@@ -678,44 +764,44 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
             </Card>
 
             {/* Main Chat Area */}
-            <Card className="flex-1 flex flex-col overflow-hidden">
-                <CardHeader className="border-b shrink-0 flex flex-row items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                            <Bot className="h-5 w-5 text-primary" />
-                            AI-ассистент
-                        </CardTitle>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        {messages.length > 0 && (
-                            <>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 gap-2"
-                                    onClick={downloadPDF}
-                                    disabled={isExporting}
-                                >
-                                    {isExporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
-                                    <span className="hidden sm:inline">PDF</span>
-                                </Button>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="h-8 gap-2 text-muted-foreground"
-                                    onClick={downloadHistory}
-                                >
-                                    <FileText className="h-4 w-4" />
-                                    <span className="hidden sm:inline">TXT</span>
-                                </Button>
-                            </>
-                        )}
-                    </div>
-                </CardHeader>
+            <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/60 shadow-sm gap-0 py-0">
+                {isCompactLayout ? (
+                    historyActions ? (
+                        <div className="shrink-0 border-b bg-background/95 px-3 py-2.5">
+                            <div className="flex items-center justify-end gap-2">
+                                {historyActions}
+                            </div>
+                        </div>
+                    ) : null
+                ) : (
+                    <CardHeader className="shrink-0 gap-4 border-b px-4 py-4">
+                        <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                                        <Bot className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <CardTitle className="text-lg">ИИ-Ассистент</CardTitle>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 self-start">
+                                {historyActions}
+                            </div>
+                        </div>
+                    </CardHeader>
+                )}
 
-                <CardContent className="flex-1 flex flex-col p-0 min-h-0">
-                    <ScrollArea className="flex-1 p-4 min-h-0">
-                        <div ref={chatRef} className="space-y-4 bg-background p-4">
+                <CardContent className="flex min-h-0 flex-1 flex-col p-0">
+                    <ScrollArea className={cn("min-h-0 flex-1 bg-muted/10", isCompactLayout ? "p-2.5" : "p-4")}>
+                        <div
+                            ref={chatRef}
+                            className={cn(
+                                "rounded-2xl border border-border/60 bg-background/90 shadow-sm",
+                                isCompactLayout ? "space-y-3 p-3 md:p-3.5" : "space-y-4 p-4 md:p-5"
+                            )}
+                        >
                             {allMessages.map((message) => {
                                 const hasContent = hasMessageContent(message);
 
@@ -724,7 +810,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                                 return (
                                     <div
                                         key={message.id}
-                                        className={`flex gap-3 ${message.role === "user" ? "flex-row-reverse" : ""}`}
+                                        className={`flex gap-2.5 ${message.role === "user" ? "flex-row-reverse" : ""}`}
                                     >
                                         <div
                                             className={`flex-shrink-0 h-8 w-8 rounded-full flex items-center justify-center ${message.role === "user"
@@ -739,7 +825,7 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                                             )}
                                         </div>
                                         <div
-                                            className={`max-w-[85%] rounded-2xl px-4 py-2.5 ${message.role === "user"
+                                            className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${message.role === "user"
                                                 ? "bg-primary text-primary-foreground"
                                                 : "bg-muted shadow-sm"
                                                 }`}
@@ -809,12 +895,26 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                         </div>
                     </ScrollArea>
 
-                    <div className="p-4 border-t bg-muted/20">
+                    <div className={cn("border-t bg-muted/20", isCompactLayout ? "px-3 py-2.5" : "p-4")}>
                         <div
-                            className="flex items-center justify-between cursor-pointer"
+                            className="flex cursor-pointer items-center justify-between gap-3"
                             onClick={() => setIsQuestionsCollapsed(!isQuestionsCollapsed)}
                         >
-                            <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Возможные вопросы</span>
+                            <div className="min-w-0">
+                                <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
+                                    Быстрый старт
+                                </span>
+                                {!(isCompactLayout && isQuestionsCollapsed) && (
+                                    <p className={cn("mt-1 text-muted-foreground", isCompactLayout ? "text-xs leading-5" : "text-sm")}>
+                                        Готовые вопросы по модулям платформы и дорожным инструментам.
+                                    </p>
+                                )}
+                                {isCompactLayout && isQuestionsCollapsed && (
+                                    <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                                        Разверните блок, если нужны шаблоны запросов.
+                                    </p>
+                                )}
+                            </div>
                             <div className="flex items-center gap-1">
                                 <Button
                                     variant="ghost"
@@ -833,45 +933,66 @@ export function AIChatbot({ fullHeight = false }: AIChatbotProps) {
                                     size="icon"
                                     className="h-6 w-6"
                                 >
-                                    {isQuestionsCollapsed ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                                    {isQuestionsCollapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
                                 </Button>
                             </div>
                         </div>
                         {!isQuestionsCollapsed && (
-                            <div className="grid gap-2 mt-3">
-                                {suggestedQuestions.map((q, i) => (
+                            <div className={cn("grid gap-2 md:grid-cols-3", isCompactLayout ? "mt-2.5" : "mt-3")}>
+                                {suggestedQuestions.map((item, i) => (
                                     <button
                                         key={i}
-                                        onClick={() => handleQuestionClick(q)}
+                                        onClick={() => handleQuestionClick(item.question)}
                                         disabled={isLoading}
-                                        className="text-left text-xs p-2 rounded-lg border bg-background hover:bg-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        className={cn(
+                                            "rounded-xl border border-border/60 bg-background text-left transition-all hover:border-primary/25 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-50",
+                                            isCompactLayout ? "px-3 py-2.5" : "px-3 py-3"
+                                        )}
                                     >
-                                        {q}
+                                        <div className="mb-2 flex items-center justify-between gap-2">
+                                            <Badge
+                                                variant="outline"
+                                                className="rounded-full border-border/60 bg-background px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                                            >
+                                                {item.category}
+                                            </Badge>
+                                            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                {item.tool ? "Инструмент" : "Пояснение"}
+                                            </span>
+                                        </div>
+                                        <div className="text-sm leading-5">
+                                            {item.question}
+                                        </div>
                                     </button>
                                 ))}
                             </div>
                         )}
                     </div>
 
-                    <form onSubmit={handleFormSubmit} className="flex-shrink-0 p-4 border-t">
+                    <form onSubmit={handleFormSubmit} className={cn("shrink-0 border-t bg-background/95", isCompactLayout ? "p-2.5" : "p-4")}>
                         <div className="flex gap-2">
                             <input
                                 type="text"
                                 value={inputValue}
                                 onChange={(e) => setInputValue(e.target.value)}
-                                placeholder="Задайте вопрос..."
+                                placeholder="Спросите про модуль, метрики или данные..."
                                 disabled={isLoading}
-                                className="flex-1 px-4 py-2.5 rounded-full border border-input bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
+                                className="flex-1 rounded-xl border border-input bg-background px-4 py-2.5 text-sm shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:opacity-50"
                             />
                             <Button
                                 type="submit"
                                 size="icon"
                                 disabled={!inputValue.trim() || isLoading}
-                                className="rounded-full h-10 w-10"
+                                className="h-10 w-10 rounded-xl"
                             >
                                 <Send className="h-4 w-4" />
                             </Button>
                         </div>
+                        {!isCompactLayout && (
+                            <p className="mt-2 text-xs text-muted-foreground">
+                                Можно спросить про модуль, значение метрики, интерпретацию показателей или прислать данные для разбора.
+                            </p>
+                        )}
                     </form>
                 </CardContent>
             </Card>

@@ -60,10 +60,23 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
                         try {
                             const saved = localStorage.getItem(ACTIVE_MODULES_KEY)
                             if (saved) {
-                                const parsed: string[] = JSON.parse(saved)
-                                // Only keep modules that the user still has access to
-                                const valid = parsed.filter(m => dbModules.includes(m))
-                                setActiveModulesState(valid.length > 0 ? valid : dbModules)
+                                const parsed = JSON.parse(saved)
+                                if (Array.isArray(parsed)) {
+                                    const valid = parsed.filter(
+                                        (module): module is string =>
+                                            typeof module === "string" && dbModules.includes(module)
+                                    )
+
+                                    setActiveModulesState(
+                                        parsed.length === 0
+                                            ? []
+                                            : valid.length > 0
+                                                ? valid
+                                                : dbModules
+                                    )
+                                } else {
+                                    setActiveModulesState(dbModules)
+                                }
                             } else {
                                 // First time: all modules active
                                 setActiveModulesState(dbModules)
@@ -100,8 +113,6 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
             let next: string[]
             if (current.includes(module)) {
                 next = current.filter(m => m !== module)
-                // Don't allow disabling ALL modules
-                if (next.length === 0) return current
             } else {
                 // Only allow toggling on modules the user has access to
                 if (!allModules.includes(module)) return current
@@ -113,8 +124,7 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
     }, [allModules])
 
     const setActiveModules = useCallback((mods: string[]) => {
-        const valid = mods.filter(m => allModules.includes(m))
-        const next = valid.length > 0 ? valid : allModules
+        const next = mods.filter(m => allModules.includes(m))
         setActiveModulesState(next)
         localStorage.setItem(ACTIVE_MODULES_KEY, JSON.stringify(next))
     }, [allModules])

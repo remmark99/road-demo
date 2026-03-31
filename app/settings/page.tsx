@@ -164,7 +164,7 @@ export default function SettingsPage() {
         </p>
       </div>
       {/* Module Visibility Toggles */}
-      {allModules.length > 1 && (
+      {allModules.length > 0 && (
         <Card className="mb-6">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
@@ -180,7 +180,6 @@ export default function SettingsPage() {
               {allModules.map((moduleId) => {
                 const info = MODULE_INFO[moduleId] || { name: moduleId, description: '' }
                 const isActive = activeModules.includes(moduleId)
-                const canDisable = activeModules.length > 1 || !isActive
                 return (
                   <div
                     key={moduleId}
@@ -204,18 +203,15 @@ export default function SettingsPage() {
                     </div>
                     <Switch
                       checked={isActive}
-                      disabled={!canDisable}
                       onCheckedChange={() => toggleModule(moduleId)}
                     />
                   </div>
                 )
               })}
             </div>
-            {allModules.length > 1 && activeModules.length === 1 && (
-              <p className="text-xs text-muted-foreground mt-3">
-                Необходимо оставить хотя бы один активный модуль.
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground mt-3">
+              При необходимости можно временно скрыть даже все модули. Это повлияет на карту, аналитику и уведомления.
+            </p>
           </CardContent>
         </Card>
       )}

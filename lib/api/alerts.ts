@@ -347,12 +347,12 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
 }
 
 export const MODULE_MAP: Record<string, string> = {
-    snowplow_detection: 'Модуль спецтехники',
-    snow_detection: 'Модуль заснеженности',
-    puddle_detection: 'Модуль детекции луж',
-    pothole_detection: 'Модуль детекции ям',
-    snow_pile_detection: 'Модуль детекции снежных накоплений',
-    camera_check: 'Модуль проверки камеры',
+    snowplow_detection: 'Состояние дорог',
+    snow_detection: 'Состояние дорог',
+    puddle_detection: 'Состояние дорог',
+    pothole_detection: 'Состояние дорог',
+    snow_pile_detection: 'Состояние дорог',
+    camera_check: 'Состояние дорог',
     shore_security: 'Охрана периметра',
     shore_safety: 'Безопасность людей',
     park_monitoring: 'Безопасный парк',

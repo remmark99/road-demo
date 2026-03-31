@@ -13,11 +13,176 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { cn } from "@/lib/utils"
 import { useModuleAccess } from "@/components/providers/module-context"
+import {
+  RATING_ATTENTION,
+  RATING_CURVE_DIVISOR,
+  RATING_MAX,
+  RATING_TARGET,
+  formatRating,
+  getRating,
+} from "@/lib/analytics/rating"
 
 interface GlossaryItem {
   title: string
   content: React.ReactNode
   modules?: string[]
+}
+
+function RatingCurveGraphic() {
+  const width = 360
+  const height = 180
+  const padding = { top: 12, right: 14, bottom: 26, left: 30 }
+  const maxLoad = 24
+  const innerWidth = width - padding.left - padding.right
+  const innerHeight = height - padding.top - padding.bottom
+  const loadMarks = [0, 4, 8, 12, 16, 20, 24]
+  const ratingMarks = [0, RATING_ATTENTION, RATING_TARGET, RATING_MAX]
+
+  const curvePoints = Array.from({ length: maxLoad + 1 }, (_, load) => {
+    const rating = getRating(load)
+    const x = padding.left + (load / maxLoad) * innerWidth
+    const y = padding.top + innerHeight - (rating / RATING_MAX) * innerHeight
+
+    return { load, rating, x, y }
+  })
+
+  const points = loadMarks.map((load) => curvePoints[load])
+
+  const path = curvePoints
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
+    .join(" ")
+
+  const targetY = padding.top + innerHeight - (RATING_TARGET / RATING_MAX) * innerHeight
+  const attentionY = padding.top + innerHeight - (RATING_ATTENTION / RATING_MAX) * innerHeight
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-xl border bg-background/70 p-4">
+        <div className="mb-2 flex items-center justify-between text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+          <span>Рост нагрузки</span>
+          <span>Рейтинг / 10</span>
+        </div>
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto">
+          <line
+            x1={padding.left}
+            y1={padding.top}
+            x2={padding.left}
+            y2={height - padding.bottom}
+            stroke="currentColor"
+            className="text-border"
+          />
+          <line
+            x1={padding.left}
+            y1={height - padding.bottom}
+            x2={width - padding.right}
+            y2={height - padding.bottom}
+            stroke="currentColor"
+            className="text-border"
+          />
+
+          {ratingMarks.map((mark) => {
+            const y = padding.top + innerHeight - (mark / RATING_MAX) * innerHeight
+            return (
+              <g key={mark}>
+                <line
+                  x1={padding.left}
+                  y1={y}
+                  x2={width - padding.right}
+                  y2={y}
+                  stroke="currentColor"
+                  strokeDasharray="4 4"
+                  className={cn(
+                    mark === RATING_TARGET
+                      ? "text-emerald-400/70"
+                      : mark === RATING_ATTENTION
+                        ? "text-amber-400/60"
+                        : "text-border"
+                  )}
+                />
+                <text
+                  x={padding.left - 8}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="fill-muted-foreground text-[10px]"
+                >
+                  {formatRating(mark)}
+                </text>
+              </g>
+            )
+          })}
+
+          <line
+            x1={padding.left}
+            y1={targetY}
+            x2={width - padding.right}
+            y2={targetY}
+            stroke="currentColor"
+            strokeDasharray="6 4"
+            className="text-emerald-500/80"
+          />
+          <line
+            x1={padding.left}
+            y1={attentionY}
+            x2={width - padding.right}
+            y2={attentionY}
+            stroke="currentColor"
+            strokeDasharray="6 4"
+            className="text-amber-500/80"
+          />
+
+          <path
+            d={path}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            className="text-sky-500"
+            strokeLinecap="round"
+          />
+
+          {points.map((point) => (
+            <g key={point.load}>
+              <circle
+                cx={point.x}
+                cy={point.y}
+                r="4"
+                fill="currentColor"
+                className="text-sky-500"
+              />
+              <text
+                x={point.x}
+                y={height - 8}
+                textAnchor="middle"
+                className="fill-muted-foreground text-[10px]"
+              >
+                {point.load}
+              </text>
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-3 text-xs">
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3">
+          <div className="font-medium text-emerald-700 dark:text-emerald-300">
+            {formatRating(RATING_TARGET)}–10.0
+          </div>
+          <div className="mt-1 text-muted-foreground">Нормальный режим, достаточно планового контроля.</div>
+        </div>
+        <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-3">
+          <div className="font-medium text-amber-700 dark:text-amber-300">
+            {formatRating(RATING_ATTENTION)}–{formatRating(RATING_TARGET - 0.1)}
+          </div>
+          <div className="mt-1 text-muted-foreground">Нужно внимание, стоит усилить контроль и обходы.</div>
+        </div>
+        <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+          <div className="font-medium text-red-700 dark:text-red-300">
+            Ниже {formatRating(RATING_ATTENTION)}
+          </div>
+          <div className="mt-1 text-muted-foreground">Нужен выезд или эскалация, штатного режима уже недостаточно.</div>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 const glossaryItems: GlossaryItem[] = [
@@ -220,6 +385,59 @@ const glossaryItems: GlossaryItem[] = [
           <li>качество и своевременность его работы</li>
         </ul>
         <p>Позволяет быстро выявить сильных и проблемных подрядчиков.</p>
+      </div>
+    )
+  },
+  {
+    title: "РЕЙТИНГ",
+    content: (
+      <div className="space-y-4 text-sm text-muted-foreground">
+        <p>
+          <span className="font-medium text-foreground">Рейтинг</span> — это сводная
+          управленческая оценка по <span className="font-medium text-foreground">10-балльной шкале</span>.
+          Если показатель в интерфейсе называется рейтингом, он считается по одной и той же кривой:
+          сначала модуль считает нагрузку, потом переводит её в значение от 0.0 до 10.0.
+        </p>
+
+        <div className="rounded-xl border bg-muted/20 p-4 space-y-3">
+          <p className="font-medium text-foreground">Как считается рейтинг</p>
+          <ol className="list-decimal list-inside space-y-1">
+            <li>Сначала модуль считает нагрузку: сколько отклонений пришло, сколько из них остаётся открытыми и сколько среди них критичных или высокоприоритетных.</li>
+            <li>Дальше в нагрузку могут добавляться модульные факторы, например задержка реакции или накопленный сервисный долг.</li>
+            <li>После этого нагрузка переводится в рейтинг по плавной экспоненциальной кривой, чтобы оценка снижалась постепенно, а не «ломалась» от одного события.</li>
+          </ol>
+          <div className="rounded-lg border bg-background px-3 py-2 font-mono text-xs text-foreground">
+            Рейтинг = 10 × e^(-нагрузка / {RATING_CURVE_DIVISOR})
+          </div>
+          <p className="text-xs">
+            Такая формула делает первые отклонения заметными, но умеренными. Если проблемы повторяются,
+            долго не закрываются или становятся критичными, рейтинг начинает снижаться быстрее.
+            При этом кривая стремится к <span className="font-medium text-foreground">0.0</span>, а не останавливается на фиксированном минимуме.
+          </p>
+        </div>
+
+        <RatingCurveGraphic />
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-4">
+            <p className="font-medium text-foreground">Пример нагрузки для безопасности</p>
+            <ul className="mt-2 list-disc list-inside space-y-1">
+              <li>общее число инцидентов</li>
+              <li>открытые инциденты</li>
+              <li>критические события</li>
+              <li>задержка реакции на событие</li>
+            </ul>
+          </div>
+          <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-4">
+            <p className="font-medium text-foreground">Пример нагрузки для эксплуатации</p>
+            <ul className="mt-2 list-disc list-inside space-y-1">
+              <li>общее число эксплуатационных проблем</li>
+              <li>открытые задачи</li>
+              <li>высокий приоритет</li>
+              <li>накопленный сервисный долг</li>
+            </ul>
+          </div>
+        </div>
       </div>
     )
   },
