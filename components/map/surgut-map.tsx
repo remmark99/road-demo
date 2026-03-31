@@ -1026,7 +1026,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         "line-opacity": ["to-number", ["get", "stroke-opacity"]]
       }
     })
-  }, [])
+  }, [isDark])
 
   const addAnchors = useCallback(() => {
     if (!map.current) return
@@ -1120,7 +1120,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       map.current!.getCanvas().style.cursor = ""
       popup.remove()
     })
-  }, [])
+  }, [isDark])
 
   const addShoreline = useCallback(() => {
     if (!map.current) return
@@ -1148,7 +1148,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         "visibility": hasModule('shore') ? 'visible' : 'none'
       }
     })
-  }, [hasModule])
+  }, [isDark, hasModule])
 
   // Fetch data based on allowed modules
 
@@ -1318,7 +1318,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         map.current?.off('click', clickHandler)
       }
     }
-  }, [mapLoaded, addRoads, addBusStops, addCameraLayers, addParks, addAnchors])
+  }, [mapLoaded, addRoads, addBusStops, addCameraLayers, addParks, addAnchors, addShoreline])
 
   // Sync parks data to source
   useEffect(() => {
@@ -1329,7 +1329,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       map.current.setLayoutProperty("parks-fill", "visibility", hasModule("parks") ? "visible" : "none")
       map.current.setLayoutProperty("parks-line", "visibility", hasModule("parks") ? "visible" : "none")
     }
-  }, [mapLoaded, parksData, hasModule])
+  }, [mapLoaded, parksData, hasModule, addParks])
 
   // Sync anchors data to source (including radius polygons)
   useEffect(() => {
@@ -1366,7 +1366,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       if (map.current.getLayer('anchors-radius-outline')) map.current.setLayoutProperty('anchors-radius-outline', 'visibility', visibility)
       if (map.current.getLayer('anchors-points-layer')) map.current.setLayoutProperty('anchors-points-layer', 'visibility', visibility)
     }
-  }, [mapLoaded, anchorsData, hasModule])
+  }, [mapLoaded, anchorsData, hasModule, addAnchors])
 
   // Sync shoreline visibility
   useEffect(() => {
@@ -1374,7 +1374,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     if (map.current.getLayer('shoreline-layer')) {
       map.current.setLayoutProperty('shoreline-layer', 'visibility', hasModule('shore') ? 'visible' : 'none')
     }
-  }, [mapLoaded, hasModule])
+  }, [mapLoaded, hasModule, addShoreline])
 
   // Sync camera data to the GeoJSON source
 
