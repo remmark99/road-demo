@@ -44,6 +44,7 @@ import { ParkSecurityAnalytics } from "@/components/dashboard/park-security-anal
 import { ParkOperationsAnalytics } from "@/components/dashboard/park-operations-analytics"
 import { TransportRouteAnalytics } from "@/components/dashboard/transport-route-analytics"
 import { TransportServiceAnalytics } from "@/components/dashboard/transport-service-analytics"
+import { RoadRepairAnalytics } from "@/components/dashboard/road-repair-analytics"
 import { Skeleton } from "@/components/ui/skeleton"
 
 type DashboardView =
@@ -51,6 +52,7 @@ type DashboardView =
   | "cleaning"
   | "incidents"
   | "predictions"
+  | "road_repair"
   | "city"
   | "kpi_bus_stops"
   | "districts"
@@ -91,6 +93,12 @@ const DASHBOARDS = [
     label: "Влияние осадков",
     icon: CloudRain,
     url: "https://superset.board-coding.ru/superset/dashboard/6?standalone=2&expand_filters=0"
+  },
+  {
+    id: "road_repair" as const,
+    label: "Ремонт дорог",
+    icon: Hammer,
+    component: RoadRepairAnalytics,
   },
   {
     id: "city" as const,
@@ -184,7 +192,7 @@ const DASHBOARDS = [
   }
 ] as const
 
-const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city"]
+const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "road_repair", "city"]
 const STOPS_DASHBOARDS = ["kpi_bus_stops", "districts", "passenger", "security", "vandalism", "condition", "warmstop"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]

@@ -560,7 +560,7 @@ export function ParkSecurityAnalytics() {
                                         {overview.atRiskParks}
                                     </div>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        Столько парков уже нельзя вести только в плановом режиме.
+                                        Столько парков сейчас требуют усиленного контроля и внепланового обхода.
                                     </p>
                                 </CardContent>
                             </Card>

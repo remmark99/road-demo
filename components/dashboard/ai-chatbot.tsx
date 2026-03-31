@@ -683,7 +683,7 @@ export function AIChatbot({
             <Card
                 className={cn(
                     "flex w-full shrink-0 flex-col overflow-hidden border-border/60 bg-muted/30 shadow-sm gap-0 py-0",
-                    isCompactLayout ? "xl:w-56 xl:max-w-56" : "xl:w-72 xl:max-w-72"
+                    isCompactLayout ? "xl:w-60 xl:max-w-60" : "xl:w-72 xl:max-w-72"
                 )}
             >
                 <CardHeader className={cn("border-b px-4", isCompactLayout ? "gap-3 py-4" : "gap-4 py-5")}>
@@ -711,7 +711,7 @@ export function AIChatbot({
                     </Button>
                 </CardHeader>
                 <ScrollArea className="max-h-[240px] w-full xl:max-h-none xl:flex-1">
-                    <div className="space-y-2 p-3">
+                    <div className="space-y-2.5 px-4 py-4">
                         {sessions.length === 0 && (
                             <div className="rounded-2xl border border-dashed border-border/70 bg-background/70 px-4 py-8 text-center text-xs italic text-muted-foreground">
                                 Нет сохранённых диалогов
@@ -722,7 +722,7 @@ export function AIChatbot({
                                 key={session.id}
                                 onClick={() => !isLoading && loadSession(session)}
                                 className={cn(
-                                    "group flex items-center justify-between gap-2 rounded-xl border p-2.5 text-sm transition-all",
+                                    "group flex items-start justify-between gap-3 rounded-2xl border px-3.5 py-3 text-sm transition-all",
                                     currentSessionId === session.id
                                         ? "border-primary/20 bg-primary/10 text-foreground shadow-sm"
                                         : "border-transparent bg-background/70 hover:border-border/70 hover:bg-muted/60",
@@ -731,9 +731,16 @@ export function AIChatbot({
                                         : "cursor-pointer"
                                 )}
                             >
-                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                    <MessageSquare className="h-3.5 w-3.5 shrink-0 text-primary/80" />
-                                    <span className="max-w-[180px] truncate text-ellipsis overflow-hidden whitespace-nowrap">
+                                <div className="flex min-w-0 flex-1 items-start gap-2.5">
+                                    <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary/80" />
+                                    <span
+                                        className="block min-w-0 flex-1 overflow-hidden break-words text-sm leading-5"
+                                        style={{
+                                            display: "-webkit-box",
+                                            WebkitLineClamp: 2,
+                                            WebkitBoxOrient: "vertical",
+                                        }}
+                                    >
                                         {session.title}
                                     </span>
                                 </div>
@@ -741,7 +748,7 @@ export function AIChatbot({
                                     variant="ghost"
                                     size="icon"
                                     className={cn(
-                                        "h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100",
+                                        "mt-0.5 h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100",
                                         currentSessionId === session.id
                                             ? "text-foreground hover:bg-primary/10"
                                             : "text-muted-foreground"

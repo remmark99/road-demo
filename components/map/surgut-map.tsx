@@ -7,6 +7,7 @@ import { fetchCameras } from "@/lib/api/cameras"
 import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
+import { fetchAnchorsGeoJSON, type AnchorsGeoJSON } from "@/lib/api/anchors"
 import type { Camera, RoadStatus } from "@/lib/types"
 import { VideoModal } from "./video-modal"
 import { BusStopModal, type SelectedBusStop } from "./bus-stop-modal"
@@ -164,6 +165,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
   const [busStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
   const [parksData, setParksData] = useState<any>(null)
+  const [anchorsData, setAnchorsData] = useState<AnchorsGeoJSON | null>(null)
 
   // Filter States
   const [cameraFilters, setCameraFilters] = useState({ online: true, offline: false })
@@ -982,9 +984,120 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       source: sourceId,
       paint: {
         "line-color": ["get", "stroke"],
-        "line-width": 4,
+        "line-width": 2.5,
         "line-opacity": ["to-number", ["get", "stroke-opacity"]]
       }
+    })
+  }, [])
+
+  const addAnchors = useCallback(() => {
+    if (!map.current) return
+
+    const sourceId = "transport-anchors"
+    const layerId = "transport-anchors-layer"
+    const haloLayerId = "transport-anchors-halo"
+
+    if (map.current.getSource(sourceId)) return
+
+    map.current.addSource(sourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    })
+
+    map.current.addLayer({
+      id: haloLayerId,
+      type: "circle",
+      source: sourceId,
+      paint: {
+        "circle-radius": 15,
+        "circle-color": "#2563eb",
+        "circle-opacity": 0.12
+      }
+    })
+
+    map.current.addLayer({
+      id: layerId,
+      type: "circle",
+      source: sourceId,
+      paint: {
+        "circle-radius": 8,
+        "circle-color": "#2563eb",
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff"
+      }
+    })
+
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 12,
+    })
+
+    map.current.on("mouseenter", layerId, (e) => {
+      map.current!.getCanvas().style.cursor = "pointer"
+      const feature = e.features?.[0]
+      const props = feature?.properties as Record<string, unknown> | undefined
+      if (!feature || !props) return
+
+      const title =
+        typeof props.name === "string" && props.name
+          ? props.name
+          : typeof props.title === "string" && props.title
+            ? props.title
+            : typeof props.route_name === "string" && props.route_name
+              ? props.route_name
+              : `Точка контроля #${String(props.id ?? "")}`
+
+      const subtitleParts = [
+        typeof props.anchor_type === "string" ? props.anchor_type : null,
+        typeof props.route_number === "string" ? props.route_number : null,
+      ].filter(Boolean)
+
+      popup
+        .setLngLat((e as unknown as { lngLat: maplibregl.LngLatLike }).lngLat)
+        .setHTML(
+          `<div class="p-2 text-sm">
+            <div class="font-semibold">${title}</div>
+            ${subtitleParts.length > 0 ? `<div class="text-muted-foreground">${subtitleParts.join(" · ")}</div>` : ""}
+          </div>`
+        )
+        .addTo(map.current!)
+    })
+
+    map.current.on("mouseleave", layerId, () => {
+      map.current!.getCanvas().style.cursor = ""
+      popup.remove()
+    })
+
+    map.current.on("click", layerId, (e) => {
+      const feature = e.features?.[0]
+      const props = feature?.properties as Record<string, unknown> | undefined
+      if (!feature || !props) return
+      const coordinates = (feature.geometry as { coordinates: [number, number] }).coordinates
+
+      const title =
+        typeof props.name === "string" && props.name
+          ? props.name
+          : typeof props.title === "string" && props.title
+            ? props.title
+            : typeof props.route_name === "string" && props.route_name
+              ? props.route_name
+              : "Точка контроля транспорта"
+
+      const radius =
+        typeof props.detection_radius === "number"
+          ? props.detection_radius
+          : Number(props.detection_radius ?? 0)
+
+      new maplibregl.Popup({ closeOnClick: true, maxWidth: "260px" })
+        .setLngLat(coordinates)
+        .setHTML(
+          `<div class="p-2 text-sm">
+            <div class="font-semibold">${title}</div>
+            <div class="mt-1 text-muted-foreground">Радиус контроля: ${Number.isFinite(radius) && radius > 0 ? `${radius} м` : "не указан"}</div>
+          </div>`
+        )
+        .addTo(map.current!)
     })
   }, [])
 
@@ -1009,6 +1122,12 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       fetchParksGeoJSON().then(setParksData)
     } else {
       setParksData({ type: "FeatureCollection", features: [] })
+    }
+
+    if (hasModule('transport')) {
+      fetchAnchorsGeoJSON().then(setAnchorsData)
+    } else {
+      setAnchorsData({ type: "FeatureCollection", features: [] })
     }
   }, [modules, hasModule, modulesLoading])
 
@@ -1040,11 +1159,12 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
 
     map.current.once("style.load", () => {
       addParks()
+      addAnchors()
       addRoads()
       addBusStops()
       addCameraLayers()
     })
-  }, [isDark, addRoads, addBusStops, addCameraLayers, addParks, mapLoaded])
+  }, [isDark, addRoads, addBusStops, addCameraLayers, addParks, addAnchors, mapLoaded])
 
   // Initialize map - this should only run once
   useEffect(() => {
@@ -1089,6 +1209,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
   useEffect(() => {
     if (!mapLoaded) return
     addParks()
+    addAnchors()
     addRoads()
     addBusStops()
     addCameraLayers()
@@ -1111,7 +1232,7 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
         map.current?.off('click', clickHandler)
       }
     }
-  }, [mapLoaded, addRoads, addBusStops, addCameraLayers, addParks])
+  }, [mapLoaded, addRoads, addBusStops, addCameraLayers, addParks, addAnchors])
 
   // Sync parks data to source
   useEffect(() => {
@@ -1123,6 +1244,17 @@ export function SurgutMap({ statusOverride, hoveredSegmentId, onHoverSegment }: 
       map.current.setLayoutProperty("parks-line", "visibility", hasModule("parks") ? "visible" : "none")
     }
   }, [mapLoaded, parksData, hasModule])
+
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !anchorsData) return
+
+    const source = map.current.getSource("transport-anchors") as maplibregl.GeoJSONSource
+    if (!source) return
+
+    source.setData(anchorsData as never)
+    map.current.setLayoutProperty("transport-anchors-layer", "visibility", hasModule("transport") ? "visible" : "none")
+    map.current.setLayoutProperty("transport-anchors-halo", "visibility", hasModule("transport") ? "visible" : "none")
+  }, [mapLoaded, anchorsData, hasModule])
 
   // Sync camera data to the GeoJSON source
   useEffect(() => {

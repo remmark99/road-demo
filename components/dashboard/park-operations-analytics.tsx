@@ -556,7 +556,7 @@ export function ParkOperationsAnalytics() {
                                         {overview.atRiskParks}
                                     </div>
                                     <p className="mt-2 text-sm text-muted-foreground">
-                                        Столько парков уже нельзя вести только плановым обслуживанием.
+                                        Столько парков сейчас требуют усиленного контроля и внепланового обслуживания.
                                     </p>
                                 </CardContent>
                             </Card>

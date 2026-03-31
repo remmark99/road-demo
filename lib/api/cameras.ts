@@ -1,4 +1,3 @@
-import { ContentSteeringController } from 'hls.js'
 import { supabase } from '../supabase'
 import type { Camera } from '../types'
 
@@ -38,7 +37,15 @@ function mapCameraRow(row: CameraRow): Camera {
     }
 }
 
+function shouldHideAllCameras(allowedModules?: string[]) {
+    return Array.isArray(allowedModules) && allowedModules.length === 0
+}
+
 export async function fetchCameraRows(allowedModules?: string[]): Promise<CameraRow[]> {
+    if (shouldHideAllCameras(allowedModules)) {
+        return []
+    }
+
     let query = supabase.from('cameras').select('*').order('camera_index')
 
     if (allowedModules && allowedModules.length > 0) {
@@ -61,6 +68,10 @@ export async function fetchCameraRows(allowedModules?: string[]): Promise<Camera
 }
 
 export async function fetchCameras(allowedModules?: string[]): Promise<Camera[]> {
+    if (shouldHideAllCameras(allowedModules)) {
+        return []
+    }
+
     let query = supabase.from('cameras').select('*').order('camera_index')
 
     if (allowedModules && allowedModules.length > 0) {
@@ -83,6 +94,10 @@ export async function fetchCameras(allowedModules?: string[]): Promise<Camera[]>
 }
 
 export async function fetchOnlineCameras(allowedModules?: string[]): Promise<Camera[]> {
+    if (shouldHideAllCameras(allowedModules)) {
+        return []
+    }
+
     let query = supabase.from('cameras').select('*').eq('status', 'online').order('camera_index')
 
     if (allowedModules && allowedModules.length > 0) {
