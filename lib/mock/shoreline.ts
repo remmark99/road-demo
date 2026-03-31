@@ -24,7 +24,7 @@ export const SHORELINE_GEOJSON: any = {
                 ]
             },
             "properties": {
-                "stroke": "#ed4543",
+                "stroke": "#4ade80",
                 "stroke-width": "5",
                 "stroke-opacity": 0.9
             }
@@ -142,7 +142,7 @@ export const SHORELINE_GEOJSON: any = {
                 ]
             },
             "properties": {
-                "stroke": "#ed4543",
+                "stroke": "#4ade80",
                 "stroke-width": "5",
                 "stroke-opacity": 0.9
             }
@@ -264,7 +264,7 @@ export const SHORELINE_GEOJSON: any = {
                 ]
             },
             "properties": {
-                "stroke": "#ed4543",
+                "stroke": "#4ade80",
                 "stroke-width": "5",
                 "stroke-opacity": 0.9
             }
@@ -350,7 +350,7 @@ export const SHORELINE_GEOJSON: any = {
                 ]
             },
             "properties": {
-                "stroke": "#ed4543",
+                "stroke": "#4ade80",
                 "stroke-width": "5",
                 "stroke-opacity": 0.9
             }
@@ -468,7 +468,7 @@ export const SHORELINE_GEOJSON: any = {
                 ]
             },
             "properties": {
-                "stroke": "#ed4543",
+                "stroke": "#4ade80",
                 "stroke-width": "5",
                 "stroke-opacity": 0.9
             }
