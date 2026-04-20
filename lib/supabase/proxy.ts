@@ -43,9 +43,9 @@ export async function updateSession(request: NextRequest) {
         !request.nextUrl.pathname.startsWith('/landing') &&
         !request.nextUrl.pathname.startsWith('/api')
     ) {
-        // No user, redirect to login page
+        // No user, redirect to landing page
         const url = request.nextUrl.clone()
-        url.pathname = '/login'
+        url.pathname = '/landing'
         return NextResponse.redirect(url)
     }
 
