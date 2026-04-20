@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useState } from "react"
-import { ArrowRight, Shield, Eye, Brain, ChevronRight } from "lucide-react"
+import { ArrowRight, Shield, Eye, Brain, ChevronRight, Check, Headset, Phone, Mail } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 
 const MODULES = [
@@ -79,6 +79,69 @@ const MODULES = [
     },
 ]
 
+const PRICING = [
+    {
+        id: "roads",
+        title: "Состояние дорог",
+        description: "Мониторинг дорожного покрытия, выявление ям, трещин, колеи, снежных навалов, загрязнений",
+        license: "4 500 000",
+        support: "2 500 000",
+        color: "from-amber-500/20 to-orange-500/10",
+        borderColor: "border-amber-500/30 hover:border-amber-400/60",
+        accentColor: "text-amber-500 dark:text-amber-400",
+        dotColor: "bg-amber-400",
+        features: ["Бессрочная лицензия", "Техподдержка 12 мес.", "CV-анализ видеопотока", "Карта с отрезками"],
+    },
+    {
+        id: "stops",
+        title: "Безопасные остановки",
+        description: "Мониторинг остановочных пунктов: состояние павильонов, пассажирская нагрузка, вандализм",
+        license: "4 200 000",
+        support: "1 800 000",
+        color: "from-teal-500/20 to-cyan-500/10",
+        borderColor: "border-teal-500/30 hover:border-teal-400/60",
+        accentColor: "text-teal-500 dark:text-teal-400",
+        dotColor: "bg-teal-400",
+        features: ["Бессрочная лицензия", "Техподдержка 12 мес.", "IoT-датчики", "5 аналитических дашбордов"],
+    },
+    {
+        id: "shore",
+        title: "Безопасный берег",
+        description: "Мониторинг прибрежных территорий, набережных, контроль присутствия людей и транспорта",
+        license: "2 800 000",
+        support: "1 500 000",
+        color: "from-blue-500/20 to-indigo-500/10",
+        borderColor: "border-blue-500/30 hover:border-blue-400/60",
+        accentColor: "text-blue-500 dark:text-blue-400",
+        dotColor: "bg-blue-400",
+        features: ["Бессрочная лицензия", "Техподдержка 12 мес.", "Контроль уровня воды", "Зоны безопасности"],
+    },
+    {
+        id: "park",
+        title: "Безопасный парк",
+        description: "Мониторинг парковых территорий: контроль порядка, санитарное состояние, безопасность",
+        license: "4 500 000",
+        support: "2 500 000",
+        color: "from-emerald-500/20 to-green-500/10",
+        borderColor: "border-emerald-500/30 hover:border-emerald-400/60",
+        accentColor: "text-emerald-500 dark:text-emerald-400",
+        dotColor: "bg-emerald-400",
+        features: ["Бессрочная лицензия", "Техподдержка 12 мес.", "Обнаружение предметов", "Настройка новых камер"],
+    },
+    {
+        id: "transport",
+        title: "Контроль транспорта",
+        description: "Мониторинг общественного транспорта: маршрутная дисциплина, подсчет пассажиропотока",
+        license: "3 800 000",
+        support: "1 800 000",
+        color: "from-purple-500/20 to-pink-500/10",
+        borderColor: "border-purple-500/30 hover:border-purple-400/60",
+        accentColor: "text-purple-500 dark:text-purple-400",
+        dotColor: "bg-purple-400",
+        features: ["Бессрочная лицензия", "Техподдержка 12 мес.", "Аналитика маршрутов", "Соблюдение расписания"],
+    },
+]
+
 const STATS = [
     { value: "200+", label: "Камер" },
     { value: "24/7", label: "Мониторинг" },
@@ -102,6 +165,7 @@ export default function LandingPage() {
                     </div>
                     <div className="hidden md:flex items-center gap-8 text-sm text-foreground/60">
                         <a href="#modules" className="hover:text-foreground transition-colors">Модули</a>
+                        <a href="#pricing" className="hover:text-foreground transition-colors">Тарифы</a>
                         <a href="#about" className="hover:text-foreground transition-colors">О проекте</a>
                         <div className="flex items-center gap-4">
                             <ThemeToggle />
@@ -244,6 +308,99 @@ export default function LandingPage() {
                                 </div>
                             </Link>
                         ))}
+                    </div>
+                </div>
+            </section>
+
+            {/* ─── Pricing ─────────────────────────────── */}
+            <section id="pricing" className="relative py-24 px-6 border-t border-border">
+                <div className="max-w-6xl mx-auto">
+                    <div className="text-center mb-16">
+                        <h2 className="text-3xl md:text-4xl font-bold mb-4">Тарифы</h2>
+                        <p className="text-foreground/50 text-lg max-w-xl mx-auto">
+                            Гибкая модульная система — подключайте только то, что нужно вашему городу
+                        </p>
+                        <p className="text-foreground/30 text-sm mt-2">
+                            Цены не включают стоимость оборудования, материалов и монтажа
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {PRICING.map((mod) => (
+                            <div
+                                key={mod.id}
+                                className={`group relative rounded-2xl border ${mod.borderColor} bg-gradient-to-b ${mod.color} p-6 transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 flex flex-col`}
+                            >
+                                {/* Header */}
+                                <div className="flex items-center gap-2 mb-3">
+                                    <span className={`w-2 h-2 rounded-full ${mod.dotColor}`} />
+                                    <span className={`text-xs font-medium ${mod.accentColor}`}>
+                                        Модуль
+                                    </span>
+                                </div>
+                                <h3 className="text-xl font-semibold mb-2">{mod.title}</h3>
+                                <p className="text-sm text-foreground/50 mb-6 leading-relaxed">{mod.description}</p>
+
+                                {/* Price blocks */}
+                                <div className="space-y-4 mb-6 flex-1">
+                                    <div className="rounded-xl bg-background/50 border border-foreground/5 p-4">
+                                        <div className="text-xs text-foreground/40 mb-1 uppercase tracking-wider">Разовая лицензия</div>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-xs text-foreground/50">от</span>
+                                            <span className="text-2xl font-bold tracking-tight">{mod.license}</span>
+                                            <span className="text-sm text-foreground/50">₽</span>
+                                        </div>
+                                    </div>
+                                    <div className="rounded-xl bg-background/30 border border-foreground/5 p-4">
+                                        <div className="flex items-center gap-2 text-xs text-foreground/40 mb-1 uppercase tracking-wider">
+                                            <Headset className="h-3 w-3" />
+                                            Техническая поддержка / год
+                                        </div>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-xs text-foreground/50">от</span>
+                                            <span className="text-lg font-semibold">{mod.support}</span>
+                                            <span className="text-sm text-foreground/50">₽</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Features */}
+                                <div className="space-y-2 pt-4 border-t border-foreground/5">
+                                    {mod.features.map((f) => (
+                                        <div key={f} className="flex items-center gap-2 text-sm text-foreground/60">
+                                            <Check className={`h-3.5 w-3.5 flex-shrink-0 ${mod.accentColor}`} />
+                                            {f}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+
+                    {/* CTA */}
+                    <div className="mt-16 text-center">
+                        <div className="inline-flex flex-col items-center gap-4 p-8 rounded-2xl bg-foreground/[0.02] border border-foreground/5">
+                            <div className="text-center">
+                                <div className="font-semibold text-lg mb-1">Индивидуальный расчёт</div>
+                                <div className="text-sm text-foreground/50">Скидки при подключении нескольких модулей</div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row items-center gap-3 mt-2">
+                                <a
+                                    href="tel:+79117907955"
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-teal-500 to-cyan-500 hover:from-teal-400 hover:to-cyan-400 text-white font-medium rounded-xl transition-all shadow-lg shadow-teal-500/25 text-sm whitespace-nowrap"
+                                >
+                                    <Phone className="h-4 w-4" />
+                                    +7 911 790-79-55
+                                </a>
+                                <a
+                                    href="mailto:krammerti@yandex.ru?subject=Запрос по платформе Вектор Города"
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-foreground/5 hover:bg-foreground/10 border border-foreground/10 text-foreground/80 rounded-xl transition-all text-sm whitespace-nowrap"
+                                >
+                                    <Mail className="h-4 w-4" />
+                                    krammerti@yandex.ru
+                                </a>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>
