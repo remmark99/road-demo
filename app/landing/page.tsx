@@ -90,7 +90,7 @@ const PRICING = [
         borderColor: "border-amber-500/30 hover:border-amber-400/60",
         accentColor: "text-amber-500 dark:text-amber-400",
         dotColor: "bg-amber-400",
-        features: ["Бессрочная лицензия", "Техподдержка 12 мес.", "CV-анализ видеопотока", "Карта с отрезками"],
+        features: ["Бессрочная лицензия", "1-й год поддержки включён", "CV-анализ видеопотока", "Карта с отрезками"],
     },
     {
         id: "stops",
@@ -102,7 +102,7 @@ const PRICING = [
         borderColor: "border-teal-500/30 hover:border-teal-400/60",
         accentColor: "text-teal-500 dark:text-teal-400",
         dotColor: "bg-teal-400",
-        features: ["Бессрочная лицензия", "Техподдержка 12 мес.", "IoT-датчики", "5 аналитических дашбордов"],
+        features: ["Бессрочная лицензия", "1-й год поддержки включён", "IoT-датчики", "5 аналитических дашбордов"],
     },
     {
         id: "shore",
@@ -114,7 +114,7 @@ const PRICING = [
         borderColor: "border-blue-500/30 hover:border-blue-400/60",
         accentColor: "text-blue-500 dark:text-blue-400",
         dotColor: "bg-blue-400",
-        features: ["Бессрочная лицензия", "Техподдержка 12 мес.", "Контроль уровня воды", "Зоны безопасности"],
+        features: ["Бессрочная лицензия", "1-й год поддержки включён", "Контроль уровня воды", "Зоны безопасности"],
     },
     {
         id: "park",
@@ -126,7 +126,7 @@ const PRICING = [
         borderColor: "border-emerald-500/30 hover:border-emerald-400/60",
         accentColor: "text-emerald-500 dark:text-emerald-400",
         dotColor: "bg-emerald-400",
-        features: ["Бессрочная лицензия", "Техподдержка 12 мес.", "Обнаружение предметов", "Настройка новых камер"],
+        features: ["Бессрочная лицензия", "1-й год поддержки включён", "Обнаружение предметов", "Настройка новых камер"],
     },
     {
         id: "transport",
@@ -138,7 +138,7 @@ const PRICING = [
         borderColor: "border-purple-500/30 hover:border-purple-400/60",
         accentColor: "text-purple-500 dark:text-purple-400",
         dotColor: "bg-purple-400",
-        features: ["Бессрочная лицензия", "Техподдержка 12 мес.", "Аналитика маршрутов", "Соблюдение расписания"],
+        features: ["Бессрочная лицензия", "1-й год поддержки включён", "Аналитика маршрутов", "Соблюдение расписания"],
     },
 ]
 
@@ -350,16 +350,20 @@ export default function LandingPage() {
                                             <span className="text-2xl font-bold tracking-tight">{mod.license}</span>
                                             <span className="text-sm text-foreground/50">₽</span>
                                         </div>
+                                        <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-500/10 dark:bg-teal-400/10 border border-teal-500/20 dark:border-teal-400/20 w-fit">
+                                            <Check className="h-3 w-3 text-teal-600 dark:text-teal-400 flex-shrink-0" />
+                                            <span className="text-[11px] font-medium text-teal-700 dark:text-teal-300">Техподдержка на 1-й год включена</span>
+                                        </div>
                                     </div>
                                     <div className="rounded-xl bg-background/30 border border-foreground/5 p-4">
                                         <div className="flex items-center gap-2 text-xs text-foreground/40 mb-1 uppercase tracking-wider">
                                             <Headset className="h-3 w-3" />
-                                            Техническая поддержка / год
+                                            Техподдержка / продление со 2-го года
                                         </div>
                                         <div className="flex items-baseline gap-1">
                                             <span className="text-xs text-foreground/50">от</span>
                                             <span className="text-lg font-semibold">{mod.support}</span>
-                                            <span className="text-sm text-foreground/50">₽</span>
+                                            <span className="text-sm text-foreground/50">₽ / год</span>
                                         </div>
                                     </div>
                                 </div>
