@@ -11,9 +11,58 @@ const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'Вектор Города - Мониторинг состояния дорог',
-  description: 'Система мониторинга состояния дорог города Сургута с использованием камер видеонаблюдения',
-  generator: 'v0.app',
+  title: {
+    default: 'Вектор Города — Интеллектуальный мониторинг городской инфраструктуры',
+    template: '%s | Вектор Города',
+  },
+  description: 'Платформа мониторинга городской инфраструктуры Сургута на основе компьютерного зрения и IoT-датчиков. Состояние дорог, остановок, парков, набережных и транспорта в реальном времени.',
+  keywords: [
+    'мониторинг дорог', 'состояние дорог', 'умный город', 'smart city',
+    'видеоаналитика', 'компьютерное зрение', 'Сургут', 'городская инфраструктура',
+    'мониторинг остановок', 'безопасный город', 'IoT датчики', 'ямы на дорогах',
+    'снегоуборочная техника', 'контроль дорог', 'дорожное покрытие',
+    'мониторинг парков', 'безопасный берег', 'контроль транспорта',
+    'Вектор Города', 'городской мониторинг', 'видеонаблюдение',
+  ],
+  authors: [{ name: 'Вектор Города' }],
+  creator: 'Вектор Города',
+  publisher: 'Вектор Города',
+  metadataBase: new URL('https://vector-goroda.ru'),
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    type: 'website',
+    locale: 'ru_RU',
+    siteName: 'Вектор Города',
+    title: 'Вектор Города — Интеллектуальный мониторинг городской инфраструктуры',
+    description: 'Платформа мониторинга городской инфраструктуры Сургута: дороги, остановки, парки, набережные, транспорт. Компьютерное зрение и IoT в реальном времени.',
+    images: [
+      {
+        url: '/landing/hero.png',
+        width: 1200,
+        height: 630,
+        alt: 'Вектор Города — мониторинг городской инфраструктуры Сургута',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Вектор Города — Мониторинг городской инфраструктуры',
+    description: 'Интеллектуальная система мониторинга дорог, остановок, парков и транспорта г. Сургут',
+    images: ['/landing/hero.png'],
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+    },
+  },
   icons: {
     icon: [
       {
@@ -31,6 +80,9 @@ export const metadata: Metadata = {
     ],
     apple: '/apple-icon.png',
   },
+  verification: {
+    yandex: '108708763',
+  },
 }
 
 export default function RootLayout({
@@ -39,7 +91,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="ru" suppressHydrationWarning>
       <head>
         <script
           dangerouslySetInnerHTML={{

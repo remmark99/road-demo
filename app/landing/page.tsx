@@ -152,8 +152,60 @@ const STATS = [
 export default function LandingPage() {
     const [hoveredModule, setHoveredModule] = useState<string | null>(null)
 
+    const jsonLd = {
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "Organization",
+                "name": "Вектор Города",
+                "url": "https://vector-goroda.ru",
+                "logo": "https://vector-goroda.ru/icon.svg",
+                "description": "Интеллектуальная платформа мониторинга городской инфраструктуры на основе компьютерного зрения и IoT-датчиков",
+                "address": {
+                    "@type": "PostalAddress",
+                    "addressLocality": "Сургут",
+                    "addressCountry": "RU",
+                },
+                "contactPoint": {
+                    "@type": "ContactPoint",
+                    "telephone": "+7-911-790-79-55",
+                    "email": "krammerti@yandex.ru",
+                    "contactType": "sales",
+                    "availableLanguage": "Russian",
+                },
+            },
+            {
+                "@type": "SoftwareApplication",
+                "name": "Вектор Города",
+                "applicationCategory": "BusinessApplication",
+                "operatingSystem": "Web",
+                "description": "Платформа мониторинга городской инфраструктуры: состояние дорог, безопасные остановки, безопасный берег, безопасный парк, контроль транспорта",
+                "offers": {
+                    "@type": "AggregateOffer",
+                    "priceCurrency": "RUB",
+                    "lowPrice": "2800000",
+                    "highPrice": "4500000",
+                    "offerCount": "5",
+                },
+                "featureList": "CV-анализ видеопотока, IoT-датчики, Карта с отрезками, Аналитические дашборды, Уведомления в реальном времени",
+            },
+            {
+                "@type": "WebPage",
+                "name": "Вектор Города — Платформа мониторинга",
+                "description": "Интеллектуальная система мониторинга городской инфраструктуры Сургута",
+                "url": "https://vector-goroda.ru/landing",
+                "inLanguage": "ru",
+            },
+        ],
+    }
+
     return (
         <div className="min-h-screen bg-background text-foreground overflow-x-hidden">
+            {/* JSON-LD Structured Data */}
+            <script
+                type="application/ld+json"
+                dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+            />
             {/* ─── Navigation ────────────────────────── */}
             <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
                 <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
