@@ -61,7 +61,7 @@ export async function fetchRoadsGeoJSON(retries = 3): Promise<RoadsGeoJSON> {
                 toast.loading(`Загрузка дорог (попытка ${attempt}/${retries})...`, { id: "fetch-roads" })
             }
             // v=2 busts the browser cache, refresh=true busts the server in-memory cache
-            const res = await fetch('/api/roads?v=2&refresh=true', { cache: 'no-store' })
+            const res = await fetch('/api/roads')
             if (!res.ok) throw new Error(`Failed to fetch roads: ${res.status}`)
             cachedGeoJSON = await res.json()
             toast.success("Данные о дорогах загружены", { id: "fetch-roads", duration: 2500 })
