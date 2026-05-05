@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useState } from "react"
-import { ArrowRight, Shield, Eye, Brain, ChevronRight, Check, Headset, Phone, Mail } from "lucide-react"
+import { ArrowRight, Shield, Eye, Brain, ChevronRight, Check, Headset, Phone, Mail, ShoppingCart } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { LogoIcon } from "@/components/logo"
 
@@ -78,6 +78,20 @@ const MODULES = [
         dotColor: "bg-emerald-400",
         tags: ["Скоро", "Парки", "Аналитика"],
     },
+    {
+        id: "procurement",
+        title: "Закупки",
+        subtitle: "Автоматизация муниципальных закупок",
+        description: "Единая платформа управления закупочными процедурами: планирование, мониторинг исполнения контрактов, аналитика эффективности.",
+        image: "/landing/procurement.svg",
+        href: "https://xn--80aneha3a1a.xn----8sbeffd9a6acasdu.xn--p1ai/",
+        color: "from-rose-500/20 to-red-500/10",
+        borderColor: "border-rose-500/30 hover:border-rose-400/60",
+        glowColor: "group-hover:shadow-rose-500/20",
+        accentColor: "text-rose-400",
+        dotColor: "bg-rose-400",
+        tags: ["Закупки", "Контракты", "Аналитика"],
+    },
 ]
 
 const PRICING = [
@@ -140,6 +154,18 @@ const PRICING = [
         accentColor: "text-purple-500 dark:text-purple-400",
         dotColor: "bg-purple-400",
         features: ["Бессрочная лицензия", "1-й год поддержки включён", "Аналитика маршрутов", "Соблюдение расписания"],
+    },
+    {
+        id: "procurement",
+        title: "Закупки",
+        description: "Автоматизация муниципальных закупок: планирование, мониторинг контрактов, аналитика",
+        license: null,
+        support: null,
+        color: "from-rose-500/20 to-red-500/10",
+        borderColor: "border-rose-500/30 hover:border-rose-400/60",
+        accentColor: "text-rose-500 dark:text-rose-400",
+        dotColor: "bg-rose-400",
+        features: ["Бессрочная лицензия", "Планирование закупок", "Мониторинг контрактов", "Аналитика эффективности"],
     },
 ]
 
@@ -310,54 +336,62 @@ export default function LandingPage() {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {MODULES.map((mod) => (
-                            <Link
-                                key={mod.id}
-                                href={mod.href}
-                                className={`group relative rounded-2xl border border-border bg-gradient-to-b ${mod.color} ${mod.borderColor} p-6 transition-all duration-300 hover:shadow-2xl ${mod.glowColor} hover:-translate-y-1`}
-                                onMouseEnter={() => setHoveredModule(mod.id)}
-                                onMouseLeave={() => setHoveredModule(null)}
-                            >
-                                {/* Module image */}
-                                <div className="relative w-full aspect-square mb-6 rounded-xl overflow-hidden bg-background/50">
-                                    <Image
-                                        src={mod.image}
-                                        alt={mod.title}
-                                        fill
-                                        className="object-cover transition-transform duration-500 group-hover:scale-105"
-                                    />
-                                </div>
+                        {MODULES.map((mod) => {
+                            const isExternal = mod.href.startsWith("http")
+                            const isComingSoon = mod.id === "shore" || mod.id === "transport" || mod.id === "park"
+                            const statusColor = mod.id === 'roads' ? 'text-amber-600' : mod.id === 'stops' ? 'text-teal-600' : mod.id === 'procurement' ? 'text-rose-600' : 'text-blue-600'
+                            const CardWrapper = isExternal ? 'a' : Link
+                            const extraProps = isExternal ? { target: "_blank", rel: "noopener noreferrer" } : {}
+                            return (
+                                <CardWrapper
+                                    key={mod.id}
+                                    href={mod.href}
+                                    className={`group relative rounded-2xl border border-border bg-gradient-to-b ${mod.color} ${mod.borderColor} p-6 transition-all duration-300 hover:shadow-2xl ${mod.glowColor} hover:-translate-y-1`}
+                                    onMouseEnter={() => setHoveredModule(mod.id)}
+                                    onMouseLeave={() => setHoveredModule(null)}
+                                    {...extraProps}
+                                >
+                                    {/* Module image */}
+                                    <div className="relative w-full aspect-square mb-6 rounded-xl overflow-hidden bg-background/50">
+                                        <Image
+                                            src={mod.image}
+                                            alt={mod.title}
+                                            fill
+                                            className="object-cover transition-transform duration-500 group-hover:scale-105"
+                                        />
+                                    </div>
 
-                                {/* Status dot */}
-                                <div className="flex items-center gap-2 mb-3">
-                                    <span className={`w-2 h-2 rounded-full ${mod.dotColor} ${mod.id !== "shore" ? "animate-pulse" : "opacity-50"}`} />
-                                    <span className={`text-xs font-medium dark:${mod.accentColor} ${mod.id === 'roads' ? 'text-amber-600' : mod.id === 'stops' ? 'text-teal-600' : 'text-blue-600'}`}>
-                                        {mod.id === "shore" ? "В разработке" : "Активен"}
-                                    </span>
-                                </div>
-
-                                <h3 className="text-xl font-semibold mb-1">{mod.title}</h3>
-                                <p className="text-sm text-foreground/50 mb-3">{mod.subtitle}</p>
-                                <p className="text-sm text-foreground/60 leading-relaxed mb-4">{mod.description}</p>
-
-                                {/* Tags */}
-                                <div className="flex flex-wrap gap-2">
-                                    {mod.tags.map((tag) => (
-                                        <span
-                                            key={tag}
-                                            className="px-2.5 py-1 text-[11px] rounded-md bg-foreground/5 text-foreground/60 border border-foreground/5"
-                                        >
-                                            {tag}
+                                    {/* Status dot */}
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <span className={`w-2 h-2 rounded-full ${mod.dotColor} ${!isComingSoon ? "animate-pulse" : "opacity-50"}`} />
+                                        <span className={`text-xs font-medium dark:${mod.accentColor} ${statusColor}`}>
+                                            {isComingSoon ? "В разработке" : "Активен"}
                                         </span>
-                                    ))}
-                                </div>
+                                    </div>
 
-                                {/* Arrow */}
-                                <div className="absolute top-6 right-6 w-8 h-8 rounded-full bg-foreground/5 flex items-center justify-center group-hover:bg-foreground/10 transition-colors">
-                                    <ArrowRight className={`h-4 w-4 dark:${mod.accentColor} ${mod.id === 'roads' ? 'text-amber-600' : mod.id === 'stops' ? 'text-teal-600' : 'text-blue-600'} group-hover:translate-x-0.5 transition-transform`} />
-                                </div>
-                            </Link>
-                        ))}
+                                    <h3 className="text-xl font-semibold mb-1">{mod.title}</h3>
+                                    <p className="text-sm text-foreground/50 mb-3">{mod.subtitle}</p>
+                                    <p className="text-sm text-foreground/60 leading-relaxed mb-4">{mod.description}</p>
+
+                                    {/* Tags */}
+                                    <div className="flex flex-wrap gap-2">
+                                        {mod.tags.map((tag) => (
+                                            <span
+                                                key={tag}
+                                                className="px-2.5 py-1 text-[11px] rounded-md bg-foreground/5 text-foreground/60 border border-foreground/5"
+                                            >
+                                                {tag}
+                                            </span>
+                                        ))}
+                                    </div>
+
+                                    {/* Arrow */}
+                                    <div className="absolute top-6 right-6 w-8 h-8 rounded-full bg-foreground/5 flex items-center justify-center group-hover:bg-foreground/10 transition-colors">
+                                        <ArrowRight className={`h-4 w-4 dark:${mod.accentColor} ${statusColor} group-hover:translate-x-0.5 transition-transform`} />
+                                    </div>
+                                </CardWrapper>
+                            )
+                        })}
                     </div>
                 </div>
             </section>
@@ -393,29 +427,39 @@ export default function LandingPage() {
 
                                 {/* Price blocks */}
                                 <div className="space-y-4 mb-6 flex-1">
-                                    <div className="rounded-xl bg-background/50 border border-foreground/5 p-4">
-                                        <div className="text-xs text-foreground/40 mb-1 uppercase tracking-wider">Разовая лицензия</div>
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-xs text-foreground/50">от</span>
-                                            <span className="text-2xl font-bold tracking-tight">{mod.license}</span>
-                                            <span className="text-sm text-foreground/50">₽</span>
+                                    {mod.license ? (
+                                        <>
+                                            <div className="rounded-xl bg-background/50 border border-foreground/5 p-4">
+                                                <div className="text-xs text-foreground/40 mb-1 uppercase tracking-wider">Разовая лицензия</div>
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className="text-xs text-foreground/50">от</span>
+                                                    <span className="text-2xl font-bold tracking-tight">{mod.license}</span>
+                                                    <span className="text-sm text-foreground/50">₽</span>
+                                                </div>
+                                                <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-500/10 dark:bg-teal-400/10 border border-teal-500/20 dark:border-teal-400/20 w-fit">
+                                                    <Check className="h-3 w-3 text-teal-600 dark:text-teal-400 flex-shrink-0" />
+                                                    <span className="text-[11px] font-medium text-teal-700 dark:text-teal-300">Техподдержка на 1-й год включена</span>
+                                                </div>
+                                            </div>
+                                            <div className="rounded-xl bg-background/30 border border-foreground/5 p-4">
+                                                <div className="flex items-center gap-2 text-xs text-foreground/40 mb-1 uppercase tracking-wider">
+                                                    <Headset className="h-3 w-3" />
+                                                    Техподдержка / продление со 2-го года
+                                                </div>
+                                                <div className="flex items-baseline gap-1">
+                                                    <span className="text-xs text-foreground/50">от</span>
+                                                    <span className="text-lg font-semibold">{mod.support}</span>
+                                                    <span className="text-sm text-foreground/50">₽ / год</span>
+                                                </div>
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="rounded-xl bg-background/50 border border-foreground/5 p-6 flex flex-col items-center justify-center text-center">
+                                            <div className="text-xs text-foreground/40 mb-3 uppercase tracking-wider">Стоимость</div>
+                                            <div className="text-2xl font-bold tracking-tight mb-2">По запросу</div>
+                                            <p className="text-xs text-foreground/40">Свяжитесь с нами для индивидуального расчёта</p>
                                         </div>
-                                        <div className="mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-teal-500/10 dark:bg-teal-400/10 border border-teal-500/20 dark:border-teal-400/20 w-fit">
-                                            <Check className="h-3 w-3 text-teal-600 dark:text-teal-400 flex-shrink-0" />
-                                            <span className="text-[11px] font-medium text-teal-700 dark:text-teal-300">Техподдержка на 1-й год включена</span>
-                                        </div>
-                                    </div>
-                                    <div className="rounded-xl bg-background/30 border border-foreground/5 p-4">
-                                        <div className="flex items-center gap-2 text-xs text-foreground/40 mb-1 uppercase tracking-wider">
-                                            <Headset className="h-3 w-3" />
-                                            Техподдержка / продление со 2-го года
-                                        </div>
-                                        <div className="flex items-baseline gap-1">
-                                            <span className="text-xs text-foreground/50">от</span>
-                                            <span className="text-lg font-semibold">{mod.support}</span>
-                                            <span className="text-sm text-foreground/50">₽ / год</span>
-                                        </div>
-                                    </div>
+                                    )}
                                 </div>
 
                                 {/* Features */}
