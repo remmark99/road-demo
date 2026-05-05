@@ -14,7 +14,7 @@ const SMTP_CONFIG = {
     },
 }
 
-const FROM_EMAIL = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@surgutdorogi.ru"
+const FROM_EMAIL = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@vector-goroda.ru"
 
 export async function POST(request: NextRequest) {
     try {
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h1 style="color: #2563eb;">🚗 Вектор Города</h1>
           <p>Здравствуйте!</p>
-          <p>Вы успешно подписались на уведомления о состоянии дорог в Сургуте.</p>
+          <p>Вы успешно подписались на уведомления о состоянии дорог.</p>
           <p>Теперь вы будете получать оповещения о:</p>
           <ul>
             <li>🌨️ Снежных заносах</li>
@@ -76,7 +76,7 @@ export async function POST(request: NextRequest) {
         
         Здравствуйте!
         
-        Вы успешно подписались на уведомления о состоянии дорог в Сургуте.
+        Вы успешно подписались на уведомления о состоянии дорог.
         
         Теперь вы будете получать оповещения о:
         - Снежных заносах

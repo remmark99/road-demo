@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Eye, EyeOff, LogIn, ArrowLeft, Loader2 } from 'lucide-react'
+import { LogoIcon } from '@/components/logo'
 
 export default function LoginPage() {
     const [email, setEmail] = useState('')
@@ -61,14 +62,12 @@ export default function LoginPage() {
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur-xl p-8">
                     {/* Header */}
                     <div className="text-center mb-8">
-                        <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-gradient-to-br from-teal-400 to-cyan-500 mb-4">
-                            <Eye className="h-6 w-6 text-white" />
-                        </div>
+                        <LogoIcon className="h-12 w-12 text-teal-400 mb-4" />
                         <h1 className="text-2xl font-bold text-white mb-2">
                             Вход в систему
                         </h1>
                         <p className="text-sm text-white/40">
-                            Вектор Города · Сургут
+                            Вектор Города
                         </p>
                     </div>
 

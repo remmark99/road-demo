@@ -12,9 +12,9 @@ import {
   Settings,
   Shield,
   HelpCircle,
-  Grid3X3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { LogoIcon } from "@/components/logo";
 
 const links = [
   { href: "/profile", icon: User, label: "Личный кабинет" },
@@ -46,11 +46,11 @@ export function SettingsNav() {
       <div className="p-4 pt-6">
         <div className="flex items-center gap-3 mb-8">
           <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
-            <Grid3X3 className="h-6 w-6 text-white" />
+            <LogoIcon className="h-6 w-6 text-white" />
           </div>
           <div>
-            <div className="text-xs font-medium tracking-wider text-white/70">СОСТОЯНИЕ</div>
-            <div className="text-lg font-bold tracking-wide">ДОРОГ</div>
+            <div className="text-xs font-medium tracking-wider text-white/70">ВЕКТОР</div>
+            <div className="text-lg font-bold tracking-wide">ГОРОДА</div>
           </div>
         </div>
       </div>

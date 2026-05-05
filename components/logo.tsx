@@ -1,0 +1,61 @@
+import { cn } from "@/lib/utils"
+
+interface LogoIconProps {
+  className?: string
+}
+
+/**
+ * Inline SVG logo mark for "Вектор Города".
+ * Original source: Adobe Illustrator export, brand color #203B74.
+ * Uses currentColor so it can be themed via text-color utilities.
+ */
+export function LogoIcon({ className }: LogoIconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 800 800"
+      fill="none"
+      className={cn("h-6 w-6", className)}
+      aria-hidden="true"
+    >
+      <path
+        fill="currentColor"
+        d="M704.52,475.55c-16.67-27.99-39.06-50.01-67.18-66.02c-28.13-16.02-59.38-24.68-93.76-25.98v-7.82
+		c30.99-6.25,58.07-17.52,81.25-33.79c23.18-16.26,41.21-36.52,54.1-60.74c12.89-24.21,19.34-51.04,19.34-80.46
+		c0-40.63-10.62-75.91-31.83-105.87c-21.23-29.94-52.61-53.11-94.14-69.53c-41.54-16.41-92.77-24.6-153.71-24.6H170.79
+		c-54.72,0-99.08,44.36-99.08,99.08v700.92h175.09c-0.02-0.24-0.06-0.48-0.07-0.71c-0.09-1.35-0.12-2.71-0.13-4.08
+		c-2.33-7.3-4.53-14.23-6.77-21.08C197.91,646.62,156,518.38,114.04,390.15c-6.94-21.21-8.47-42.8-3.43-64.47
+		c10.23-43.96,37.51-73.01,78.88-90.31c54.06-22.61,107.73-46.14,161.53-69.34c12.44-5.36,13.79-9.48,7.68-21.81
+		c-5.73-11.56-11.85-22.95-16.94-34.79c-1.67-3.88-2.11-9.55-0.51-13.29c2.38-5.54,8.27-4.58,13.54-3.45
+		c23.91,5.15,47.85,10.13,71.77,15.21c53.9,11.45,107.81,22.9,161.7,34.41c12.87,2.75,15.31,8.18,9.51,20.13
+		c-4.34,8.95-8.56,17.96-12.79,26.97c-29.4,62.52-58.69,125.1-88.4,187.47c-1.9,4-6.9,8.86-10.61,8.99
+		c-3.59,0.13-8.72-4.6-10.84-8.48c-7.89-14.36-14.77-29.27-22.12-43.92c-4.75-9.49-9.05-10.97-18.84-6.49
+		c-30.3,13.86-60.65,27.65-90.85,41.72c-20.79,9.68-26.2,25.69-15.85,46.32c19.42,38.68,38.99,77.28,58.49,115.91
+		c44.35,87.86,88.76,175.68,132.88,263.65c0,0-0.3,0.01-0.87,0.03c0.16,0.23,0.34,0.45,0.5,0.68c29.22-4.78,55.85-12.69,79.81-23.85
+		c41.92-19.53,74.28-46.34,97.08-80.46c22.78-34.12,34.17-73.05,34.17-116.79C729.52,536.42,721.18,503.54,704.52,475.55z"
+      />
+    </svg>
+  )
+}
+
+interface LogoFullProps {
+  className?: string
+  iconClassName?: string
+  textClassName?: string
+}
+
+/**
+ * Full logo with icon + "ВЕКТОР ГОРОДА" text.
+ * Used on landing pages, login, etc.
+ */
+export function LogoFull({ className, iconClassName, textClassName }: LogoFullProps) {
+  return (
+    <div className={cn("flex items-center gap-2.5", className)}>
+      <LogoIcon className={cn("h-8 w-8 text-[#203B74] dark:text-white", iconClassName)} />
+      <div className={cn("flex flex-col leading-none", textClassName)}>
+        <span className="text-xs font-bold tracking-[0.15em] text-[#203B74] dark:text-white">ВЕКТОР</span>
+        <span className="text-xs font-bold tracking-[0.15em] text-[#203B74] dark:text-white">ГОРОДА</span>
+      </div>
+    </div>
+  )
+}

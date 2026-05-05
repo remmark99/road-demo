@@ -34,7 +34,6 @@ import {
   Map,
   Bell,
   BarChart3,
-  Camera,
   Settings,
   Bot,
   ExternalLink,
@@ -49,6 +48,7 @@ import {
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
+import { LogoIcon } from "@/components/logo"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
 import { useModuleAccess } from "@/components/providers/module-context"
 
@@ -117,7 +117,7 @@ export function Navigation() {
               <SheetContent side="left" className="w-72 p-0 flex flex-col">
                 <SheetHeader className="px-4 pt-4 pb-2 border-b">
                   <SheetTitle className="flex items-center gap-2 text-primary">
-                    <Camera className="h-5 w-5" />
+                    <LogoIcon className="h-5 w-5 text-primary" />
                     Вектор Города
                   </SheetTitle>
                 </SheetHeader>
@@ -202,7 +202,7 @@ export function Navigation() {
                       <span className="h-2 w-2 rounded-full bg-road-clean animate-pulse" />
                       Система активна
                     </Badge>
-                    <Badge variant="secondary">Сургут</Badge>
+                    <Badge variant="secondary">Вектор Города</Badge>
                   </div>
 
                   {/* User Profile */}
@@ -235,7 +235,7 @@ export function Navigation() {
 
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2">
-            <Camera className="h-6 w-6 text-primary" />
+            <LogoIcon className="h-6 w-6 text-primary" />
             <span className="font-semibold text-lg hover:opacity-80 transition-opacity">
               Вектор Города
             </span>
@@ -376,7 +376,7 @@ export function Navigation() {
                 <span className="h-2 w-2 rounded-full bg-road-clean animate-pulse" />
                 Система активна
               </Badge>
-              <Badge variant="secondary" className="hidden 2xl:flex text-xs">Сургут</Badge>
+              <Badge variant="secondary" className="hidden 2xl:flex text-xs">Вектор Города</Badge>
             </div>
 
             <Separator orientation="vertical" className="h-6" />

@@ -341,7 +341,7 @@ export default function DashboardPage() {
                         <ExternalLink className="h-3 w-3 text-muted-foreground ml-auto group-hover:text-sky-400 transition-colors" />
                       </div>
                       <p className="text-xs text-muted-foreground leading-relaxed">
-                        Данные об осадках получены из системы метеомониторинга г. Сургут
+                        Данные об осадках получены из системы метеомониторинга
                       </p>
                       <div className="mt-2 text-xs text-sky-400 font-medium">
                         meteor.admsurgut.ru →
