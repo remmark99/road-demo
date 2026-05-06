@@ -92,6 +92,20 @@ const MODULES = [
         dotColor: "bg-rose-400",
         tags: ["Закупки", "Контракты", "Аналитика"],
     },
+    {
+        id: "meteo",
+        title: "Метеомониторинг",
+        subtitle: "Подсистема метеорологического мониторинга",
+        description: "Приём и обработка данных с АДМС и экологических станций. Прогнозирование обстановки, оповещения и рекомендации по обслуживанию дорог.",
+        image: "/landing/meteo.svg",
+        href: "https://meteor.admsurgut.ru",
+        color: "from-sky-500/20 to-cyan-500/10",
+        borderColor: "border-sky-500/30 hover:border-sky-400/60",
+        glowColor: "group-hover:shadow-sky-500/20",
+        accentColor: "text-sky-400",
+        dotColor: "bg-sky-400",
+        tags: ["АДМС", "Метеограмма", "ИТС"],
+    },
 ]
 
 const PRICING = [
@@ -166,6 +180,18 @@ const PRICING = [
         accentColor: "text-rose-500 dark:text-rose-400",
         dotColor: "bg-rose-400",
         features: ["Бессрочная лицензия", "Планирование закупок", "Мониторинг контрактов", "Аналитика эффективности"],
+    },
+    {
+        id: "meteo",
+        title: "Метеомониторинг",
+        description: "Приём данных с АДМС, экологических станций, прогнозирование обстановки, рекомендации по обслуживанию",
+        license: null,
+        support: null,
+        color: "from-sky-500/20 to-cyan-500/10",
+        borderColor: "border-sky-500/30 hover:border-sky-400/60",
+        accentColor: "text-sky-500 dark:text-sky-400",
+        dotColor: "bg-sky-400",
+        features: ["Бессрочная лицензия", "Интеграция с АДМС", "Метеограмма и прогнозы", "Оповещения и рекомендации"],
     },
 ]
 
@@ -339,7 +365,8 @@ export default function LandingPage() {
                         {MODULES.map((mod) => {
                             const isExternal = mod.href.startsWith("http")
                             const isComingSoon = mod.id === "shore" || mod.id === "transport" || mod.id === "park"
-                            const statusColor = mod.id === 'roads' ? 'text-amber-600' : mod.id === 'stops' ? 'text-teal-600' : mod.id === 'procurement' ? 'text-rose-600' : 'text-blue-600'
+                            const statusColorMap: Record<string, string> = { roads: 'text-amber-600', stops: 'text-teal-600', procurement: 'text-rose-600', meteo: 'text-sky-600' }
+                            const statusColor = statusColorMap[mod.id] ?? 'text-blue-600'
                             const CardWrapper = isExternal ? 'a' : Link
                             const extraProps = isExternal ? { target: "_blank", rel: "noopener noreferrer" } : {}
                             return (
