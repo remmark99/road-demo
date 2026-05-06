@@ -3,7 +3,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useState } from "react"
-import { ArrowRight, Shield, Eye, Brain, ChevronRight, Check, Headset, Phone, Mail, ShoppingCart } from "lucide-react"
+import { ArrowRight, Shield, Eye, Brain, ChevronRight, Check, Headset, Phone, Mail, ShoppingCart, FileText, Download } from "lucide-react"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { LogoIcon } from "@/components/logo"
 
@@ -268,6 +268,7 @@ export default function LandingPage() {
                     <div className="hidden md:flex items-center gap-8 text-sm text-foreground/60">
                         <a href="#modules" className="hover:text-foreground transition-colors">Модули</a>
                         <a href="#pricing" className="hover:text-foreground transition-colors">Тарифы</a>
+                        <a href="#docs" className="hover:text-foreground transition-colors">Документация</a>
                         <a href="#about" className="hover:text-foreground transition-colors">О проекте</a>
                         <div className="flex items-center gap-4">
                             <ThemeToggle />
@@ -526,6 +527,55 @@ export default function LandingPage() {
                                 </a>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </section>
+
+            {/* ─── Documentation ───────────────────── */}
+            <section id="docs" className="relative py-24 px-6 border-t border-border">
+                <div className="max-w-4xl mx-auto">
+                    <div className="text-center mb-12">
+                        <h2 className="text-3xl md:text-4xl font-bold mb-4">Документация</h2>
+                        <p className="text-foreground/50 text-lg max-w-xl mx-auto">
+                            Техническая документация платформы
+                        </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {[
+                            {
+                                title: "Функциональные характеристики",
+                                desc: "Описание функциональных характеристик ПО",
+                                href: "/docs/Функциональные_характеристики_Вектор_Города2.pdf",
+                            },
+                            {
+                                title: "Инструкция по установке",
+                                desc: "Информация, необходимая для установки ПО",
+                                href: "/docs/Инструкция по установке ПО.pdf",
+                            },
+                            {
+                                title: "Руководство пользователя",
+                                desc: "Информация, необходимая для эксплуатации ПО",
+                                href: "/docs/Руководство пользователя Платформы Вектор города.pdf",
+                            },
+                        ].map((doc) => (
+                            <a
+                                key={doc.title}
+                                href={doc.href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="group flex items-start gap-4 p-5 rounded-xl border border-foreground/5 bg-foreground/[0.02] hover:bg-foreground/[0.05] transition-all hover:-translate-y-0.5"
+                            >
+                                <div className="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center flex-shrink-0">
+                                    <FileText className="h-5 w-5 text-teal-600 dark:text-teal-400" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="font-medium mb-1 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">{doc.title}</div>
+                                    <p className="text-sm text-foreground/50">{doc.desc}</p>
+                                </div>
+                                <Download className="h-4 w-4 text-foreground/30 group-hover:text-teal-500 transition-colors flex-shrink-0 mt-1" />
+                            </a>
+                        ))}
                     </div>
                 </div>
             </section>
