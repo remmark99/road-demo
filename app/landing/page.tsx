@@ -24,7 +24,7 @@ const MODULES = [
     },
     {
         id: "stops",
-        title: "Безопасные остановки",
+        title: "Остановочные павильоны",
         subtitle: "Комплексный мониторинг остановочных пунктов",
         description: "Пассажирская аналитика, безопасность, вандализм, состояние конструкций и эксплуатация тёплых остановок.",
         image: "/landing/bus-stop.png",
@@ -52,7 +52,7 @@ const MODULES = [
     },
     {
         id: "transport",
-        title: "Безопасный транспорт",
+        title: "Общественный транспорт",
         subtitle: "Управление и мониторинг общественного транспорта",
         description: "Отслеживание маршрутов, контроль безопасности в салоне, аналитика пассажиропотока.",
         image: "/landing/safe-transport.png",
@@ -80,7 +80,7 @@ const MODULES = [
     },
     {
         id: "procurement",
-        title: "Закупки",
+        title: "Автоматизация закупок",
         subtitle: "Автоматизация муниципальных закупок",
         description: "Единая платформа управления закупочными процедурами: планирование, мониторинг исполнения контрактов, аналитика эффективности.",
         image: "/landing/procurement.svg",
@@ -123,7 +123,7 @@ const PRICING = [
     },
     {
         id: "stops",
-        title: "Безопасные остановки",
+        title: "Остановочные павильоны",
         description: "Мониторинг остановочных пунктов: состояние павильонов, пассажирская нагрузка, вандализм",
         license: "4 200 000",
         support: "1 800 000",
@@ -159,7 +159,7 @@ const PRICING = [
     },
     {
         id: "transport",
-        title: "Контроль транспорта",
+        title: "Общественный транспорт",
         description: "Мониторинг общественного транспорта: маршрутная дисциплина, подсчет пассажиропотока",
         license: "3 800 000",
         support: "1 800 000",
@@ -171,7 +171,7 @@ const PRICING = [
     },
     {
         id: "procurement",
-        title: "Закупки",
+        title: "Автоматизация закупок",
         description: "Автоматизация муниципальных закупок: планирование, мониторинг контрактов, аналитика",
         license: null,
         support: null,
@@ -301,7 +301,7 @@ export default function LandingPage() {
                 <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
                     <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-foreground/5 border border-foreground/10 text-sm text-foreground/60 mb-8">
                         <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
-                        Платформа городского мониторинга
+                        Платформа городского анализа и мониторинга
                     </div>
 
                     <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.1] mb-6">
@@ -315,7 +315,7 @@ export default function LandingPage() {
                     </h1>
 
                     <p className="text-lg md:text-xl text-foreground/50 max-w-2xl mx-auto leading-relaxed mb-10">
-                        Интеллектуальная система мониторинга городской инфраструктуры
+                        Интеллектуальная система мониторинга и аналитики
                         на основе компьютерного зрения и IoT-датчиков
                     </p>
 
