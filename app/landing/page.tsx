@@ -84,7 +84,7 @@ const MODULES = [
         subtitle: "Автоматизация муниципальных закупок",
         description: "Единая платформа управления закупочными процедурами: планирование, мониторинг исполнения контрактов, аналитика эффективности.",
         image: "/landing/procurement.svg",
-        href: "https://xn--80aneha3a1a.xn----8sbeffd9a6acasdu.xn--p1ai/",
+        href: "https://xn----7sbba5ahjea8akgq1b.xn--p1ai/",
         color: "from-rose-500/20 to-red-500/10",
         borderColor: "border-rose-500/30 hover:border-rose-400/60",
         glowColor: "group-hover:shadow-rose-500/20",
