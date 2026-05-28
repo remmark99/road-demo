@@ -72,6 +72,7 @@ import {
   PersonStanding,
   Route,
   Trash2,
+  Cigarette,
   type LucideIcon,
 } from "lucide-react"
 
@@ -111,6 +112,7 @@ const alertIcons: Record<string, LucideIcon> = {
   transport_route_deviation: Route,
   transport_wait_overrun: Clock,
   transport_doors_not_opened: DoorClosed,
+  smoking: Cigarette,
 }
 
 type DemoAlertSeed = {
@@ -367,6 +369,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const hasShore = hasModule("shore")
   const hasParks = hasModule("parks")
   const hasTransport = hasModule("transport")
+  const hasStops = hasModule("stops")
 
   const [selectedTypes, setSelectedTypes] = useState<string[]>([])
   const [repairShortcutSelected, setRepairShortcutSelected] = useState(false)
@@ -401,8 +404,11 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
     if (hasTransport) {
       types.push(...ALERT_CATEGORIES.transport_monitoring.types)
     }
+    if (hasStops) {
+      types.push(...ALERT_CATEGORIES.bus_stop_monitoring.types)
+    }
     return types
-  }, [hasParks, hasRoads, hasShore, hasTransport])
+  }, [hasParks, hasRoads, hasShore, hasStops, hasTransport])
 
   const repairTypes = ALERT_CATEGORIES.repair.types
   const effectiveSelectedTypes = useMemo(
@@ -763,6 +769,39 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {ALERT_CATEGORIES.transport_monitoring.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || BusFront
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+            </>
+          )}
+
+          {hasStops && (
+            <>
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <BusFront className="h-4 w-4 text-amber-400" />
+                  Остановочные пункты
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.bus_stop_monitoring.types.map((type) => {
                     const config = ALERT_TYPE_CONFIG[type]
                     if (!config) return null
                     const Icon = alertIcons[type] || BusFront

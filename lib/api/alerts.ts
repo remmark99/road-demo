@@ -91,6 +91,7 @@ export type AlertCategory =
     | 'shore_safety'
     | 'park_monitoring'
     | 'transport_monitoring'
+    | 'bus_stop_monitoring'
 
 export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: string[] }> = {
     equipment: {
@@ -133,6 +134,12 @@ export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: str
             'transport_route_deviation',
             'transport_wait_overrun',
             'transport_doors_not_opened'
+        ]
+    },
+    bus_stop_monitoring: {
+        label: 'Остановочные пункты',
+        types: [
+            'smoking'
         ]
     }
 }
@@ -343,6 +350,12 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         icon: 'door-closed',
         color: 'text-rose-400 bg-rose-500/20 border-rose-500/30',
         category: 'transport_monitoring'
+    },
+    smoking: {
+        label: 'Курение',
+        icon: 'cigarette',
+        color: 'text-orange-400 bg-orange-500/20 border-orange-500/30',
+        category: 'bus_stop_monitoring'
     }
 }
 
@@ -358,5 +371,6 @@ export const MODULE_MAP: Record<string, string> = {
     park_monitoring: 'Безопасный парк',
     safe_park: 'Безопасный парк',
     transport_monitoring: 'Контроль транспорта',
-    transport_control: 'Контроль транспорта'
+    transport_control: 'Контроль транспорта',
+    bus_stop_monitoring: 'Остановочные пункты'
 }
