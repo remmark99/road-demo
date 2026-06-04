@@ -139,7 +139,8 @@ export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: str
     bus_stop_monitoring: {
         label: 'Остановочные пункты',
         types: [
-            'smoking'
+            'smoking',
+            'lying_person'
         ]
     }
 }
@@ -355,6 +356,12 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         label: 'Курение',
         icon: 'cigarette',
         color: 'text-orange-400 bg-orange-500/20 border-orange-500/30',
+        category: 'bus_stop_monitoring'
+    },
+    lying_person: {
+        label: 'Лежачий человек',
+        icon: 'person-standing',
+        color: 'text-red-400 bg-red-500/20 border-red-500/30',
         category: 'bus_stop_monitoring'
     }
 }

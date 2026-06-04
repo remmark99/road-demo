@@ -37,6 +37,11 @@ const typeConfig: Record<string, { icon: typeof AlertTriangle; label: string; cl
     label: "Яма",
     className: "bg-destructive/20 text-destructive border-destructive/30"
   },
+  lying_person: {
+    icon: CircleAlert,
+    label: "Лежачий человек",
+    className: "bg-red-500/20 text-red-400 border-red-500/30"
+  },
   default: {
     icon: AlertTriangle,
     label: "Событие",

@@ -113,6 +113,7 @@ const alertIcons: Record<string, LucideIcon> = {
   transport_wait_overrun: Clock,
   transport_doors_not_opened: DoorClosed,
   smoking: Cigarette,
+  lying_person: PersonStanding,
 }
 
 type DemoAlertSeed = {
