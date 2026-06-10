@@ -73,6 +73,7 @@ import {
   Route,
   Trash2,
   Cigarette,
+  Dog,
   type LucideIcon,
 } from "lucide-react"
 
@@ -114,6 +115,8 @@ const alertIcons: Record<string, LucideIcon> = {
   transport_doors_not_opened: DoorClosed,
   smoking: Cigarette,
   lying_person: PersonStanding,
+  abandoned_object: PackageSearch,
+  dogs_without_people: Dog,
 }
 
 type DemoAlertSeed = {

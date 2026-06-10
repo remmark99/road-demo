@@ -140,7 +140,9 @@ export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: str
         label: 'Остановочные пункты',
         types: [
             'smoking',
-            'lying_person'
+            'lying_person',
+            'abandoned_object',
+            'dogs_without_people'
         ]
     }
 }
@@ -362,6 +364,18 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         label: 'Лежачий человек',
         icon: 'person-standing',
         color: 'text-red-400 bg-red-500/20 border-red-500/30',
+        category: 'bus_stop_monitoring'
+    },
+    abandoned_object: {
+        label: 'Оставленные предметы',
+        icon: 'package-search',
+        color: 'text-violet-400 bg-violet-500/20 border-violet-500/30',
+        category: 'bus_stop_monitoring'
+    },
+    dogs_without_people: {
+        label: 'Бездомные собаки',
+        icon: 'dog',
+        color: 'text-amber-500 bg-amber-500/20 border-amber-500/30',
         category: 'bus_stop_monitoring'
     }
 }

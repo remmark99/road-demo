@@ -12,7 +12,9 @@ import {
   PlayCircle,
   Snowflake,
   Droplets,
-  CircleAlert
+  CircleAlert,
+  PackageSearch,
+  Dog
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -41,6 +43,16 @@ const typeConfig: Record<string, { icon: typeof AlertTriangle; label: string; cl
     icon: CircleAlert,
     label: "Лежачий человек",
     className: "bg-red-500/20 text-red-400 border-red-500/30"
+  },
+  abandoned_object: {
+    icon: PackageSearch,
+    label: "Оставленные предметы",
+    className: "bg-violet-500/20 text-violet-400 border-violet-500/30"
+  },
+  dogs_without_people: {
+    icon: Dog,
+    label: "Бездомные собаки",
+    className: "bg-amber-500/20 text-amber-500 border-amber-500/30"
   },
   default: {
     icon: AlertTriangle,
