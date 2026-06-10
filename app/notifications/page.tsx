@@ -73,6 +73,7 @@ import {
   Route,
   Trash2,
   Cigarette,
+  PawPrint,
   type LucideIcon,
 } from "lucide-react"
 
@@ -113,6 +114,7 @@ const alertIcons: Record<string, LucideIcon> = {
   transport_wait_overrun: Clock,
   transport_doors_not_opened: DoorClosed,
   smoking: Cigarette,
+  dogs_without_people: PawPrint,
 }
 
 type DemoAlertSeed = {

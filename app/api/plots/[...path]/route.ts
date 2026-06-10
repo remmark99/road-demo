@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // Прокси для загрузки графиков с MCP-сервера (решает проблему Mixed Content HTTPS/HTTP)
-const MCP_SERVER_URL = 'http://89.124.74.27:8000';
+const MCP_SERVER_URL = normalizeMcpBaseUrl(process.env.MCP_SERVER_URL || 'http://127.0.0.1:8000/mcp');
+
+function normalizeMcpBaseUrl(rawUrl: string) {
+    return rawUrl.replace(/\/$/, '').replace(/\/(?:mcp|sse)$/, '');
+}
 
 export async function GET(
     request: NextRequest,
@@ -11,10 +15,12 @@ export async function GET(
         const { path } = await params;
         const imagePath = path.join('/');
         const imageUrl = `${MCP_SERVER_URL}/plots/${imagePath}`;
+        const token = process.env.MCP_API_KEY;
         
         const response = await fetch(imageUrl, {
             headers: {
                 'Accept': 'image/*',
+                ...(token ? { Authorization: `Bearer ${token}` } : {}),
             },
         });
         

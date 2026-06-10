@@ -1,0 +1,26 @@
+▲ Next.js 16.1.4 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+- Environments: .env
+
+✓ Starting...
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+✓ Ready in 1972ms
+ GET /landing 200 in 2.5s (compile: 1970ms, proxy.ts: 113ms, render: 388ms)
+ POST /api/chat 200 in 70s (compile: 323ms, proxy.ts: 12ms, render: 70s)
+ POST /api/chat 200 in 70s (compile: 270ms, proxy.ts: 8ms, render: 70s)
+ POST /api/chat 200 in 55s (compile: 307ms, proxy.ts: 14ms, render: 55s)
+ POST /api/chat 200 in 12.7s (compile: 163ms, proxy.ts: 8ms, render: 12.5s)
+ POST /api/chat 200 in 4.6s (compile: 186ms, proxy.ts: 9ms, render: 4.4s)
+ HEAD /api/plots/plot_6122870938438966719.png 200 in 1694ms (compile: 1657ms, render: 37ms)
+ POST /api/chat 200 in 2.8s (compile: 4ms, proxy.ts: 9ms, render: 2.8s)
+ POST /api/chat 200 in 4.4s (compile: 195ms, proxy.ts: 11ms, render: 4.2s)
+ POST /api/chat 200 in 12.1s (compile: 8ms, proxy.ts: 10ms, render: 12.1s)
+ POST /api/chat 200 in 8.5s (compile: 149ms, proxy.ts: 7ms, render: 8.3s)
+ POST /api/chat 200 in 30.1s (compile: 7ms, proxy.ts: 10ms, render: 30.0s)
+ POST /api/chat 200 in 7.3s (compile: 351ms, proxy.ts: 13ms, render: 6.9s)
+ POST /api/chat 200 in 7.9s (compile: 126ms, proxy.ts: 8ms, render: 7.8s)
+ HEAD /landing 200 in 244ms (compile: 16ms, proxy.ts: 16ms, render: 212ms)
+ POST /api/chat 200 in 2.6s (compile: 11ms, proxy.ts: 3ms, render: 2.6s)
+ POST /api/chat 200 in 31.1s (compile: 785ms, proxy.ts: 25ms, render: 30.2s)
+ POST /api/chat 200 in 2.0s (compile: 14ms, proxy.ts: 42ms, render: 1949ms)

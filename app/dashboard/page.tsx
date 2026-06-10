@@ -33,6 +33,10 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
 import { PassengerAnalytics } from "@/components/dashboard/passenger-analytics"
+import { StopCurrentLoadAnalytics } from "@/components/dashboard/stop-current-load-analytics"
+import { StopDistrictCurrentAnalytics } from "@/components/dashboard/stop-district-current-analytics"
+import { StopKpiCurrentAnalytics } from "@/components/dashboard/stop-kpi-current-analytics"
+import { StopLyingPersonAnalytics } from "@/components/dashboard/stop-lying-person-analytics"
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
 import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
 import { ConditionAnalytics } from "@/components/dashboard/condition-analytics"
@@ -54,6 +58,10 @@ type DashboardView =
   | "predictions"
   | "road_repair"
   | "city"
+  | "stop_current_load"
+  | "stop_current_kpi"
+  | "stop_current_districts"
+  | "stop_current_security"
   | "kpi_bus_stops"
   | "districts"
   | "passenger"
@@ -105,6 +113,30 @@ const DASHBOARDS = [
     label: "Город",
     icon: Building2,
     url: "https://superset.board-coding.ru/superset/dashboard/7?standalone=2&expand_filters=0"
+  },
+  {
+    id: "stop_current_load" as const,
+    label: "Загруженность остановок",
+    icon: Users2,
+    component: StopCurrentLoadAnalytics,
+  },
+  {
+    id: "stop_current_kpi" as const,
+    label: "Показатели остановок",
+    icon: BusFront,
+    component: StopKpiCurrentAnalytics,
+  },
+  {
+    id: "stop_current_districts" as const,
+    label: "Районы",
+    icon: Map,
+    component: StopDistrictCurrentAnalytics,
+  },
+  {
+    id: "stop_current_security" as const,
+    label: "События безопасности",
+    icon: ShieldAlert,
+    component: StopLyingPersonAnalytics,
   },
   {
     id: "kpi_bus_stops" as const,
@@ -193,7 +225,9 @@ const DASHBOARDS = [
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "road_repair", "city"]
-const STOPS_DASHBOARDS = ["kpi_bus_stops", "districts", "passenger", "security", "vandalism", "condition", "warmstop"]
+const STOPS_CURRENT_DASHBOARDS = ["stop_current_kpi", "stop_current_districts", "stop_current_load", "stop_current_security"]
+const STOPS_PLAN_DASHBOARDS = ["kpi_bus_stops", "districts", "passenger", "security", "vandalism", "condition", "warmstop"]
+const STOPS_DASHBOARDS = [...STOPS_CURRENT_DASHBOARDS, ...STOPS_PLAN_DASHBOARDS]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]
 const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]
@@ -203,6 +237,26 @@ const SIDEBAR_SECTION_DEFAULTS = {
   shore: true,
   parks: true,
   transport: true,
+}
+
+type DashboardDefinition = (typeof DASHBOARDS)[number]
+
+interface SidebarDashboardGroup {
+  title: string
+  dashboards: DashboardDefinition[]
+}
+
+interface SidebarSection {
+  key: keyof typeof SIDEBAR_SECTION_DEFAULTS
+  title: string
+  dashboards: DashboardDefinition[]
+  groups?: SidebarDashboardGroup[]
+}
+
+function orderDashboards(dashboards: DashboardDefinition[], order: readonly string[]) {
+  return dashboards
+    .slice()
+    .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
 }
 
 export default function DashboardPage() {
@@ -219,20 +273,30 @@ export default function DashboardPage() {
     return true
   })
 
-  const roadsDashboardsList = filteredDashboards.filter(d => ROADS_DASHBOARDS.includes(d.id))
-  const stopsDashboardsList = filteredDashboards.filter(d => STOPS_DASHBOARDS.includes(d.id))
-  const shoreDashboardsList = filteredDashboards.filter(d => SHORE_DASHBOARDS.includes(d.id))
-  const parkDashboardsList = filteredDashboards.filter(d => PARK_DASHBOARDS.includes(d.id))
-  const transportDashboardsList = filteredDashboards.filter(d => TRANSPORT_DASHBOARDS.includes(d.id))
+  const roadsDashboardsList = orderDashboards(filteredDashboards.filter(d => ROADS_DASHBOARDS.includes(d.id)), ROADS_DASHBOARDS)
+  const stopsDashboardsList = orderDashboards(filteredDashboards.filter(d => STOPS_DASHBOARDS.includes(d.id)), STOPS_DASHBOARDS)
+  const stopsCurrentDashboardsList = orderDashboards(filteredDashboards.filter(d => STOPS_CURRENT_DASHBOARDS.includes(d.id)), STOPS_CURRENT_DASHBOARDS)
+  const stopsPlanDashboardsList = orderDashboards(filteredDashboards.filter(d => STOPS_PLAN_DASHBOARDS.includes(d.id)), STOPS_PLAN_DASHBOARDS)
+  const shoreDashboardsList = orderDashboards(filteredDashboards.filter(d => SHORE_DASHBOARDS.includes(d.id)), SHORE_DASHBOARDS)
+  const parkDashboardsList = orderDashboards(filteredDashboards.filter(d => PARK_DASHBOARDS.includes(d.id)), PARK_DASHBOARDS)
+  const transportDashboardsList = orderDashboards(filteredDashboards.filter(d => TRANSPORT_DASHBOARDS.includes(d.id)), TRANSPORT_DASHBOARDS)
   const resolvedActiveView =
     filteredDashboards.find((dashboard) => dashboard.id === activeView)?.id ??
     filteredDashboards[0]?.id
-  const sidebarSections = [
-    { key: "roads", title: "Состояние дорог", dashboards: roadsDashboardsList },
-    { key: "stops", title: "Остановки", dashboards: stopsDashboardsList },
-    { key: "shore", title: "Безопасный берег", dashboards: shoreDashboardsList },
-    { key: "parks", title: "Безопасный парк", dashboards: parkDashboardsList },
-    { key: "transport", title: "Контроль транспорта", dashboards: transportDashboardsList },
+  const sidebarSections: SidebarSection[] = [
+    { key: "roads" as const, title: "Состояние дорог", dashboards: roadsDashboardsList },
+    {
+      key: "stops" as const,
+      title: "Остановки",
+      dashboards: stopsDashboardsList,
+      groups: [
+        { title: "Текущее состояние", dashboards: stopsCurrentDashboardsList },
+        { title: "План", dashboards: stopsPlanDashboardsList },
+      ],
+    },
+    { key: "shore" as const, title: "Безопасный берег", dashboards: shoreDashboardsList },
+    { key: "parks" as const, title: "Безопасный парк", dashboards: parkDashboardsList },
+    { key: "transport" as const, title: "Контроль транспорта", dashboards: transportDashboardsList },
   ].filter((section) => section.dashboards.length > 0)
 
   const toggleSection = (sectionKey: keyof typeof SIDEBAR_SECTION_DEFAULTS) => {
@@ -240,6 +304,27 @@ export default function DashboardPage() {
       ...current,
       [sectionKey]: !current[sectionKey],
     }))
+  }
+
+  const renderDashboardButton = (dashboard: DashboardDefinition, nested = false) => {
+    const DashboardIcon = dashboard.icon
+    const isActive = resolvedActiveView === dashboard.id
+
+    return (
+      <Button
+        key={dashboard.id}
+        variant={isActive ? "default" : "ghost"}
+        className={cn(
+          "justify-start gap-3 h-auto min-h-11 py-2.5 w-full whitespace-normal text-left",
+          nested && "pl-5",
+          isActive && "bg-primary text-primary-foreground hover:bg-primary/90"
+        )}
+        onClick={() => setActiveView(dashboard.id)}
+      >
+        <DashboardIcon className="h-4 w-4" />
+        <span>{dashboard.label}</span>
+      </Button>
+    )
   }
 
   return (
@@ -305,20 +390,22 @@ export default function DashboardPage() {
                                 id={`dashboard-section-${section.key}`}
                                 className="flex flex-col gap-1"
                               >
-                                {section.dashboards.map((dashboard) => (
-                                  <Button
-                                    key={dashboard.id}
-                                    variant={resolvedActiveView === dashboard.id ? "default" : "ghost"}
-                                    className={cn(
-                                      "justify-start gap-3 h-auto py-3 w-full",
-                                      resolvedActiveView === dashboard.id && "bg-primary text-primary-foreground hover:bg-primary/90"
-                                    )}
-                                    onClick={() => setActiveView(dashboard.id)}
-                                  >
-                                    <dashboard.icon className="h-4 w-4" />
-                                    <span>{dashboard.label}</span>
-                                  </Button>
-                                ))}
+                                {section.groups ? (
+                                  section.groups.map((group) => (
+                                    group.dashboards.length > 0 && (
+                                      <div key={group.title} className="space-y-1">
+                                        <div className="px-3 pt-2 text-[11px] font-semibold uppercase text-muted-foreground">
+                                          {group.title}
+                                        </div>
+                                        <div className="flex flex-col gap-1">
+                                          {group.dashboards.map((dashboard) => renderDashboardButton(dashboard, true))}
+                                        </div>
+                                      </div>
+                                    )
+                                  ))
+                                ) : (
+                                  section.dashboards.map((dashboard) => renderDashboardButton(dashboard))
+                                )}
                               </div>
                             )}
                           </div>

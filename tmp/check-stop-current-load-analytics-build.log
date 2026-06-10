@@ -1,0 +1,47 @@
+
+> road-demo@0.1.0 build
+> NODE_OPTIONS=--dns-result-order=ipv4first NODE_EXTRA_CA_CERTS=./certs/russian_trusted_root_ca_pem.crt next build
+
+▲ Next.js 16.1.4 (Turbopack)
+- Environments: .env
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 17.0s
+  Skipping validation of types
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/20) ...
+  Generating static pages using 11 workers (5/20) 
+  Generating static pages using 11 workers (10/20) 
+  Generating static pages using 11 workers (15/20) 
+✓ Generating static pages using 11 workers (20/20) in 1144.7ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /admin
+├ ○ /ai-assistant
+├ ƒ /api/admin/users
+├ ƒ /api/anchors
+├ ƒ /api/bus-stops
+├ ƒ /api/chat
+├ ƒ /api/plots/[...path]
+├ ƒ /api/roads
+├ ƒ /api/settings/email
+├ ƒ /auth/callback
+├ ○ /dashboard
+├ ○ /landing
+├ ○ /login
+├ ○ /notifications
+├ ○ /overview
+├ ○ /robots.txt
+├ ○ /settings
+└ ○ /sitemap.xml
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
