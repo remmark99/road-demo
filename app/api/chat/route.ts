@@ -45,10 +45,10 @@ type MCPToolResult = {
 }
 
 const MCP_SERVER_URL = normalizeMcpUrl(process.env.MCP_SERVER_URL || "http://127.0.0.1:8000/mcp")
-const MCP_CONNECT_TIMEOUT = 20000
-const MCP_PING_TIMEOUT = 7000
-const MCP_LIST_TOOLS_TIMEOUT = 20000
-const MCP_CALL_TOOL_TIMEOUT = 240000
+const MCP_CONNECT_TIMEOUT = 5_000
+const MCP_PING_TIMEOUT = 3_000
+const MCP_LIST_TOOLS_TIMEOUT = 5_000
+const MCP_CALL_TOOL_TIMEOUT = 20_000
 const GIGACHAT_MAX_STEPS = 8
 const GIGACHAT_MAX_TOKENS = 1200
 const GIGACHAT_INITIAL_COMPLETION_TIMEOUT_MS = 30_000
@@ -56,6 +56,13 @@ const GIGACHAT_AFTER_TOOL_TIMEOUT_MS = 12_000
 const MAX_FUNCTION_RESULT_CHARS = 12000
 const TOOL_TAG_PATTERN = /\[ИСПОЛЬЗУЙ:\s*([\w-]+)\]\s*/i
 const TEXT_PART_ID = "assistant-text"
+const STOP_KNOWN_TOOL_NAMES = new Set([
+    "get_stop_current_load_summary",
+    "get_stop_safety_events",
+    "get_stop_lying_person_events",
+    "list_assistant_data_modes",
+    "create_plot",
+])
 
 let mcpClient: Client | null = null
 let mcpConnected = false
@@ -312,15 +319,19 @@ function toGigaFunction(tool: MCPToolDefinition): GigaChatFunctionDefinition {
 }
 
 function parseForcedTool(messages: UIMessage[], availableTools: MCPToolDefinition[]) {
-    const lastUserText = [...messages].reverse().find((message) => message.role === "user")
-    const match = lastUserText ? extractTextFromMessage(lastUserText).match(TOOL_TAG_PATTERN) : null
-    const toolName = match?.[1]
+    const toolName = parseForcedToolName(messages)
 
     if (!toolName) {
         return null
     }
 
     return availableTools.find((tool) => tool.name === toolName) || null
+}
+
+function parseForcedToolName(messages: UIMessage[]) {
+    const lastUserText = [...messages].reverse().find((message) => message.role === "user")
+    const match = lastUserText ? extractTextFromMessage(lastUserText).match(TOOL_TAG_PATTERN) : null
+    return match?.[1] || null
 }
 
 function getLastUserText(messages: UIMessage[]) {
@@ -342,6 +353,10 @@ function isLoadRequest(text: string) {
 
 function isTablesRequest(text: string) {
     return /таблиц|схем|структур|баз[аеуы]? данных|доступн.*данн/i.test(text)
+}
+
+function isDataModesRequest(text: string) {
+    return /live-данн|live данн|доступн.*данн|какие.*данн|планов|плановые|режим.*данн|текущ.*план/i.test(text)
 }
 
 function parseToolArguments(args: unknown): Record<string, unknown> {
@@ -389,6 +404,21 @@ async function callMcpTool(client: Client, name: string, args: Record<string, un
     )
 
     return extractToolText(result)
+}
+
+function formatMcpUnavailable(requestKind: string) {
+    return [
+        "Сейчас не удалось подключиться к live-источнику аналитики остановок через MCP.",
+        `Запрос: ${requestKind}.`,
+        "Я не буду придумывать текущие значения. Проверьте доступность MCP `/health`, настройки `MCP_SERVER_URL`/`MCP_API_KEY` и сетевой доступ сайта к серверу аналитики.",
+    ].join("\n")
+}
+
+function formatModelUnavailable() {
+    return [
+        "ИИ-модель сейчас не успела или не смогла сформировать ответ.",
+        "Я не буду подставлять неподтвержденные выводы. Повторите запрос позже или уточните модуль/период; для live-данных остановок я использую MCP-инструменты, когда они доступны.",
+    ].join("\n")
 }
 
 function toGigaFunctionResultContent(toolName: string, output: string) {
@@ -484,7 +514,7 @@ function formatMcpFallback(toolName: string, output: string) {
     const formatted = formatKnownToolOutput(toolName, output)
     if (formatted) {
         return [
-            "GigaChat не успел сформулировать ответ, поэтому показываю сводку по live-данным MCP:",
+            "Показываю сводку по подтвержденным live-данным MCP:",
             "",
             formatted,
         ].join("\n")
@@ -505,12 +535,25 @@ function asNumber(value: unknown) {
 }
 
 function formatKnownToolOutput(toolName: string, output: string) {
+    const trimmedOutput = output.trim()
+    if (toolName === "create_plot" && /^\/plots\/plot_\d+\.png$/.test(trimmedOutput)) {
+        return `График построен: ${trimmedOutput}.`
+    }
+
     let payload: Record<string, unknown>
 
     try {
-        payload = JSON.parse(output) as Record<string, unknown>
+        payload = JSON.parse(trimmedOutput) as Record<string, unknown>
     } catch {
         return null
+    }
+
+    if (payload.ok === false) {
+        return [
+            `Источник ${payload.source || toolName} сейчас недоступен или вернул ошибку.`,
+            payload.message ? String(payload.message) : "Текущие значения не подтверждены, поэтому я не буду делать выводы по ним.",
+            payload.error ? `Техническая причина: ${String(payload.error).slice(0, 300)}` : "",
+        ].filter(Boolean).join("\n")
     }
 
     if (toolName === "get_stop_current_load_summary") {
@@ -592,23 +635,19 @@ function formatKnownToolOutput(toolName: string, output: string) {
 
 async function buildStopsPlotAnswer(
     mcp: Client | null,
-    tools: MCPToolDefinition[],
     messages: UIMessage[],
 ) {
-    if (!mcp) {
-        return null
-    }
-
     const text = getLastUserText(messages)
     const wantsPlot = isPlotRequest(text)
     if (!wantsPlot && !isSafetyRequest(text) && !isLoadRequest(text)) {
         return null
     }
 
-    const toolNames = new Set(tools.map((tool) => tool.name))
     const sourceTool = isSafetyRequest(text) ? "get_stop_safety_events" : "get_stop_current_load_summary"
-    if (!toolNames.has(sourceTool) || !toolNames.has("create_plot")) {
-        return null
+    if (!mcp) {
+        return formatMcpUnavailable(sourceTool === "get_stop_safety_events"
+            ? "события безопасности остановок"
+            : "текущая загруженность остановок")
     }
 
     const sourceArgs = sourceTool === "get_stop_safety_events"
@@ -668,14 +707,9 @@ async function buildStopsPlotAnswer(
 
 async function buildTablesAnswer(
     mcp: Client | null,
-    tools: MCPToolDefinition[],
     messages: UIMessage[],
 ) {
     if (!mcp || !isTablesRequest(getLastUserText(messages))) {
-        return null
-    }
-
-    if (!tools.some((tool) => tool.name === "list_tables")) {
         return null
     }
 
@@ -686,6 +720,90 @@ async function buildTablesAnswer(
     })
 
     return formatKnownToolOutput("list_tables", output) || output
+}
+
+async function buildStopsDataModesAnswer(mcp: Client | null, messages: UIMessage[]) {
+    const text = getLastUserText(messages)
+    if (!isDataModesRequest(text)) {
+        return null
+    }
+
+    if (!mcp) {
+        return [
+            "В режиме «Остановки» предусмотрены live-данные по загруженности, событиям безопасности и графикам.",
+            "",
+            formatMcpUnavailable("список доступных live-данных"),
+        ].join("\n")
+    }
+
+    const output = await callMcpTool(mcp, "list_assistant_data_modes", {})
+    return formatAssistantDataModes(output) || output
+}
+
+function formatAssistantDataModes(output: string) {
+    let payload: Record<string, unknown>
+
+    try {
+        payload = JSON.parse(output) as Record<string, unknown>
+    } catch {
+        return null
+    }
+
+    const modes = payload.modes as Record<string, unknown> | undefined
+    const stops = modes?.stops as Record<string, unknown> | undefined
+    const current = Array.isArray(stops?.current) ? stops.current : []
+    const plan = Array.isArray(stops?.plan) ? stops.plan : []
+
+    if (!stops) {
+        return null
+    }
+
+    return [
+        "Режим «Остановки» разделяет текущие live-данные и плановый аналитический контур.",
+        "",
+        "Текущие live-данные:",
+        ...current.map((item) => `- ${item}`),
+        "",
+        "Плановый контур:",
+        ...plan.map((item) => `- ${item}`),
+        "",
+        "Текущие значения подтверждаю только через MCP-инструменты. Если источник недоступен, я прямо сообщаю об этом и не подставляю числа.",
+    ].join("\n")
+}
+
+async function runKnownStopTool(mcp: Client | null, messages: UIMessage[]) {
+    const forcedToolName = parseForcedToolName(messages)
+    if (!forcedToolName || !STOP_KNOWN_TOOL_NAMES.has(forcedToolName)) {
+        return null
+    }
+
+    if (!mcp) {
+        return formatMcpUnavailable(forcedToolName)
+    }
+
+    if (forcedToolName === "create_plot") {
+        return null
+    }
+
+    const args = getKnownStopToolArguments(forcedToolName)
+    const output = await callMcpTool(mcp, forcedToolName, args)
+    return formatKnownToolOutput(forcedToolName, output) || formatAssistantDataModes(output) || output
+}
+
+function getKnownStopToolArguments(toolName: string): Record<string, unknown> {
+    if (toolName === "get_stop_current_load_summary") {
+        return { input: { hours: 3, limit: 8 } }
+    }
+
+    if (toolName === "get_stop_safety_events") {
+        return { input: { hours: 24, limit: 30 } }
+    }
+
+    if (toolName === "get_stop_lying_person_events") {
+        return { input: { limit: 20 } }
+    }
+
+    return {}
 }
 
 function createCompletionWithHardTimeout(
@@ -717,13 +835,25 @@ async function answerWithGigaChat(messages: UIMessage[], mode: AssistantMode) {
         }
     }
 
-    const tablesAnswer = await buildTablesAnswer(mcp, mcpTools, messages)
+    if (mode === "stops") {
+        const knownToolAnswer = await runKnownStopTool(mcp, messages)
+        if (knownToolAnswer) {
+            return knownToolAnswer
+        }
+
+        const dataModesAnswer = await buildStopsDataModesAnswer(mcp, messages)
+        if (dataModesAnswer) {
+            return dataModesAnswer
+        }
+    }
+
+    const tablesAnswer = await buildTablesAnswer(mcp, messages)
     if (tablesAnswer) {
         return tablesAnswer
     }
 
     if (mode === "stops") {
-        const plotAnswer = await buildStopsPlotAnswer(mcp, mcpTools, messages)
+        const plotAnswer = await buildStopsPlotAnswer(mcp, messages)
         if (plotAnswer) {
             return plotAnswer
         }
@@ -777,11 +907,14 @@ async function answerWithGigaChat(messages: UIMessage[], mode: AssistantMode) {
             return "Не удалось получить содержательный ответ от GigaChat. Попробуйте переформулировать запрос."
         }
     } catch (error) {
-        if (directToolOutput && forcedTool && error instanceof GigaChatConnectionError) {
+        if (directToolOutput && forcedTool) {
             return formatMcpFallback(forcedTool.name, directToolOutput)
         }
         if (lastToolName && lastToolOutput) {
             return formatMcpFallback(lastToolName, lastToolOutput)
+        }
+        if (error instanceof GigaChatConnectionError) {
+            return formatModelUnavailable()
         }
         throw error
     }
@@ -795,7 +928,16 @@ function sanitizeError(error: unknown) {
     }
 
     if (error instanceof Error) {
-        return `Ошибка ассистента: ${error.message.replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer ***")}`
+        const sanitized = error.message.replace(/Bearer\s+[A-Za-z0-9._-]+/g, "Bearer ***")
+        if (/GigaChat completion timeout|GigaChat request timed out|GigaChat API недоступен|ETIMEDOUT/i.test(sanitized)) {
+            return formatModelUnavailable()
+        }
+
+        if (/MCP .*timeout|Failed to connect to MCP|MCP connection/i.test(sanitized)) {
+            return formatMcpUnavailable("запрос к live-аналитике")
+        }
+
+        return `Ошибка ассистента: ${sanitized}`
     }
 
     return "Ошибка ассистента: неизвестная ошибка."

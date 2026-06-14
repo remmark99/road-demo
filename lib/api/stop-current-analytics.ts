@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/client"
 import { districts } from "@/lib/districts"
 import {
     STOP_MONITORED_COMPLEXES,
+    getStopDistrictCoverageEstimate,
     getStopComplexByCameraIndex,
     getStopComplexByLocationId,
     type StopSafetyAlertType,
@@ -70,11 +71,19 @@ export interface StopLocationSummary {
 export interface StopDistrictSummary {
     districtName: string
     stops: number
+    connectedStopNames: string[]
+    estimatedTotalMin: number
+    estimatedTotalMax: number
+    estimatedTotalLabel: string
     liveDirections: number
     averagePeople: number
     peakPeople: number
     safetyEvents: number
     safetyEventsByType: Partial<Record<StopSafetyAlertType, number>>
+    coverageMinPct: number
+    coverageMaxPct: number
+    coverageMidPct: number
+    coverageLabel: string
     coveragePct: number
     latestAt: string | null
     topStops: string[]
@@ -408,22 +417,38 @@ export function buildStopDistrictSummaries(data: StopCurrentAnalyticsData): Stop
     }
 
     return Array.from(districtMap.entries())
-        .map(([districtName, value]) => ({
-            districtName,
-            stops: value.stopIds.size,
-            liveDirections: value.liveDirections,
-            averagePeople: value.liveDirections > 0
-                ? Number((value.currentPeopleSum / value.liveDirections).toFixed(1))
-                : 0,
-            peakPeople: value.peakPeople,
-            safetyEvents: value.safetyEvents,
-            safetyEventsByType: value.safetyEventsByType,
-            coveragePct: value.stopIds.size > 0 ? Math.round((value.liveDirections / value.stopIds.size) * 100) : 0,
-            latestAt: value.latestAt,
-            topStops: value.topStops
-                .sort((a, b) => b.currentPeople - a.currentPeople || b.safetyEvents - a.safetyEvents)
-                .slice(0, 3)
-                .map((stop) => stop.label),
-        }))
+        .map(([districtName, value]) => {
+            const estimate = getStopDistrictCoverageEstimate(districtName)
+            const fallbackStops = value.stopIds.size
+            const fallbackCoveragePct = fallbackStops > 0
+                ? Math.round((value.liveDirections / fallbackStops) * 100)
+                : 0
+
+            return {
+                districtName,
+                stops: estimate?.connectedStops ?? fallbackStops,
+                connectedStopNames: estimate?.connectedStopNames ?? [],
+                estimatedTotalMin: estimate?.estimatedTotalMin ?? fallbackStops,
+                estimatedTotalMax: estimate?.estimatedTotalMax ?? fallbackStops,
+                estimatedTotalLabel: estimate?.estimatedTotalLabel ?? `${fallbackStops}`,
+                liveDirections: value.liveDirections,
+                averagePeople: value.liveDirections > 0
+                    ? Number((value.currentPeopleSum / value.liveDirections).toFixed(1))
+                    : 0,
+                peakPeople: value.peakPeople,
+                safetyEvents: value.safetyEvents,
+                safetyEventsByType: value.safetyEventsByType,
+                coverageMinPct: estimate?.coverageMinPct ?? fallbackCoveragePct,
+                coverageMaxPct: estimate?.coverageMaxPct ?? fallbackCoveragePct,
+                coverageMidPct: estimate?.coverageMidPct ?? fallbackCoveragePct,
+                coverageLabel: estimate?.coverageLabel ?? `${fallbackCoveragePct}%`,
+                coveragePct: estimate?.coverageMidPct ?? fallbackCoveragePct,
+                latestAt: value.latestAt,
+                topStops: value.topStops
+                    .sort((a, b) => b.currentPeople - a.currentPeople || b.safetyEvents - a.safetyEvents)
+                    .slice(0, 3)
+                    .map((stop) => stop.label),
+            }
+        })
         .sort((a, b) => b.averagePeople - a.averagePeople || b.safetyEvents - a.safetyEvents || a.districtName.localeCompare(b.districtName, "ru"))
 }

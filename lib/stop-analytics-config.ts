@@ -4,6 +4,19 @@ export const STOP_EQUIPPED_COUNT = 10
 export const STOP_OPERATIONAL_COUNT = 10
 export const STOP_LIVE_CAMERA_COUNT = 30
 
+export interface StopDistrictCoverageEstimate {
+    districtName: string
+    connectedStops: number
+    connectedStopNames: string[]
+    estimatedTotalMin: number
+    estimatedTotalMax: number
+    estimatedTotalLabel: string
+    coverageMinPct: number
+    coverageMaxPct: number
+    coverageMidPct: number
+    coverageLabel: string
+}
+
 export interface StopMonitoredComplex {
     cameraFrom: number
     cameraTo: number
@@ -84,6 +97,72 @@ export const STOP_MONITORED_COMPLEXES: StopMonitoredComplex[] = [
         districtName: "24 микрорайон",
     },
 ]
+
+function buildCoverageEstimate(params: {
+    districtName: string
+    connectedStops: number
+    connectedStopNames: string[]
+    estimatedTotalMin: number
+    estimatedTotalMax: number
+}): StopDistrictCoverageEstimate {
+    const coverageMinPct = Math.floor((params.connectedStops / params.estimatedTotalMax) * 100)
+    const coverageMaxPct = Math.round((params.connectedStops / params.estimatedTotalMin) * 100)
+    const coverageMidPct = Math.round((coverageMinPct + coverageMaxPct) / 2)
+    const estimatedTotalLabel = params.estimatedTotalMin === params.estimatedTotalMax
+        ? `${params.estimatedTotalMin}`
+        : `${params.estimatedTotalMin}-${params.estimatedTotalMax}`
+
+    return {
+        ...params,
+        estimatedTotalLabel,
+        coverageMinPct,
+        coverageMaxPct,
+        coverageMidPct,
+        coverageLabel: `${coverageMinPct}-${coverageMaxPct}%`,
+    }
+}
+
+export const STOP_DISTRICT_COVERAGE_ESTIMATES: StopDistrictCoverageEstimate[] = [
+    buildCoverageEstimate({
+        districtName: "20А микрорайон",
+        connectedStops: 1,
+        connectedStopNames: ["20А микрорайон"],
+        estimatedTotalMin: 4,
+        estimatedTotalMax: 6,
+    }),
+    buildCoverageEstimate({
+        districtName: "24 микрорайон",
+        connectedStops: 2,
+        connectedStopNames: ["24 микрорайон", "Парк За Саймой"],
+        estimatedTotalMin: 8,
+        estimatedTotalMax: 12,
+    }),
+    buildCoverageEstimate({
+        districtName: "10 микрорайон",
+        connectedStops: 4,
+        connectedStopNames: ["Гагарина", "Купца Клепикова", "ДК Строитель", "10 мкр"],
+        estimatedTotalMin: 10,
+        estimatedTotalMax: 15,
+    }),
+    buildCoverageEstimate({
+        districtName: "31 микрорайон",
+        connectedStops: 1,
+        connectedStopNames: ["Никольский"],
+        estimatedTotalMin: 5,
+        estimatedTotalMax: 8,
+    }),
+    buildCoverageEstimate({
+        districtName: "Старый Сургут",
+        connectedStops: 1,
+        connectedStopNames: ["Старый Сургут"],
+        estimatedTotalMin: 2,
+        estimatedTotalMax: 4,
+    }),
+]
+
+export function getStopDistrictCoverageEstimate(districtName: string) {
+    return STOP_DISTRICT_COVERAGE_ESTIMATES.find((estimate) => estimate.districtName === districtName) ?? null
+}
 
 export function getStopComplexByLocationId(locationId: string | null | undefined) {
     if (!locationId) return null

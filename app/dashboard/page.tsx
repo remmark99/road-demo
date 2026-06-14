@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, type ComponentType } from "react"
 import { Navigation } from "@/components/navigation"
 import {
   BarChart3,
@@ -26,6 +26,7 @@ import {
   Route,
   DoorClosed,
   ChevronRight,
+  type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -35,8 +36,11 @@ import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
 import { PassengerAnalytics } from "@/components/dashboard/passenger-analytics"
 import { StopCurrentLoadAnalytics } from "@/components/dashboard/stop-current-load-analytics"
 import { StopDistrictCurrentAnalytics } from "@/components/dashboard/stop-district-current-analytics"
+import { StopDistrictPlanAnalytics } from "@/components/dashboard/stop-district-plan-analytics"
 import { StopKpiCurrentAnalytics } from "@/components/dashboard/stop-kpi-current-analytics"
+import { StopKpiPlanAnalytics } from "@/components/dashboard/stop-kpi-plan-analytics"
 import { StopLyingPersonAnalytics } from "@/components/dashboard/stop-lying-person-analytics"
+import { StopConditionCurrentAnalytics } from "@/components/dashboard/stop-condition-current-analytics"
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
 import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
 import { ConditionAnalytics } from "@/components/dashboard/condition-analytics"
@@ -58,17 +62,14 @@ type DashboardView =
   | "predictions"
   | "road_repair"
   | "city"
-  | "stop_current_load"
-  | "stop_current_kpi"
-  | "stop_current_districts"
-  | "stop_current_security"
-  | "kpi_bus_stops"
-  | "districts"
-  | "passenger"
-  | "security"
-  | "vandalism"
-  | "condition"
-  | "warmstop"
+  | "stop_kpi"
+  | "stop_districts"
+  | "stop_load"
+  | "stop_security"
+  | "stop_passenger"
+  | "stop_vandalism"
+  | "stop_condition"
+  | "stop_warmstop"
   | "shore_security"
   | "shore_safety"
   | "shore_emergency"
@@ -77,157 +78,197 @@ type DashboardView =
   | "transport_route"
   | "transport_service"
 
-const DASHBOARDS = [
+type DashboardModule = "roads" | "stops" | "shore" | "parks" | "transport"
+type StopAnalyticsMode = "current" | "plan"
+type DashboardComponent = ComponentType
+
+interface DashboardDefinition {
+  id: DashboardView
+  label: string
+  icon: LucideIcon
+  module: DashboardModule
+  url?: string
+  component?: DashboardComponent
+  stopModes?: Partial<Record<StopAnalyticsMode, DashboardComponent>>
+}
+
+const STOP_ANALYTICS_MODES: { id: StopAnalyticsMode; label: string }[] = [
+  { id: "current", label: "Текущее состояние" },
+  { id: "plan", label: "План" },
+]
+
+const DASHBOARDS: readonly DashboardDefinition[] = [
   {
-    id: "general" as const,
+    id: "general",
     label: "Текущее состояние",
     icon: Activity,
+    module: "roads",
     url: "https://superset.board-coding.ru/superset/dashboard/3?standalone=2&expand_filters=0"
   },
   {
-    id: "cleaning" as const,
+    id: "cleaning",
     label: "Матрица эффективности",
     icon: Grid3X3,
+    module: "roads",
     url: "https://superset.board-coding.ru/superset/dashboard/4?standalone=2&expand_filters=0"
   },
   {
-    id: "incidents" as const,
+    id: "incidents",
     label: "Подрядчики",
     icon: Users,
+    module: "roads",
     url: "https://superset.board-coding.ru/superset/dashboard/5?standalone=2&expand_filters=0"
   },
   {
-    id: "predictions" as const,
+    id: "predictions",
     label: "Влияние осадков",
     icon: CloudRain,
+    module: "roads",
     url: "https://superset.board-coding.ru/superset/dashboard/6?standalone=2&expand_filters=0"
   },
   {
-    id: "road_repair" as const,
+    id: "road_repair",
     label: "Ремонт дорог",
     icon: Hammer,
+    module: "roads",
     component: RoadRepairAnalytics,
   },
   {
-    id: "city" as const,
+    id: "city",
     label: "Город",
     icon: Building2,
+    module: "roads",
     url: "https://superset.board-coding.ru/superset/dashboard/7?standalone=2&expand_filters=0"
   },
   {
-    id: "stop_current_load" as const,
+    id: "stop_kpi",
+    label: "Показатели остановок",
+    icon: BusFront,
+    module: "stops",
+    stopModes: {
+      current: StopKpiCurrentAnalytics,
+      plan: StopKpiPlanAnalytics,
+    },
+  },
+  {
+    id: "stop_districts",
+    label: "Районы",
+    icon: Map,
+    module: "stops",
+    stopModes: {
+      current: StopDistrictCurrentAnalytics,
+      plan: StopDistrictPlanAnalytics,
+    },
+  },
+  {
+    id: "stop_load",
     label: "Загруженность остановок",
     icon: Users2,
-    component: StopCurrentLoadAnalytics,
+    module: "stops",
+    stopModes: {
+      current: StopCurrentLoadAnalytics,
+    },
   },
   {
-    id: "stop_current_kpi" as const,
-    label: "Показатели остановок",
-    icon: BusFront,
-    component: StopKpiCurrentAnalytics,
-  },
-  {
-    id: "stop_current_districts" as const,
-    label: "Районы",
-    icon: Map,
-    component: StopDistrictCurrentAnalytics,
-  },
-  {
-    id: "stop_current_security" as const,
+    id: "stop_security",
     label: "События безопасности",
     icon: ShieldAlert,
-    component: StopLyingPersonAnalytics,
+    module: "stops",
+    stopModes: {
+      current: StopLyingPersonAnalytics,
+      plan: SecurityAnalytics,
+    },
   },
   {
-    id: "kpi_bus_stops" as const,
-    label: "Показатели остановок",
-    icon: BusFront,
-    url: "https://superset.board-coding.ru/superset/dashboard/8?standalone=2&expand_filters=0"
-  },
-  {
-    id: "districts" as const,
-    label: "Районы",
-    icon: Map,
-    url: "https://superset.board-coding.ru/superset/dashboard/9?standalone=2&expand_filters=0"
-  },
-  {
-    id: "passenger" as const,
+    id: "stop_passenger",
     label: "Пассажирская аналитика",
     icon: Users2,
-    component: PassengerAnalytics,
+    module: "stops",
+    stopModes: {
+      plan: PassengerAnalytics,
+    },
   },
   {
-    id: "security" as const,
-    label: "События безопасности",
-    icon: ShieldAlert,
-    component: SecurityAnalytics,
-  },
-  {
-    id: "vandalism" as const,
+    id: "stop_vandalism",
     label: "Вандализм",
     icon: Hammer,
-    component: VandalismAnalytics,
+    module: "stops",
+    stopModes: {
+      plan: VandalismAnalytics,
+    },
   },
   {
-    id: "condition" as const,
+    id: "stop_condition",
     label: "Состояние остановок",
     icon: ClipboardCheck,
-    component: ConditionAnalytics,
+    module: "stops",
+    stopModes: {
+      current: StopConditionCurrentAnalytics,
+      plan: ConditionAnalytics,
+    },
   },
   {
-    id: "warmstop" as const,
+    id: "stop_warmstop",
     label: "Теплая остановка",
     icon: Heater,
-    component: WarmStopAnalytics,
+    module: "stops",
+    stopModes: {
+      plan: WarmStopAnalytics,
+    },
   },
   {
-    id: "shore_security" as const,
+    id: "shore_security",
     label: "Охрана периметра",
     icon: ShieldCheck,
+    module: "shore",
     component: ShoreSecurityAnalytics,
   },
   {
-    id: "shore_safety" as const,
+    id: "shore_safety",
     label: "Безопасность посетителей",
     icon: LifeBuoy,
+    module: "shore",
     component: ShoreSafetyAnalytics,
   },
   {
-    id: "shore_emergency" as const,
+    id: "shore_emergency",
     label: "Критические ситуации",
     icon: Siren,
+    module: "shore",
     component: ShoreEmergencyAnalytics,
   },
   {
-    id: "park_security" as const,
+    id: "park_security",
     label: "Инциденты и безопасность",
     icon: ShieldAlert,
+    module: "parks",
     component: ParkSecurityAnalytics,
   },
   {
-    id: "park_operations" as const,
+    id: "park_operations",
     label: "Эксплуатация территории",
     icon: Trash2,
+    module: "parks",
     component: ParkOperationsAnalytics,
   },
   {
-    id: "transport_route" as const,
+    id: "transport_route",
     label: "Маршрутная дисциплина",
     icon: Route,
+    module: "transport",
     component: TransportRouteAnalytics,
   },
   {
-    id: "transport_service" as const,
+    id: "transport_service",
     label: "Обслуживание остановок",
     icon: DoorClosed,
+    module: "transport",
     component: TransportServiceAnalytics,
   }
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "road_repair", "city"]
-const STOPS_CURRENT_DASHBOARDS = ["stop_current_kpi", "stop_current_districts", "stop_current_load", "stop_current_security"]
-const STOPS_PLAN_DASHBOARDS = ["kpi_bus_stops", "districts", "passenger", "security", "vandalism", "condition", "warmstop"]
-const STOPS_DASHBOARDS = [...STOPS_CURRENT_DASHBOARDS, ...STOPS_PLAN_DASHBOARDS]
+const STOPS_DASHBOARDS = ["stop_kpi", "stop_districts", "stop_load", "stop_security", "stop_passenger", "stop_vandalism", "stop_condition", "stop_warmstop"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]
 const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]
@@ -239,18 +280,10 @@ const SIDEBAR_SECTION_DEFAULTS = {
   transport: true,
 }
 
-type DashboardDefinition = (typeof DASHBOARDS)[number]
-
-interface SidebarDashboardGroup {
-  title: string
-  dashboards: DashboardDefinition[]
-}
-
 interface SidebarSection {
   key: keyof typeof SIDEBAR_SECTION_DEFAULTS
   title: string
   dashboards: DashboardDefinition[]
-  groups?: SidebarDashboardGroup[]
 }
 
 function orderDashboards(dashboards: DashboardDefinition[], order: readonly string[]) {
@@ -259,44 +292,49 @@ function orderDashboards(dashboards: DashboardDefinition[], order: readonly stri
     .sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id))
 }
 
+function getAvailableStopModes(dashboard: DashboardDefinition | undefined) {
+  if (!dashboard?.stopModes) return []
+
+  return STOP_ANALYTICS_MODES
+    .map((mode) => mode.id)
+    .filter((mode) => Boolean(dashboard.stopModes?.[mode]))
+}
+
+function getFirstAvailableStopMode(dashboard: DashboardDefinition | undefined) {
+  return getAvailableStopModes(dashboard)[0] ?? null
+}
+
 export default function DashboardPage() {
   const [activeView, setActiveView] = useState<DashboardView>("general")
+  const [stopMode, setStopMode] = useState<StopAnalyticsMode>("current")
   const [expandedSections, setExpandedSections] = useState(SIDEBAR_SECTION_DEFAULTS)
   const { hasModule, loading: modulesLoading } = useModuleAccess()
 
   const filteredDashboards = DASHBOARDS.filter(d => {
-    if (ROADS_DASHBOARDS.includes(d.id)) return hasModule('roads')
-    if (STOPS_DASHBOARDS.includes(d.id)) return hasModule('stops')
-    if (SHORE_DASHBOARDS.includes(d.id)) return hasModule('shore')
-    if (PARK_DASHBOARDS.includes(d.id)) return hasModule('parks')
-    if (TRANSPORT_DASHBOARDS.includes(d.id)) return hasModule('transport')
-    return true
+    return hasModule(d.module)
   })
 
   const roadsDashboardsList = orderDashboards(filteredDashboards.filter(d => ROADS_DASHBOARDS.includes(d.id)), ROADS_DASHBOARDS)
   const stopsDashboardsList = orderDashboards(filteredDashboards.filter(d => STOPS_DASHBOARDS.includes(d.id)), STOPS_DASHBOARDS)
-  const stopsCurrentDashboardsList = orderDashboards(filteredDashboards.filter(d => STOPS_CURRENT_DASHBOARDS.includes(d.id)), STOPS_CURRENT_DASHBOARDS)
-  const stopsPlanDashboardsList = orderDashboards(filteredDashboards.filter(d => STOPS_PLAN_DASHBOARDS.includes(d.id)), STOPS_PLAN_DASHBOARDS)
   const shoreDashboardsList = orderDashboards(filteredDashboards.filter(d => SHORE_DASHBOARDS.includes(d.id)), SHORE_DASHBOARDS)
   const parkDashboardsList = orderDashboards(filteredDashboards.filter(d => PARK_DASHBOARDS.includes(d.id)), PARK_DASHBOARDS)
   const transportDashboardsList = orderDashboards(filteredDashboards.filter(d => TRANSPORT_DASHBOARDS.includes(d.id)), TRANSPORT_DASHBOARDS)
   const resolvedActiveView =
     filteredDashboards.find((dashboard) => dashboard.id === activeView)?.id ??
     filteredDashboards[0]?.id
+  const activeDashboard = filteredDashboards.find((dashboard) => dashboard.id === resolvedActiveView)
+  const activeStopModes = getAvailableStopModes(activeDashboard)
+  const resolvedStopMode =
+    activeDashboard?.stopModes && activeDashboard.stopModes[stopMode]
+      ? stopMode
+      : getFirstAvailableStopMode(activeDashboard) ?? stopMode
+  const showStopModeToggle = Boolean(activeDashboard?.stopModes)
   const sidebarSections: SidebarSection[] = [
-    { key: "roads" as const, title: "Состояние дорог", dashboards: roadsDashboardsList },
-    {
-      key: "stops" as const,
-      title: "Остановки",
-      dashboards: stopsDashboardsList,
-      groups: [
-        { title: "Текущее состояние", dashboards: stopsCurrentDashboardsList },
-        { title: "План", dashboards: stopsPlanDashboardsList },
-      ],
-    },
-    { key: "shore" as const, title: "Безопасный берег", dashboards: shoreDashboardsList },
-    { key: "parks" as const, title: "Безопасный парк", dashboards: parkDashboardsList },
-    { key: "transport" as const, title: "Контроль транспорта", dashboards: transportDashboardsList },
+    { key: "roads", title: "Состояние дорог", dashboards: roadsDashboardsList },
+    { key: "stops", title: "Остановки", dashboards: stopsDashboardsList },
+    { key: "shore", title: "Безопасный берег", dashboards: shoreDashboardsList },
+    { key: "parks", title: "Безопасный парк", dashboards: parkDashboardsList },
+    { key: "transport", title: "Контроль транспорта", dashboards: transportDashboardsList },
   ].filter((section) => section.dashboards.length > 0)
 
   const toggleSection = (sectionKey: keyof typeof SIDEBAR_SECTION_DEFAULTS) => {
@@ -306,7 +344,17 @@ export default function DashboardPage() {
     }))
   }
 
-  const renderDashboardButton = (dashboard: DashboardDefinition, nested = false) => {
+  const handleDashboardSelect = (dashboard: DashboardDefinition) => {
+    const firstAvailableMode = getFirstAvailableStopMode(dashboard)
+
+    if (dashboard.stopModes && firstAvailableMode && !dashboard.stopModes[stopMode]) {
+      setStopMode(firstAvailableMode)
+    }
+
+    setActiveView(dashboard.id)
+  }
+
+  const renderDashboardButton = (dashboard: DashboardDefinition) => {
     const DashboardIcon = dashboard.icon
     const isActive = resolvedActiveView === dashboard.id
 
@@ -316,10 +364,9 @@ export default function DashboardPage() {
         variant={isActive ? "default" : "ghost"}
         className={cn(
           "justify-start gap-3 h-auto min-h-11 py-2.5 w-full whitespace-normal text-left",
-          nested && "pl-5",
           isActive && "bg-primary text-primary-foreground hover:bg-primary/90"
         )}
-        onClick={() => setActiveView(dashboard.id)}
+        onClick={() => handleDashboardSelect(dashboard)}
       >
         <DashboardIcon className="h-4 w-4" />
         <span>{dashboard.label}</span>
@@ -390,22 +437,7 @@ export default function DashboardPage() {
                                 id={`dashboard-section-${section.key}`}
                                 className="flex flex-col gap-1"
                               >
-                                {section.groups ? (
-                                  section.groups.map((group) => (
-                                    group.dashboards.length > 0 && (
-                                      <div key={group.title} className="space-y-1">
-                                        <div className="px-3 pt-2 text-[11px] font-semibold uppercase text-muted-foreground">
-                                          {group.title}
-                                        </div>
-                                        <div className="flex flex-col gap-1">
-                                          {group.dashboards.map((dashboard) => renderDashboardButton(dashboard, true))}
-                                        </div>
-                                      </div>
-                                    )
-                                  ))
-                                ) : (
-                                  section.dashboards.map((dashboard) => renderDashboardButton(dashboard))
-                                )}
+                                {section.dashboards.map((dashboard) => renderDashboardButton(dashboard))}
                               </div>
                             )}
                           </div>
@@ -455,35 +487,76 @@ export default function DashboardPage() {
                       </p>
                     </div>
                   ) : (
-                    filteredDashboards.map((dashboard) => {
-                      const isActive = resolvedActiveView === dashboard.id
-                      if ('component' in dashboard && dashboard.component) {
-                        const Component = dashboard.component
-                        return (
-                          <div
-                            key={dashboard.id}
-                            className={cn(
-                              "w-full h-full absolute inset-0 overflow-auto",
-                              isActive ? "z-10" : "z-0 invisible"
-                            )}
-                          >
-                            {isActive && <Component />}
+                    <>
+                      {showStopModeToggle && (
+                        <div className="flex flex-none flex-col gap-3 border-b bg-background/95 px-4 py-3 md:flex-row md:items-center md:justify-between">
+                          <div className="flex items-center gap-2 text-sm font-medium">
+                            <BusFront className="h-4 w-4 text-primary" />
+                            <span>Режим аналитики остановок</span>
                           </div>
-                        )
-                      }
-                      return (
-                        <iframe
-                          key={dashboard.id}
-                          src={'url' in dashboard ? dashboard.url : ''}
-                          className={cn(
-                            "w-full h-full absolute inset-0 border-0 bg-background",
-                            isActive ? "z-10" : "z-0 invisible"
-                          )}
-                          title={dashboard.label}
-                          sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
-                        />
-                      )
-                    })
+                          <div className="inline-flex w-fit rounded-lg bg-muted p-1">
+                            {STOP_ANALYTICS_MODES.map((mode) => {
+                              const isAvailable = activeStopModes.includes(mode.id)
+                              const isActive = resolvedStopMode === mode.id
+
+                              return (
+                                <Button
+                                  key={mode.id}
+                                  type="button"
+                                  size="sm"
+                                  variant={isActive ? "default" : "ghost"}
+                                  disabled={!isAvailable}
+                                  className={cn(
+                                    "h-8 rounded-md px-3 transition-colors",
+                                    !isAvailable && "opacity-40"
+                                  )}
+                                  onClick={() => setStopMode(mode.id)}
+                                >
+                                  {mode.label}
+                                </Button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+                      <div className="relative min-h-0 flex-1">
+                        {filteredDashboards.map((dashboard) => {
+                          const isActive = resolvedActiveView === dashboard.id
+                          const modeForDashboard = isActive
+                            ? resolvedStopMode
+                            : getFirstAvailableStopMode(dashboard)
+                          const StopModeComponent = modeForDashboard && dashboard.stopModes?.[modeForDashboard]
+                          const Component = StopModeComponent ?? dashboard.component
+
+                          if (Component) {
+                            return (
+                              <div
+                                key={dashboard.id}
+                                className={cn(
+                                  "w-full h-full absolute inset-0 overflow-auto",
+                                  isActive ? "z-10" : "z-0 invisible"
+                                )}
+                              >
+                                {isActive && <Component />}
+                              </div>
+                            )
+                          }
+
+                          return (
+                            <iframe
+                              key={dashboard.id}
+                              src={dashboard.url ?? ""}
+                              className={cn(
+                                "w-full h-full absolute inset-0 border-0 bg-background",
+                                isActive ? "z-10" : "z-0 invisible"
+                              )}
+                              title={dashboard.label}
+                              sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                            />
+                          )
+                        })}
+                      </div>
+                    </>
                   )}
                 </div>
               </>

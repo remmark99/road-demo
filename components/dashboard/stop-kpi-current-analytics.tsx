@@ -57,7 +57,7 @@ import { cn } from "@/lib/utils"
 type KpiTone = "normal" | "success" | "attention" | "high"
 
 const districtCoverageConfig = {
-    coveragePct: { label: "Покрытие онлайн-данными", color: "hsl(221, 83%, 53%)" },
+    coveragePct: { label: "Оценка покрытия", color: "hsl(221, 83%, 53%)" },
 } satisfies ChartConfig
 
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
@@ -448,10 +448,10 @@ export function StopKpiCurrentAnalytics() {
                             <CardHeader>
                                 <CardTitle className="text-base">Покрытие по районам</CardTitle>
                                 <CardDescription>
-                                    Доля остановок района, для которых есть онлайн-наблюдения
+                                    Доля подключенных остановок от примерного количества остановок в районе
                                 </CardDescription>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="space-y-4">
                                 <ChartContainer config={districtCoverageConfig} className="h-[260px] w-full">
                                     <BarChart data={districtChartRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -461,6 +461,26 @@ export function StopKpiCurrentAnalytics() {
                                         <Bar dataKey="coveragePct" fill="var(--color-coveragePct)" radius={[5, 5, 0, 0]} />
                                     </BarChart>
                                 </ChartContainer>
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Район</TableHead>
+                                            <TableHead className="text-right">Подключено</TableHead>
+                                            <TableHead className="text-right">Всего примерно</TableHead>
+                                            <TableHead className="text-right">Покрытие</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {districtChartRows.map((district) => (
+                                            <TableRow key={district.districtName}>
+                                                <TableCell className="font-medium">{district.districtName}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{integerFormat.format(district.stops)}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{district.estimatedTotalLabel}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{district.coverageLabel}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
                             </CardContent>
                         </Card>
                     </div>

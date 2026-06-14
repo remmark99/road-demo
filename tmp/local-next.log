@@ -24,3 +24,88 @@
  POST /api/chat 200 in 2.6s (compile: 11ms, proxy.ts: 3ms, render: 2.6s)
  POST /api/chat 200 in 31.1s (compile: 785ms, proxy.ts: 25ms, render: 30.2s)
  POST /api/chat 200 in 2.0s (compile: 14ms, proxy.ts: 42ms, render: 1949ms)
+ GET / 200 in 3.1s (compile: 1940ms, proxy.ts: 526ms, render: 611ms)
+ GET /icon.svg 404 in 1070ms (compile: 899ms, render: 170ms)
+[API] Fetching anchors, found 10 active anchors
+[API] First anchor radius: 200
+ GET /api/anchors?refresh=true&t=1781154163929 200 in 1164ms (compile: 298ms, proxy.ts: 416ms, render: 451ms)
+ GET /icon-light-32x32.png 404 in 137ms (compile: 4ms, render: 133ms)
+ GET /api/bus-stops 200 in 1464ms (compile: 481ms, proxy.ts: 282ms, render: 701ms)
+ GET /ai-assistant 200 in 1904ms (compile: 1321ms, proxy.ts: 431ms, render: 152ms)
+ GET /dashboard 200 in 1473ms (compile: 658ms, proxy.ts: 765ms, render: 49ms)
+Error fetching roads: {
+  message: 'TypeError: terminated',
+  details: 'TypeError: terminated\n' +
+    '\n' +
+    'Caused by: Error: read ETIMEDOUT (ETIMEDOUT)\n' +
+    'Error: read ETIMEDOUT\n' +
+    '    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20)\n' +
+    '    at TLSWrap.callbackTrampoline (node:internal/async_hooks:130:17)',
+  hint: '',
+  code: ''
+}
+ GET /api/roads 500 in 78s (compile: 364ms, proxy.ts: 264ms, render: 77s)
+Error fetching roads: {
+  message: 'TypeError: terminated',
+  details: 'TypeError: terminated\n' +
+    '\n' +
+    'Caused by: Error: read ETIMEDOUT (ETIMEDOUT)\n' +
+    'Error: read ETIMEDOUT\n' +
+    '    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20)\n' +
+    '    at TLSWrap.callbackTrampoline (node:internal/async_hooks:130:17)',
+  hint: '',
+  code: ''
+}
+ GET /api/roads 500 in 75s (compile: 8ms, proxy.ts: 306ms, render: 75s)
+ GET /ai-assistant 200 in 411ms (compile: 13ms, proxy.ts: 339ms, render: 59ms)
+ POST /api/chat 200 in 2.9s (compile: 1041ms, proxy.ts: 260ms, render: 1605ms)
+ POST /api/chat 200 in 673ms (compile: 3ms, proxy.ts: 282ms, render: 388ms)
+ POST /api/chat 200 in 2.3s (compile: 7ms, proxy.ts: 272ms, render: 2.0s)
+ GET /api/plots/plot_6122870938438966719.png 200 in 210ms (compile: 156ms, render: 53ms)
+Error fetching roads: {
+  message: 'TypeError: terminated',
+  details: 'TypeError: terminated\n' +
+    '\n' +
+    'Caused by: Error: read ETIMEDOUT (ETIMEDOUT)\n' +
+    'Error: read ETIMEDOUT\n' +
+    '    at TLSWrap.onStreamRead (node:internal/stream_base_commons:216:20)\n' +
+    '    at TLSWrap.callbackTrampoline (node:internal/async_hooks:130:17)',
+  hint: '',
+  code: ''
+}
+ GET /api/roads 500 in 73s (compile: 9ms, proxy.ts: 501ms, render: 73s)
+ POST /api/chat 200 in 672ms (compile: 13ms, proxy.ts: 323ms, render: 336ms)
+ GET /notifications 200 in 735ms (compile: 407ms, proxy.ts: 218ms, render: 110ms)
+ GET /ai-assistant 200 in 306ms (compile: 8ms, proxy.ts: 230ms, render: 68ms)
+ POST /api/chat 200 in 12.5s (compile: 13ms, proxy.ts: 239ms, render: 12.3s)
+ POST /api/chat 200 in 8.1s (compile: 12ms, proxy.ts: 245ms, render: 7.8s)
+ GET /notifications 200 in 290ms (compile: 6ms, proxy.ts: 230ms, render: 54ms)
+ GET /notifications 200 in 1162ms (compile: 20ms, proxy.ts: 636ms, render: 506ms)
+ GET /dashboard 200 in 405ms (compile: 13ms, proxy.ts: 333ms, render: 59ms)
+ GET /notifications 200 in 365ms (compile: 8ms, proxy.ts: 311ms, render: 45ms)
+ GET /dashboard 200 in 499ms (compile: 17ms, proxy.ts: 410ms, render: 72ms)
+ GET /dashboard 200 in 1849ms (compile: 8ms, proxy.ts: 537ms, render: 1305ms)
+ GET / 200 in 410ms (compile: 13ms, proxy.ts: 342ms, render: 55ms)
+[API] Fetching anchors, found 10 active anchors
+[API] First anchor radius: 200
+ GET /api/anchors?refresh=true&t=1781155194651 200 in 579ms (compile: 15ms, proxy.ts: 339ms, render: 225ms)
+[API] Fetching anchors, found 10 active anchors
+[API] First anchor radius: 200
+ GET /api/anchors?refresh=true&t=1781155194951 200 in 371ms (compile: 12ms, proxy.ts: 232ms, render: 128ms)
+ GET /api/roads 200 in 7.1s (compile: 13ms, proxy.ts: 136ms, render: 7.0s)
+ GET /ai-assistant 200 in 569ms (compile: 13ms, proxy.ts: 475ms, render: 81ms)
+○ Compiling /settings ...
+ GET /settings 200 in 8.3s (compile: 7.8s, proxy.ts: 445ms, render: 81ms)
+✓ Finished filesystem cache database compaction in 14.8s
+ GET /dashboard 200 in 694ms (compile: 21ms, proxy.ts: 589ms, render: 84ms)
+ GET / 200 in 341ms (compile: 14ms, proxy.ts: 290ms, render: 37ms)
+[API] Fetching anchors, found 10 active anchors
+[API] First anchor radius: 200
+ GET /api/anchors?refresh=true&t=1781155373389 200 in 228ms (compile: 3ms, proxy.ts: 107ms, render: 117ms)
+[API] Fetching anchors, found 10 active anchors
+[API] First anchor radius: 200
+ GET /api/anchors?refresh=true&t=1781155373598 200 in 225ms (compile: 7ms, proxy.ts: 110ms, render: 108ms)
+ GET /dashboard 200 in 463ms (compile: 10ms, proxy.ts: 368ms, render: 85ms)
+ GET /notifications 200 in 474ms (compile: 8ms, proxy.ts: 437ms, render: 29ms)
+ GET /ai-assistant 200 in 9.9s (compile: 62ms, proxy.ts: 9.1s, render: 688ms)
+ GET /dashboard 200 in 393ms (compile: 38ms, proxy.ts: 317ms, render: 38ms)

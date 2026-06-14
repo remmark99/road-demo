@@ -46,7 +46,6 @@ import {
     type StopCurrentAnalyticsData,
 } from "@/lib/api/stop-current-analytics"
 import {
-    STOP_MONITORED_COMPLEXES,
     STOP_SAFETY_ALERT_LABELS,
     STOP_SAFETY_ALERT_TYPES,
     type StopSafetyAlertType,
@@ -61,7 +60,7 @@ type DistrictEventRow = StopDistrictSummary & {
 }
 
 const districtStopsConfig = {
-    stops: { label: "Остановки", color: "hsl(217, 91%, 60%)" },
+    stops: { label: "Подключено", color: "hsl(217, 91%, 60%)" },
 } satisfies ChartConfig
 
 const districtLoadConfig = {
@@ -276,9 +275,13 @@ export function StopDistrictCurrentAnalytics() {
         [districtSummaries, alertFilter],
     )
     const activeDistricts = districtSummaries.filter((district) => district.liveDirections > 0 || district.safetyEvents > 0)
-    const totalStops = districtSummaries.reduce((sum, district) => sum + district.stops, 0)
+    const connectedDistrictStops = districtSummaries.reduce((sum, district) => sum + district.stops, 0)
+    const estimatedDistrictMin = districtSummaries.reduce((sum, district) => sum + district.estimatedTotalMin, 0)
+    const estimatedDistrictMax = districtSummaries.reduce((sum, district) => sum + district.estimatedTotalMax, 0)
+    const estimatedDistrictLabel = estimatedDistrictMin === estimatedDistrictMax
+        ? integerFormat.format(estimatedDistrictMin)
+        : `${integerFormat.format(estimatedDistrictMin)}-${integerFormat.format(estimatedDistrictMax)}`
     const liveDirections = districtSummaries.reduce((sum, district) => sum + district.liveDirections, 0)
-    const monitoredStops = STOP_MONITORED_COMPLEXES.length
     const selectedSafetyEvents = districtEventRows.reduce((sum, district) => sum + district.selectedSafetyEvents, 0)
     const alertFilterLabel = alertFilter === "all" ? "Все события" : STOP_SAFETY_ALERT_LABELS[alertFilter]
     const latestAt = districtSummaries
@@ -350,10 +353,10 @@ export function StopDistrictCurrentAnalytics() {
                         icon={Map}
                     />
                     <KpiCard
-                        title="Остановок в районах"
-                        value={integerFormat.format(totalStops)}
-                        caption="оснащенные остановочные комплексы"
-                        detail={`${integerFormat.format(monitoredStops)} из ${integerFormat.format(monitoredStops)} в районной витрине`}
+                        title="Подключено в районах"
+                        value={integerFormat.format(connectedDistrictStops)}
+                        caption="остановок с видеонаблюдением"
+                        detail={`${estimatedDistrictLabel} всего примерно`}
                         icon={MapPin}
                         tone="attention"
                     />
@@ -398,7 +401,7 @@ export function StopDistrictCurrentAnalytics() {
                                     Остановки по районам
                                 </CardTitle>
                                 <CardDescription>
-                                    Количество оснащенных остановочных комплексов
+                                    Количество остановок с видеонаблюдением
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -534,8 +537,10 @@ export function StopDistrictCurrentAnalytics() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Район</TableHead>
-                                        <TableHead className="text-right">Остановки</TableHead>
-                                        <TableHead className="text-right">Онлайн-направления</TableHead>
+                                        <TableHead className="text-right">Подключено</TableHead>
+                                        <TableHead className="text-right">Всего примерно</TableHead>
+                                        <TableHead className="text-right">Покрытие</TableHead>
+                                        <TableHead className="text-right">Онлайн-данные</TableHead>
                                         <TableHead className="text-right">Загрузка</TableHead>
                                         <TableHead className="text-right">Лежачий человек</TableHead>
                                         <TableHead className="text-right">Курение</TableHead>
@@ -549,10 +554,9 @@ export function StopDistrictCurrentAnalytics() {
                                         <TableRow key={district.districtName}>
                                             <TableCell className="font-medium">{district.districtName}</TableCell>
                                             <TableCell className="text-right tabular-nums">{integerFormat.format(district.stops)}</TableCell>
-                                            <TableCell className="text-right tabular-nums">
-                                                {integerFormat.format(district.liveDirections)}
-                                                <span className="ml-1 text-xs text-muted-foreground">({district.coveragePct}%)</span>
-                                            </TableCell>
+                                            <TableCell className="text-right tabular-nums">{district.estimatedTotalLabel}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{district.coverageLabel}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{integerFormat.format(district.liveDirections)}</TableCell>
                                             <TableCell className="text-right tabular-nums">{numberFormat.format(district.averagePeople)}</TableCell>
                                             <TableCell className="text-right tabular-nums">
                                                 {integerFormat.format(district.safetyEventsByType.lying_person ?? 0)}
@@ -566,7 +570,11 @@ export function StopDistrictCurrentAnalytics() {
                                             <TableCell className="text-right tabular-nums">{integerFormat.format(district.selectedSafetyEvents)}</TableCell>
                                             <TableCell>
                                                 <div className="max-w-sm truncate text-sm text-muted-foreground">
-                                                    {district.topStops.length > 0 ? district.topStops.join(", ") : "Нет онлайн-наблюдений"}
+                                                    {district.connectedStopNames.length > 0
+                                                        ? district.connectedStopNames.join(", ")
+                                                        : district.topStops.length > 0
+                                                            ? district.topStops.join(", ")
+                                                            : "Нет онлайн-наблюдений"}
                                                 </div>
                                             </TableCell>
                                         </TableRow>
