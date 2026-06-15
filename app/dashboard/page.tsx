@@ -38,7 +38,6 @@ import { StopCurrentLoadAnalytics } from "@/components/dashboard/stop-current-lo
 import { StopDistrictCurrentAnalytics } from "@/components/dashboard/stop-district-current-analytics"
 import { StopDistrictPlanAnalytics } from "@/components/dashboard/stop-district-plan-analytics"
 import { StopKpiCurrentAnalytics } from "@/components/dashboard/stop-kpi-current-analytics"
-import { StopKpiPlanAnalytics } from "@/components/dashboard/stop-kpi-plan-analytics"
 import { StopLyingPersonAnalytics } from "@/components/dashboard/stop-lying-person-analytics"
 import { StopConditionCurrentAnalytics } from "@/components/dashboard/stop-condition-current-analytics"
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
@@ -147,7 +146,6 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     module: "stops",
     stopModes: {
       current: StopKpiCurrentAnalytics,
-      plan: StopKpiPlanAnalytics,
     },
   },
   {
@@ -328,7 +326,7 @@ export default function DashboardPage() {
     activeDashboard?.stopModes && activeDashboard.stopModes[stopMode]
       ? stopMode
       : getFirstAvailableStopMode(activeDashboard) ?? stopMode
-  const showStopModeToggle = Boolean(activeDashboard?.stopModes)
+  const showStopModeToggle = Boolean(activeDashboard?.stopModes && activeStopModes.length > 1)
   const sidebarSections: SidebarSection[] = [
     { key: "roads", title: "Состояние дорог", dashboards: roadsDashboardsList },
     { key: "stops", title: "Остановки", dashboards: stopsDashboardsList },
@@ -495,8 +493,7 @@ export default function DashboardPage() {
                             <span>Режим аналитики остановок</span>
                           </div>
                           <div className="inline-flex w-fit rounded-lg bg-muted p-1">
-                            {STOP_ANALYTICS_MODES.map((mode) => {
-                              const isAvailable = activeStopModes.includes(mode.id)
+                            {STOP_ANALYTICS_MODES.filter((mode) => activeStopModes.includes(mode.id)).map((mode) => {
                               const isActive = resolvedStopMode === mode.id
 
                               return (
@@ -505,11 +502,7 @@ export default function DashboardPage() {
                                   type="button"
                                   size="sm"
                                   variant={isActive ? "default" : "ghost"}
-                                  disabled={!isAvailable}
-                                  className={cn(
-                                    "h-8 rounded-md px-3 transition-colors",
-                                    !isAvailable && "opacity-40"
-                                  )}
+                                  className="h-8 rounded-md px-3 transition-colors"
                                   onClick={() => setStopMode(mode.id)}
                                 >
                                   {mode.label}

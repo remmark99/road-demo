@@ -1,5 +1,5 @@
 export const STOP_CITY_TOTAL = 436
-export const STOP_EQUIPMENT_PLAN_TARGET = 100
+export const STOP_EQUIPMENT_PLAN_TARGET = 106
 export const STOP_EQUIPPED_COUNT = 10
 export const STOP_OPERATIONAL_COUNT = 10
 export const STOP_LIVE_CAMERA_COUNT = 30
@@ -185,6 +185,10 @@ export const STOP_SAFETY_ALERT_TYPES = [
 ] as const
 
 export type StopSafetyAlertType = (typeof STOP_SAFETY_ALERT_TYPES)[number]
+
+export function isStopSafetyAlertType(alertType: string): alertType is StopSafetyAlertType {
+    return STOP_SAFETY_ALERT_TYPES.includes(alertType as StopSafetyAlertType)
+}
 
 export const STOP_SAFETY_ALERT_LABELS: Record<StopSafetyAlertType, string> = {
     lying_person: "Лежачий человек",

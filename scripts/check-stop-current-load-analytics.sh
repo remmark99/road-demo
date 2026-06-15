@@ -68,11 +68,20 @@ else
   exit 1
 fi
 
-if rg -q "stop_condition_windows|trash_fill_avg|trash_fill_max" lib/api/stop-condition-windows.ts sql/stop_condition_windows_schema.sql components/dashboard/stop-condition-current-analytics.tsx; then
-  echo "SUMMARY: trash-fill current condition data contract found"
+if rg -q "fetchStopTrashOverflowAlerts|STOP_TRASH_OVERFLOW_ALERT_TYPES|bin_full" lib/api/stop-condition-windows.ts \
+  && rg -q "buildTrashOverflowEpisodes|OVERFLOW_EPISODE_GAP_MS|getStopCameraIndexCandidates|Эпизоды переполнения|Суммарная длительность" components/dashboard/stop-condition-current-analytics.tsx; then
+  echo "SUMMARY: event-based trash overflow duration analytics found"
 else
-  echo "SUMMARY: trash-fill current condition data contract missing"
+  echo "SUMMARY: event-based trash overflow duration analytics missing"
   exit 1
+fi
+
+if rg -q "TRASH_ATTENTION_THRESHOLD|TRASH_CRITICAL_THRESHOLD|avgFill|maxFill|trash_fill_avg|trash_fill_max|fill_percent|overflow_percent|Пиковое заполнение|Среднее заполнение|порог включения" components/dashboard/stop-condition-current-analytics.tsx; then
+  echo "SUMMARY: current stop condition page still contains percent-based trash overflow logic"
+  rg -n "TRASH_ATTENTION_THRESHOLD|TRASH_CRITICAL_THRESHOLD|avgFill|maxFill|trash_fill_avg|trash_fill_max|fill_percent|overflow_percent|Пиковое заполнение|Среднее заполнение|порог включения" components/dashboard/stop-condition-current-analytics.tsx || true
+  exit 1
+else
+  echo "SUMMARY: current stop condition page uses event duration logic without trash percentage thresholds"
 fi
 
 if rg -q "lib/mock/condition|conditionReadingsData|conditionAlertsData|fogging|Стекло|Запотевание" components/dashboard/stop-condition-current-analytics.tsx; then

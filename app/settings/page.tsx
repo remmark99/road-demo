@@ -5,7 +5,6 @@ import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { type DateRange } from "react-day-picker"
 import jsPDF from "jspdf"
-import * as htmlToImage from "html-to-image"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -79,28 +78,6 @@ const MODULE_INFO: Record<string, { name: string; description: string }> = {
   transport: { name: 'Контроль транспорта', description: 'Отслеживание транспортных средств' },
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;")
-}
-
-function getReportToneColor(tone: AiReportMetric["tone"]) {
-  if (tone === "good") {
-    return "#16703a"
-  }
-  if (tone === "warning") {
-    return "#9a5b00"
-  }
-  if (tone === "critical") {
-    return "#a02424"
-  }
-  return "#475569"
-}
-
 function getReportPeriodLabel(report: AiReportResponse) {
   if (report.period?.from && report.period?.to) {
     return `${report.period.from} - ${report.period.to}`
@@ -114,141 +91,275 @@ function getReportPeriodLabel(report: AiReportResponse) {
   return "период не задан"
 }
 
-function buildReportHtml(report: AiReportResponse) {
+const REPORT_CANVAS_WIDTH = 1240
+const REPORT_CANVAS_HEIGHT = 1754
+const REPORT_MARGIN = 72
+
+function getReportToneColors(tone: AiReportMetric["tone"]) {
+  if (tone === "good") return { accent: "#16703a", bg: "#edf7f0", text: "#14532d" }
+  if (tone === "warning") return { accent: "#b45309", bg: "#fff7ed", text: "#7c2d12" }
+  if (tone === "critical") return { accent: "#b91c1c", bg: "#fef2f2", text: "#7f1d1d" }
+  return { accent: "#475569", bg: "#f8fafc", text: "#334155" }
+}
+
+function drawRoundRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+) {
+  context.beginPath()
+  context.moveTo(x + radius, y)
+  context.lineTo(x + width - radius, y)
+  context.quadraticCurveTo(x + width, y, x + width, y + radius)
+  context.lineTo(x + width, y + height - radius)
+  context.quadraticCurveTo(x + width, y + height, x + width - radius, y + height)
+  context.lineTo(x + radius, y + height)
+  context.quadraticCurveTo(x, y + height, x, y + height - radius)
+  context.lineTo(x, y + radius)
+  context.quadraticCurveTo(x, y, x + radius, y)
+  context.closePath()
+}
+
+function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const paragraphs = text.split("\n")
+  const lines: string[] = []
+
+  for (const paragraph of paragraphs) {
+    const words = paragraph.split(/\s+/).filter(Boolean)
+    let line = ""
+
+    for (const word of words) {
+      const nextLine = line ? `${line} ${word}` : word
+      if (context.measureText(nextLine).width <= maxWidth || !line) {
+        line = nextLine
+      } else {
+        lines.push(line)
+        line = word
+      }
+    }
+
+    if (line) {
+      lines.push(line)
+    }
+  }
+
+  return lines
+}
+
+function renderReportPages(report: AiReportResponse) {
+  const pages: HTMLCanvasElement[] = []
+  let canvas: HTMLCanvasElement
+  let context: CanvasRenderingContext2D
+  let y = REPORT_MARGIN
+
+  const createPage = () => {
+    canvas = document.createElement("canvas")
+    canvas.width = REPORT_CANVAS_WIDTH
+    canvas.height = REPORT_CANVAS_HEIGHT
+    const nextContext = canvas.getContext("2d")
+
+    if (!nextContext) {
+      throw new Error("Не удалось подготовить PDF-страницу.")
+    }
+
+    context = nextContext
+    context.fillStyle = "#ffffff"
+    context.fillRect(0, 0, REPORT_CANVAS_WIDTH, REPORT_CANVAS_HEIGHT)
+    context.fillStyle = "#64748b"
+    context.font = "24px Arial, sans-serif"
+    context.fillText("Вектор Города", REPORT_MARGIN, 42)
+    pages.push(canvas)
+    y = REPORT_MARGIN
+  }
+
+  const ensureSpace = (height: number) => {
+    if (y + height > REPORT_CANVAS_HEIGHT - REPORT_MARGIN) {
+      createPage()
+    }
+  }
+
+  const drawText = (
+    text: string,
+    x: number,
+    maxWidth: number,
+    font: string,
+    color: string,
+    lineHeight: number,
+  ) => {
+    context.font = font
+    context.fillStyle = color
+    const lines = wrapCanvasText(context, text, maxWidth)
+
+    for (const line of lines) {
+      ensureSpace(lineHeight + 8)
+      context.fillText(line, x, y)
+      y += lineHeight
+    }
+  }
+
+  const drawLabel = (label: string, x: number, top: number) => {
+    context.font = "18px Arial, sans-serif"
+    context.fillStyle = "#64748b"
+    context.fillText(label.toUpperCase(), x, top)
+  }
+
+  const drawMetaCard = (label: string, value: string, x: number, top: number, width: number) => {
+    drawRoundRect(context, x, top, width, 92, 14)
+    context.fillStyle = "#f8fafc"
+    context.fill()
+    context.strokeStyle = "#e2e8f0"
+    context.lineWidth = 2
+    context.stroke()
+    drawLabel(label, x + 22, top + 30)
+    context.font = "24px Arial, sans-serif"
+    context.fillStyle = "#111827"
+    wrapCanvasText(context, value, width - 44).slice(0, 2).forEach((line, index) => {
+      context.fillText(line, x + 22, top + 62 + index * 26)
+    })
+  }
+
+  createPage()
+
+  context.fillStyle = "#111827"
+  context.font = "bold 46px Arial, sans-serif"
+  const titleLines = wrapCanvasText(context, report.title || "ИИ-отчет", REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2)
+  for (const line of titleLines.slice(0, 3)) {
+    context.fillText(line, REPORT_MARGIN, y)
+    y += 54
+  }
+  y += 12
+  drawText(
+    report.subtitle || "Сводный отчет по пользовательскому запросу",
+    REPORT_MARGIN,
+    REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2,
+    "26px Arial, sans-serif",
+    "#475569",
+    34,
+  )
+  y += 28
+
+  const sourceLabel = report.source === "gigachat" ? "GigaChat + шаблон" : "Демо-шаблон"
+  drawMetaCard("Период", getReportPeriodLabel(report), REPORT_MARGIN, y, 520)
+  drawMetaCard("Источник", sourceLabel, REPORT_MARGIN + 548, y, 520)
+  y += 124
+
+  ensureSpace(150)
+  drawRoundRect(context, REPORT_MARGIN, y, REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2, 136, 14)
+  context.fillStyle = "#f8fafc"
+  context.fill()
+  context.strokeStyle = "#e2e8f0"
+  context.stroke()
+  drawLabel("Запрос пользователя", REPORT_MARGIN + 24, y + 34)
+  const promptTop = y + 70
+  context.font = "24px Arial, sans-serif"
+  context.fillStyle = "#111827"
+  wrapCanvasText(context, report.prompt || "", REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2 - 48).slice(0, 3).forEach((line, index) => {
+    context.fillText(line, REPORT_MARGIN + 24, promptTop + index * 30)
+  })
+  y += 172
+
   const metrics = report.metrics || []
-  const sections = report.sections || []
-  const recommendations = report.recommendations || []
+  if (metrics.length > 0) {
+    ensureSpace(150)
+    const cardGap = 18
+    const cardWidth = Math.floor((REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2 - cardGap * 2) / 3)
+    metrics.slice(0, 6).forEach((metric, index) => {
+      if (index > 0 && index % 3 === 0) {
+        y += 132
+        ensureSpace(132)
+      }
+      const x = REPORT_MARGIN + (index % 3) * (cardWidth + cardGap)
+      const colors = getReportToneColors(metric.tone)
+      drawRoundRect(context, x, y, cardWidth, 112, 14)
+      context.fillStyle = colors.bg
+      context.fill()
+      context.strokeStyle = "#e2e8f0"
+      context.stroke()
+      context.fillStyle = colors.accent
+      context.fillRect(x, y, 7, 112)
+      context.font = "18px Arial, sans-serif"
+      context.fillStyle = "#64748b"
+      context.fillText(metric.label, x + 24, y + 34)
+      context.font = "bold 25px Arial, sans-serif"
+      context.fillStyle = colors.text
+      wrapCanvasText(context, metric.value, cardWidth - 48).slice(0, 2).forEach((line, lineIndex) => {
+        context.fillText(line, x + 24, y + 70 + lineIndex * 28)
+      })
+    })
+    y += metrics.length > 3 ? 276 : 144
+  }
+
+  for (const section of report.sections || []) {
+    ensureSpace(120)
+    drawText(section.heading, REPORT_MARGIN, REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2, "bold 32px Arial, sans-serif", "#111827", 40)
+    y += 4
+    drawText(section.body, REPORT_MARGIN, REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2, "24px Arial, sans-serif", "#334155", 32)
+    y += 8
+
+    for (const bullet of section.bullets || []) {
+      context.font = "23px Arial, sans-serif"
+      const lines = wrapCanvasText(context, bullet, REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2 - 36)
+      lines.forEach((line, index) => {
+        ensureSpace(32)
+        context.fillStyle = "#334155"
+        context.fillText(index === 0 ? `• ${line}` : `  ${line}`, REPORT_MARGIN + 12, y)
+        y += 32
+      })
+      y += 2
+    }
+    y += 24
+  }
+
+  ensureSpace(140)
+  drawText("Рекомендации", REPORT_MARGIN, REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2, "bold 32px Arial, sans-serif", "#111827", 40)
+  y += 8
+  ;(report.recommendations || []).forEach((item, index) => {
+    context.font = "24px Arial, sans-serif"
+    const lines = wrapCanvasText(context, item, REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2 - 44)
+    lines.forEach((line, lineIndex) => {
+      ensureSpace(34)
+      context.fillStyle = "#334155"
+      context.fillText(lineIndex === 0 ? `${index + 1}. ${line}` : `   ${line}`, REPORT_MARGIN, y)
+      y += 34
+    })
+    y += 4
+  })
+
+  y += 18
+  ensureSpace(100)
+  context.strokeStyle = "#e2e8f0"
+  context.beginPath()
+  context.moveTo(REPORT_MARGIN, y)
+  context.lineTo(REPORT_CANVAS_WIDTH - REPORT_MARGIN, y)
+  context.stroke()
+  y += 34
   const generatedAt = report.generatedAt
     ? format(new Date(report.generatedAt), "dd.MM.yyyy HH:mm", { locale: ru })
     : format(new Date(), "dd.MM.yyyy HH:mm", { locale: ru })
-  const sourceLabel = report.source === "gigachat" ? "GigaChat + шаблон" : "Демо-шаблон"
+  drawText(`Сформировано: ${generatedAt}`, REPORT_MARGIN, REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2, "18px Arial, sans-serif", "#64748b", 25)
+  drawText(report.sourceNote || "Отчет сформирован автоматически.", REPORT_MARGIN, REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2, "18px Arial, sans-serif", "#64748b", 25)
 
-  return `
-    <div style="box-sizing:border-box;width:794px;background:#fff;color:#111827;font-family:Arial,Helvetica,sans-serif;padding:36px;">
-      <div style="border-bottom:2px solid #111827;padding-bottom:18px;margin-bottom:24px;">
-        <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:10px;">Вектор Города</div>
-        <h1 style="font-size:30px;line-height:1.18;margin:0 0 10px;font-weight:700;">${escapeHtml(report.title || "ИИ-отчет")}</h1>
-        <p style="font-size:15px;line-height:1.5;color:#475569;margin:0;">${escapeHtml(report.subtitle || "Сводный отчет по пользовательскому запросу")}</p>
-      </div>
-
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:22px;">
-        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
-          <div style="font-size:11px;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Период</div>
-          <div style="font-size:14px;font-weight:700;">${escapeHtml(getReportPeriodLabel(report))}</div>
-        </div>
-        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
-          <div style="font-size:11px;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Источник</div>
-          <div style="font-size:14px;font-weight:700;">${escapeHtml(sourceLabel)}</div>
-        </div>
-      </div>
-
-      <div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:22px;background:#f8fafc;">
-        <div style="font-size:11px;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Запрос пользователя</div>
-        <div style="font-size:14px;line-height:1.55;">${escapeHtml(report.prompt || "")}</div>
-      </div>
-
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:26px;">
-        ${metrics.map((metric) => `
-          <div style="border:1px solid #e2e8f0;border-left:4px solid ${getReportToneColor(metric.tone)};border-radius:8px;padding:12px;min-height:82px;">
-            <div style="font-size:11px;text-transform:uppercase;color:#64748b;margin-bottom:8px;">${escapeHtml(metric.label)}</div>
-            <div style="font-size:17px;line-height:1.25;font-weight:700;color:${getReportToneColor(metric.tone)};">${escapeHtml(metric.value)}</div>
-          </div>
-        `).join("")}
-      </div>
-
-      ${sections.map((section) => `
-        <section style="margin-bottom:24px;break-inside:avoid;">
-          <h2 style="font-size:20px;line-height:1.25;margin:0 0 8px;font-weight:700;">${escapeHtml(section.heading)}</h2>
-          <p style="font-size:14px;line-height:1.6;margin:0 0 10px;color:#334155;">${escapeHtml(section.body)}</p>
-          ${(section.bullets || []).length > 0 ? `
-            <ul style="margin:0;padding-left:20px;color:#334155;font-size:14px;line-height:1.55;">
-              ${(section.bullets || []).map((item) => `<li style="margin-bottom:5px;">${escapeHtml(item)}</li>`).join("")}
-            </ul>
-          ` : ""}
-        </section>
-      `).join("")}
-
-      <section style="border-top:1px solid #e2e8f0;padding-top:18px;margin-top:8px;break-inside:avoid;">
-        <h2 style="font-size:20px;line-height:1.25;margin:0 0 10px;font-weight:700;">Рекомендации</h2>
-        <ol style="margin:0;padding-left:22px;color:#334155;font-size:14px;line-height:1.6;">
-          ${recommendations.map((item) => `<li style="margin-bottom:6px;">${escapeHtml(item)}</li>`).join("")}
-        </ol>
-      </section>
-
-      <div style="margin-top:28px;padding-top:14px;border-top:1px solid #e2e8f0;color:#64748b;font-size:11px;line-height:1.5;">
-        <div>Сформировано: ${escapeHtml(generatedAt)}</div>
-        <div>${escapeHtml(report.sourceNote || "Отчет сформирован автоматически.")}</div>
-      </div>
-    </div>
-  `
+  return pages
 }
 
 async function downloadReportPdf(report: AiReportResponse) {
-  const container = document.createElement("div")
-  container.style.position = "fixed"
-  container.style.left = "-10000px"
-  container.style.top = "0"
-  container.style.width = "794px"
-  container.style.background = "#ffffff"
-  container.innerHTML = buildReportHtml(report)
-  document.body.appendChild(container)
+  const pdf = new jsPDF("p", "mm", "a4")
+  const pageWidth = pdf.internal.pageSize.getWidth()
+  const pageHeight = pdf.internal.pageSize.getHeight()
+  const pages = renderReportPages(report)
 
-  try {
-    const canvas = await htmlToImage.toCanvas(container, {
-      backgroundColor: "#ffffff",
-      pixelRatio: 2,
-      cacheBust: true,
-    })
-    const pdf = new jsPDF("p", "mm", "a4")
-    const pageWidth = pdf.internal.pageSize.getWidth()
-    const pageHeight = pdf.internal.pageSize.getHeight()
-    const margin = 8
-    const imageWidth = pageWidth - margin * 2
-    const pageContentHeight = pageHeight - margin * 2
-    const fullImageHeight = (canvas.height * imageWidth) / canvas.width
-    const pageSliceHeightPx = Math.floor((pageContentHeight / fullImageHeight) * canvas.height)
-
-    let sourceY = 0
-    let pageIndex = 0
-
-    while (sourceY < canvas.height) {
-      const sliceHeight = Math.min(pageSliceHeightPx, canvas.height - sourceY)
-      const sliceCanvas = document.createElement("canvas")
-      sliceCanvas.width = canvas.width
-      sliceCanvas.height = sliceHeight
-      const context = sliceCanvas.getContext("2d")
-
-      if (!context) {
-        throw new Error("Не удалось подготовить PDF-страницу.")
-      }
-
-      context.drawImage(
-        canvas,
-        0,
-        sourceY,
-        canvas.width,
-        sliceHeight,
-        0,
-        0,
-        canvas.width,
-        sliceHeight,
-      )
-
-      if (pageIndex > 0) {
-        pdf.addPage()
-      }
-
-      const sliceImageHeight = (sliceHeight * imageWidth) / canvas.width
-      pdf.addImage(sliceCanvas.toDataURL("image/jpeg", 0.92), "JPEG", margin, margin, imageWidth, sliceImageHeight)
-      sourceY += sliceHeight
-      pageIndex += 1
+  pages.forEach((page, index) => {
+    if (index > 0) {
+      pdf.addPage()
     }
+    pdf.addImage(page.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, pageWidth, pageHeight)
+  })
 
-    const date = format(new Date(), "yyyy-MM-dd")
-    pdf.save(`vector-city-ai-report-${date}.pdf`)
-  } finally {
-    document.body.removeChild(container)
-  }
+  const date = format(new Date(), "yyyy-MM-dd")
+  pdf.save(`vector-city-ai-report-${date}.pdf`)
 }
 
 export default function SettingsPage() {
