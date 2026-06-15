@@ -1,7 +1,7 @@
 -- Stop condition windows schema for current stop analytics.
 -- Run this in Supabase SQL Editor before enabling the remote writer.
 
-CREATE TABLE IF NOT EXISTS stop_condition_windows (
+CREATE TABLE IF NOT EXISTS public.stop_condition_windows (
   location_id TEXT NOT NULL,
   window_start TIMESTAMP WITH TIME ZONE NOT NULL,
   window_end TIMESTAMP WITH TIME ZONE,
@@ -12,22 +12,26 @@ CREATE TABLE IF NOT EXISTS stop_condition_windows (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_stop_condition_windows_location_start
-  ON stop_condition_windows(location_id, window_start);
+  ON public.stop_condition_windows(location_id, window_start);
 
 CREATE INDEX IF NOT EXISTS idx_stop_condition_windows_start
-  ON stop_condition_windows(window_start DESC);
+  ON public.stop_condition_windows(window_start DESC);
 
 CREATE INDEX IF NOT EXISTS idx_stop_condition_windows_location_start_desc
-  ON stop_condition_windows(location_id, window_start DESC);
+  ON public.stop_condition_windows(location_id, window_start DESC);
 
-ALTER TABLE stop_condition_windows ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.stop_condition_windows ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Allow public read stop condition windows" ON stop_condition_windows;
+DROP POLICY IF EXISTS "Allow public read stop condition windows" ON public.stop_condition_windows;
 CREATE POLICY "Allow public read stop condition windows"
-  ON stop_condition_windows
+  ON public.stop_condition_windows
   FOR SELECT USING (true);
 
-COMMENT ON TABLE stop_condition_windows IS 'Aggregated trash-bin fullness windows for current stop condition analytics.';
-COMMENT ON COLUMN stop_condition_windows.location_id IS 'Stop analytics location id, matching busyness_windows.location_id.';
-COMMENT ON COLUMN stop_condition_windows.trash_fill_avg IS 'Average trash-bin fill percentage for the window, 0-100.';
-COMMENT ON COLUMN stop_condition_windows.trash_fill_max IS 'Maximum trash-bin fill percentage for the window, 0-100.';
+GRANT SELECT ON TABLE public.stop_condition_windows TO anon, authenticated;
+
+COMMENT ON TABLE public.stop_condition_windows IS 'Aggregated trash-bin fullness windows for current stop condition analytics.';
+COMMENT ON COLUMN public.stop_condition_windows.location_id IS 'Stop analytics location id, matching busyness_windows.location_id.';
+COMMENT ON COLUMN public.stop_condition_windows.trash_fill_avg IS 'Average trash-bin fill percentage for the window, 0-100.';
+COMMENT ON COLUMN public.stop_condition_windows.trash_fill_max IS 'Maximum trash-bin fill percentage for the window, 0-100.';
+
+NOTIFY pgrst, 'reload schema';

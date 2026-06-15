@@ -21,10 +21,49 @@ export interface FetchStopConditionWindowsResult {
     rows: StopConditionWindowRow[]
     truncated: boolean
     limit: number
+    sourceUnavailable: boolean
 }
 
 const DEFAULT_LIMIT = 50000
 const PAGE_SIZE = 1000
+
+interface SupabaseQueryError {
+    code?: string
+    message?: string
+    details?: string | null
+    hint?: string | null
+}
+
+function isStopConditionSchemaMissing(error: SupabaseQueryError) {
+    const message = [
+        error.message,
+        error.details,
+        error.hint,
+    ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+
+    return (
+        error.code === "PGRST205" ||
+        (
+            message.includes("stop_condition_windows") &&
+            (
+                message.includes("schema cache") ||
+                message.includes("could not find the table")
+            )
+        )
+    )
+}
+
+function unavailableResult(limit: number): FetchStopConditionWindowsResult {
+    return {
+        rows: [],
+        truncated: false,
+        limit,
+        sourceUnavailable: true,
+    }
+}
 
 export async function fetchStopConditionWindows({
     from,
@@ -55,6 +94,10 @@ export async function fetchStopConditionWindows({
         const { data, error } = await query
 
         if (error) {
+            if (isStopConditionSchemaMissing(error)) {
+                return unavailableResult(limit)
+            }
+
             throw new Error(error.message)
         }
 
@@ -70,6 +113,7 @@ export async function fetchStopConditionWindows({
         rows: rows.sort((a, b) => a.window_start.localeCompare(b.window_start)),
         truncated: rows.length >= limit,
         limit,
+        sourceUnavailable: false,
     }
 }
 
@@ -82,6 +126,10 @@ export async function fetchLatestStopConditionWindow(): Promise<StopConditionWin
         .limit(1)
 
     if (error) {
+        if (isStopConditionSchemaMissing(error)) {
+            return null
+        }
+
         throw new Error(error.message)
     }
 

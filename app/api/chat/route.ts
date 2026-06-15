@@ -5,6 +5,7 @@ import {
 } from "ai"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import {
     createGigaChatCompletion,
     GigaChatConfigError,
@@ -13,6 +14,11 @@ import {
     type GigaChatFunctionDefinition,
     type GigaChatMessage,
 } from "@/lib/gigachat/client"
+import {
+    STOP_SAFETY_ALERT_LABELS,
+    STOP_SAFETY_ALERT_TYPES,
+    getStopComplexByLocationId,
+} from "@/lib/stop-analytics-config"
 
 type AssistantMode = "platform" | "stops"
 
@@ -42,6 +48,29 @@ type MCPToolResultContent = {
 type MCPToolResult = {
     content?: MCPToolResultContent[]
     isError?: boolean
+}
+
+type BusynessWindowRow = {
+    location_id: string
+    window_start: string
+    window_end: string | null
+    person_count_avg: number | null
+    person_count_max: number | null
+    sample_count: number | null
+}
+
+type StopAlertRow = {
+    alert_type: string
+    severity: number | null
+    message: string | null
+    metadata: { location_id?: string } | null
+    timestamp: string
+    camera_index: number | null
+}
+
+type SupabaseQueryResult<T> = {
+    data: T | null
+    error: { message?: string } | null
 }
 
 const MCP_SERVER_URL = normalizeMcpUrl(process.env.MCP_SERVER_URL || "http://127.0.0.1:8000/mcp")
@@ -101,11 +130,18 @@ const STOPS_SYSTEM_PROMPT = `Ты — ИИ-Ассистент модуля «О�
 - Не пиши внутренние названия таблиц, если пользователь сам не просит.`
 
 function normalizeMcpUrl(rawUrl: string) {
-    if (rawUrl.endsWith("/sse")) {
-        return `${rawUrl.slice(0, -4)}/mcp`
+    const url = new URL(rawUrl)
+
+    if (url.pathname === "/sse") {
+        url.pathname = "/mcp"
+        return url.toString()
     }
 
-    return rawUrl
+    if (url.pathname === "/" || url.pathname === "") {
+        url.pathname = "/mcp"
+    }
+
+    return url.toString()
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> {
@@ -115,6 +151,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): 
             setTimeout(() => reject(new Error(errorMessage)), ms)
         }),
     ])
+}
+
+function wait(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function resetConnection() {
@@ -534,6 +574,256 @@ function asNumber(value: unknown) {
     return typeof value === "number" && Number.isFinite(value) ? value : null
 }
 
+function getSupabaseDirectClient() {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+
+    if (!url || !key) {
+        return null
+    }
+
+    return createSupabaseClient(url, key, {
+        auth: {
+            autoRefreshToken: false,
+            persistSession: false,
+        },
+    })
+}
+
+function hoursAgoIso(hours: number) {
+    return new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
+}
+
+async function runSupabaseQuery<T>(
+    factory: () => PromiseLike<SupabaseQueryResult<T>>,
+    attempts = 2,
+) {
+    let lastResult: SupabaseQueryResult<T> | null = null
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+        const result = await factory()
+        lastResult = result
+
+        if (!result.error) {
+            return result
+        }
+
+        const message = result.error.message || ""
+        if (!/fetch failed|network|timeout/i.test(message) || attempt === attempts) {
+            return result
+        }
+
+        await wait(250 * attempt)
+    }
+
+    return lastResult as SupabaseQueryResult<T>
+}
+
+function getStopDisplayName(locationId: string) {
+    const complex = getStopComplexByLocationId(locationId)
+    return complex?.stopName || `Остановочное направление ${locationId}`
+}
+
+async function fetchDirectStopLoadSummary(hours = 24, limit = 8) {
+    const supabase = getSupabaseDirectClient()
+
+    if (!supabase) {
+        throw new Error("Supabase env is not configured")
+    }
+
+    const [windowResult, firstResult] = await Promise.all([
+        runSupabaseQuery<BusynessWindowRow[]>(() => supabase
+            .from("busyness_windows")
+            .select("location_id,window_start,window_end,person_count_avg,person_count_max,sample_count")
+            .gte("window_start", hoursAgoIso(hours))
+            .order("window_start", { ascending: false })
+            .limit(5000)),
+        runSupabaseQuery<Array<{ window_start: string }>>(() => supabase
+            .from("busyness_windows")
+            .select("window_start")
+            .order("window_start", { ascending: true })
+            .limit(1)),
+    ])
+
+    if (windowResult.error) {
+        throw new Error(windowResult.error.message)
+    }
+
+    const grouped = new Map<string, {
+        location_id: string
+        name: string
+        avgSum: number
+        avgCount: number
+        peak_people: number
+        sample_count: number
+        windows: number
+        zero_sample_windows: number
+        low_sample_windows: number
+        latest_window: string
+        first_seen_in_window: string
+    }>()
+
+    for (const row of (windowResult.data || []) as BusynessWindowRow[]) {
+        const current = grouped.get(row.location_id) || {
+            location_id: row.location_id,
+            name: getStopDisplayName(row.location_id),
+            avgSum: 0,
+            avgCount: 0,
+            peak_people: 0,
+            sample_count: 0,
+            windows: 0,
+            zero_sample_windows: 0,
+            low_sample_windows: 0,
+            latest_window: row.window_start,
+            first_seen_in_window: row.window_start,
+        }
+        const avg = asNumber(row.person_count_avg)
+        const peak = asNumber(row.person_count_max)
+        const samples = asNumber(row.sample_count) ?? 0
+
+        if (avg !== null) {
+            current.avgSum += avg
+            current.avgCount += 1
+        }
+        current.peak_people = Math.max(current.peak_people, peak ?? 0)
+        current.sample_count += samples
+        current.windows += 1
+        current.zero_sample_windows += samples === 0 ? 1 : 0
+        current.low_sample_windows += samples <= 1 ? 1 : 0
+        if (row.window_start > current.latest_window) {
+            current.latest_window = row.window_start
+        }
+        if (row.window_start < current.first_seen_in_window) {
+            current.first_seen_in_window = row.window_start
+        }
+        grouped.set(row.location_id, current)
+    }
+
+    const rows = [...grouped.values()]
+        .map((row) => ({
+            location_id: row.location_id,
+            name: row.name,
+            avg_people: row.avgCount > 0 ? Number((row.avgSum / row.avgCount).toFixed(1)) : 0,
+            peak_people: row.peak_people,
+            sample_count: row.sample_count,
+            windows: row.windows,
+            zero_sample_windows: row.zero_sample_windows,
+            low_sample_windows: row.low_sample_windows,
+            latest_window: row.latest_window,
+            first_seen_in_window: row.first_seen_in_window,
+        }))
+        .sort((a, b) => {
+            const qualityDelta = b.zero_sample_windows - a.zero_sample_windows
+            if (qualityDelta !== 0) {
+                return qualityDelta
+            }
+            return b.avg_people - a.avg_people || b.peak_people - a.peak_people
+        })
+        .slice(0, limit)
+    const fallbackStartedAt = rows
+        .map((row) => row.first_seen_in_window)
+        .filter(Boolean)
+        .sort()[0] || null
+
+    return JSON.stringify({
+        ok: true,
+        source: "supabase-direct-fallback",
+        latest_window: rows[0]?.latest_window || null,
+        recording_started_at: firstResult.error
+            ? fallbackStartedAt
+            : ((firstResult.data || [])[0] as { window_start?: string } | undefined)?.window_start || fallbackStartedAt,
+        rows,
+    })
+}
+
+async function fetchDirectStopSafetyEvents(hours = 24, limit = 30, onlyLyingPerson = false) {
+    const supabase = getSupabaseDirectClient()
+
+    if (!supabase) {
+        throw new Error("Supabase env is not configured")
+    }
+
+    const { data, error } = await runSupabaseQuery<StopAlertRow[]>(() => {
+        let query = supabase
+            .from("alerts")
+            .select("alert_type,severity,message,metadata,timestamp,camera_index")
+            .eq("module_name", "stops")
+            .gte("timestamp", hoursAgoIso(hours))
+            .order("timestamp", { ascending: false })
+            .limit(limit)
+
+        if (onlyLyingPerson) {
+            query = query.eq("alert_type", "lying_person")
+        } else {
+            query = query.in("alert_type", [...STOP_SAFETY_ALERT_TYPES])
+        }
+
+        return query
+    })
+
+    if (error) {
+        throw new Error(error.message)
+    }
+
+    const rows = (data || []) as StopAlertRow[]
+    const grouped = new Map<string, {
+        alert_type: string
+        label: string
+        events_count: number
+        affected_locations: Set<string>
+        latest_event: string
+    }>()
+
+    for (const row of rows) {
+        const label = STOP_SAFETY_ALERT_LABELS[row.alert_type as keyof typeof STOP_SAFETY_ALERT_LABELS] || row.alert_type
+        const current = grouped.get(row.alert_type) || {
+            alert_type: row.alert_type,
+            label,
+            events_count: 0,
+            affected_locations: new Set<string>(),
+            latest_event: row.timestamp,
+        }
+        current.events_count += 1
+        if (typeof row.metadata?.location_id === "string") {
+            current.affected_locations.add(row.metadata.location_id)
+        }
+        if (row.timestamp > current.latest_event) {
+            current.latest_event = row.timestamp
+        }
+        grouped.set(row.alert_type, current)
+    }
+
+    return JSON.stringify({
+        ok: true,
+        source: "supabase-direct-fallback",
+        latest_event: rows[0]?.timestamp || null,
+        summary: [...grouped.values()].map((row) => ({
+            alert_type: row.alert_type,
+            label: row.label,
+            events_count: row.events_count,
+            affected_locations: row.affected_locations.size,
+            latest_event: row.latest_event,
+        })),
+        rows,
+    })
+}
+
+async function callDirectSupabaseStopTool(toolName: string) {
+    if (toolName === "get_stop_current_load_summary") {
+        return fetchDirectStopLoadSummary(72, 12)
+    }
+
+    if (toolName === "get_stop_safety_events") {
+        return fetchDirectStopSafetyEvents(24, 30)
+    }
+
+    if (toolName === "get_stop_lying_person_events") {
+        return fetchDirectStopSafetyEvents(168, 30, true)
+    }
+
+    return null
+}
+
 function formatKnownToolOutput(toolName: string, output: string) {
     const trimmedOutput = output.trim()
     if (toolName === "create_plot" && /^\/plots\/plot_\d+\.png$/.test(trimmedOutput)) {
@@ -565,15 +855,21 @@ function formatKnownToolOutput(toolName: string, output: string) {
         const topRows = rows.slice(0, 5).map((row, index) => {
             const avg = asNumber(row.avg_people)
             const peak = asNumber(row.peak_people)
-            return `${index + 1}. ${row.location_id}: средняя загрузка ${avg ?? "-"}, пик ${peak ?? "-"} человек.`
+            const zeroSampleWindows = asNumber(row.zero_sample_windows)
+            const lowSampleWindows = asNumber(row.low_sample_windows)
+            const qualityNote = zeroSampleWindows !== null || lowSampleWindows !== null
+                ? ` Качество ряда: окон без кадров ${zeroSampleWindows ?? 0}, окон с низкой выборкой ${lowSampleWindows ?? 0}.`
+                : ""
+            return `${index + 1}. ${row.name || row.location_id}: средняя загрузка ${avg ?? "-"}, пик ${peak ?? "-"} человек.${qualityNote}`
         })
 
         return [
             `Источник: ${payload.source || "live-данные остановок"}, последнее окно: ${payload.latest_window || "-"}.`,
+            payload.recording_started_at ? `Запись загруженности в источнике начинается с ${payload.recording_started_at}.` : "",
             "Самые нагруженные направления:",
             ...topRows,
             "Оценка: внимание диспетчера в первую очередь на направления с высоким пиком и стабильной средней загрузкой.",
-        ].join("\n")
+        ].filter(Boolean).join("\n")
     }
 
     if (toolName === "get_stop_safety_events" || toolName === "get_stop_lying_person_events") {
@@ -645,6 +941,21 @@ async function buildStopsPlotAnswer(
 
     const sourceTool = isSafetyRequest(text) ? "get_stop_safety_events" : "get_stop_current_load_summary"
     if (!mcp) {
+        try {
+            const directOutput = await callDirectSupabaseStopTool(sourceTool)
+            const directSummary = directOutput ? formatKnownToolOutput(sourceTool, directOutput) : null
+            if (directSummary) {
+                return [
+                    "MCP сейчас недоступен, поэтому использую прямой fallback к Supabase live-таблицам сайта:",
+                    "",
+                    directSummary,
+                    wantsPlot ? "\nГрафик через MCP построить не могу, пока недоступен инструмент create_plot." : "",
+                ].filter(Boolean).join("\n")
+            }
+        } catch (error) {
+            console.warn("Direct Supabase stop fallback failed.", error)
+        }
+
         return formatMcpUnavailable(sourceTool === "get_stop_safety_events"
             ? "события безопасности остановок"
             : "текущая загруженность остановок")
@@ -778,6 +1089,20 @@ async function runKnownStopTool(mcp: Client | null, messages: UIMessage[]) {
     }
 
     if (!mcp) {
+        try {
+            const directOutput = await callDirectSupabaseStopTool(forcedToolName)
+            const directSummary = directOutput ? formatKnownToolOutput(forcedToolName, directOutput) : null
+            if (directSummary) {
+                return [
+                    "MCP сейчас недоступен, поэтому использую прямой fallback к Supabase live-таблицам сайта:",
+                    "",
+                    directSummary,
+                ].join("\n")
+            }
+        } catch (error) {
+            console.warn("Direct Supabase stop fallback failed.", error)
+        }
+
         return formatMcpUnavailable(forcedToolName)
     }
 
@@ -924,7 +1249,8 @@ async function answerWithGigaChat(messages: UIMessage[], mode: AssistantMode) {
 
 function sanitizeError(error: unknown) {
     if (error instanceof GigaChatConfigError) {
-        return error.message
+        console.warn("GigaChat configuration error.", error.message)
+        return formatModelUnavailable()
     }
 
     if (error instanceof Error) {

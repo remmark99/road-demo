@@ -1,4 +1,5 @@
 import { setDefaultResultOrder } from "node:dns"
+import { readFileSync } from "node:fs"
 import { request as httpRequest } from "node:http"
 import { request as httpsRequest } from "node:https"
 import { connect as tlsConnect, type TLSSocket } from "node:tls"
@@ -55,6 +56,14 @@ interface CachedToken {
     expiresAt: number
 }
 
+interface ProxyConfig {
+    protocol: "http:"
+    hostname: string
+    port: string
+    username: string
+    password: string
+}
+
 const DEFAULT_AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
 const DEFAULT_API_BASE_URL = "https://gigachat.devices.sberbank.ru/api/v1"
 const DEFAULT_SCOPE = "GIGACHAT_API_PERS"
@@ -66,6 +75,7 @@ const DEFAULT_GIGACHAT_NETWORK_ATTEMPTS = 1
 const GIGACHAT_RETRY_DELAY_MS = 400
 
 let cachedToken: CachedToken | null = null
+let cachedExtraCaCert: string | null | undefined
 
 export class GigaChatConfigError extends Error {
     constructor(message: string) {
@@ -129,41 +139,208 @@ function getModel() {
     return process.env.GIGACHAT_MODEL || DEFAULT_MODEL
 }
 
-function getProxyUrl() {
-    const proxyUrl = process.env.GIGACHAT_PROXY_URL?.trim()
-    if (proxyUrl) {
-        return proxyUrl
+function cleanEnvValue(value: string | undefined) {
+    const trimmed = value?.trim() || ""
+
+    if (trimmed.length >= 2) {
+        const first = trimmed[0]
+        const last = trimmed[trimmed.length - 1]
+        if ((first === "\"" && last === "\"") || (first === "'" && last === "'")) {
+            return trimmed.slice(1, -1).trim()
+        }
     }
 
-    const host = process.env.GIGACHAT_PROXY_HOST?.trim()
-    if (!host) {
+    return trimmed
+}
+
+function getExtraCaCert() {
+    if (cachedExtraCaCert !== undefined) {
+        return cachedExtraCaCert || undefined
+    }
+
+    const caPath = cleanEnvValue(process.env.GIGACHAT_CA_CERT_PATH || process.env.NODE_EXTRA_CA_CERTS)
+    if (!caPath) {
+        cachedExtraCaCert = null
+        return undefined
+    }
+
+    try {
+        cachedExtraCaCert = readFileSync(caPath, "utf8")
+    } catch {
+        cachedExtraCaCert = null
+    }
+
+    return cachedExtraCaCert || undefined
+}
+
+function stripInlineComment(value: string) {
+    return value.replace(/\s+#.*$/, "").trim()
+}
+
+function safeDecodeURIComponent(value: string) {
+    try {
+        return decodeURIComponent(value)
+    } catch {
+        return value
+    }
+}
+
+function normalizeRawProxyUrl(rawProxyUrl: string) {
+    const value = stripInlineComment(cleanEnvValue(rawProxyUrl))
+    if (!value) {
         return ""
     }
 
-    const protocol = process.env.GIGACHAT_PROXY_PROTOCOL?.trim() || "http"
-    const port = process.env.GIGACHAT_PROXY_PORT?.trim()
-    const username = process.env.GIGACHAT_PROXY_USERNAME || ""
-    const password = process.env.GIGACHAT_PROXY_PASSWORD || ""
-    const auth = username
-        ? `${encodeURIComponent(username)}${password ? `:${encodeURIComponent(password)}` : ""}@`
-        : ""
-    const portPart = port ? `:${port}` : ""
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) {
+        return value
+    }
 
-    return `${protocol}://${auth}${host}${portPart}`
+    return `http://${value}`
+}
+
+function getProxyConfigFromSplitEnv(): ProxyConfig | null {
+    const host = cleanEnvValue(process.env.GIGACHAT_PROXY_HOST)
+    if (!host) {
+        return null
+    }
+
+    const protocol = cleanEnvValue(process.env.GIGACHAT_PROXY_PROTOCOL) || "http"
+    if (protocol !== "http") {
+        throw new GigaChatConfigError(
+            "GigaChat proxy настроен некорректно: поддерживается HTTP CONNECT proxy. Укажите GIGACHAT_PROXY_PROTOCOL=http."
+        )
+    }
+
+    const port = cleanEnvValue(process.env.GIGACHAT_PROXY_PORT) || "8080"
+    if (!/^\d+$/.test(port)) {
+        throw new GigaChatConfigError(
+            "GigaChat proxy настроен некорректно: GIGACHAT_PROXY_PORT должен быть числом."
+        )
+    }
+
+    return {
+        protocol: "http:",
+        hostname: host,
+        port,
+        username: cleanEnvValue(process.env.GIGACHAT_PROXY_USERNAME),
+        password: cleanEnvValue(process.env.GIGACHAT_PROXY_PASSWORD),
+    }
+}
+
+function parseProxyUrlLenient(proxyUrl: string): ProxyConfig {
+    const normalized = normalizeRawProxyUrl(proxyUrl)
+    const match = normalized.match(/^(https?):\/\/(.+)$/i)
+
+    if (!match || match[1].toLowerCase() !== "http") {
+        throw new Error("invalid proxy url")
+    }
+
+    const withoutPath = match[2].split(/[/?]/, 1)[0]
+    const atIndex = withoutPath.lastIndexOf("@")
+    const rawAuth = atIndex >= 0 ? withoutPath.slice(0, atIndex) : ""
+    const rawHostPort = atIndex >= 0 ? withoutPath.slice(atIndex + 1) : withoutPath
+    const colonIndex = rawHostPort.lastIndexOf(":")
+    const hostname = colonIndex > 0 ? rawHostPort.slice(0, colonIndex) : rawHostPort
+    const port = colonIndex > 0 ? rawHostPort.slice(colonIndex + 1) : "8080"
+
+    if (!hostname || !/^\d+$/.test(port)) {
+        throw new Error("invalid proxy host or port")
+    }
+
+    const authColonIndex = rawAuth.indexOf(":")
+    const username = authColonIndex >= 0 ? rawAuth.slice(0, authColonIndex) : rawAuth
+    const password = authColonIndex >= 0 ? rawAuth.slice(authColonIndex + 1) : ""
+
+    return {
+        protocol: "http:",
+        hostname,
+        port,
+        username: safeDecodeURIComponent(username),
+        password: safeDecodeURIComponent(password),
+    }
+}
+
+function parseProxyUrl(proxyUrl: string): ProxyConfig {
+    const normalized = normalizeRawProxyUrl(proxyUrl)
+
+    try {
+        const parsed = new URL(normalized)
+
+        if (parsed.protocol !== "http:" || !parsed.hostname) {
+            throw new Error("unsupported proxy url")
+        }
+
+        return {
+            protocol: "http:",
+            hostname: parsed.hostname,
+            port: parsed.port || "8080",
+            username: safeDecodeURIComponent(parsed.username),
+            password: safeDecodeURIComponent(parsed.password),
+        }
+    } catch {
+        try {
+            return parseProxyUrlLenient(proxyUrl)
+        } catch {
+            throw new GigaChatConfigError(
+                "GigaChat proxy настроен некорректно: проверьте GIGACHAT_PROXY_URL или задайте GIGACHAT_PROXY_HOST/PORT/USERNAME/PASSWORD. Если пароль содержит #, %, @ или :, лучше используйте отдельные переменные."
+            )
+        }
+    }
+}
+
+function getProxyConfig(): ProxyConfig | null {
+    const proxyUrl = cleanEnvValue(process.env.GIGACHAT_PROXY_URL)
+    if (proxyUrl) {
+        return parseProxyUrl(proxyUrl)
+    }
+
+    return getProxyConfigFromSplitEnv()
+}
+
+function isProxyConfigured() {
+    return Boolean(
+        cleanEnvValue(process.env.GIGACHAT_PROXY_URL) ||
+        cleanEnvValue(process.env.GIGACHAT_PROXY_HOST)
+    )
 }
 
 function isProxyRequired() {
     const value = process.env.GIGACHAT_PROXY_REQUIRED?.trim().toLowerCase()
+    if (!value) {
+        return true
+    }
+
     return value === "1" || value === "true" || value === "yes"
 }
 
-function parseProxyUrl(proxyUrl: string) {
+export function getGigaChatRuntimeDiagnostics() {
+    let proxyHost = ""
+    let proxyPort = ""
+    let proxyError = ""
+
     try {
-        return new URL(proxyUrl)
-    } catch {
-        throw new GigaChatConfigError(
-            "GigaChat proxy настроен некорректно: проверьте GIGACHAT_PROXY_URL или GIGACHAT_PROXY_HOST/PORT/USERNAME/PASSWORD."
-        )
+        const proxy = getProxyConfig()
+        proxyHost = proxy?.hostname || ""
+        proxyPort = proxy?.port || ""
+    } catch (error) {
+        proxyError = error instanceof Error ? error.message : "GigaChat proxy настроен некорректно."
+    }
+
+    return {
+        hasAuthKey: Boolean(getAuthKey().trim()),
+        scope: getScope(),
+        model: getModel(),
+        authUrlHost: new URL(getAuthUrl()).hostname,
+        apiBaseUrlHost: new URL(getApiBaseUrl()).hostname,
+        requestTimeoutMs: getRequestTimeoutMs(),
+        networkAttempts: getNetworkAttempts(),
+        proxyRequired: isProxyRequired(),
+        proxyConfigured: isProxyConfigured(),
+        proxyHost,
+        proxyPort,
+        proxyError,
+        nodeExtraCaCerts: process.env.NODE_EXTRA_CA_CERTS ? "set" : "not-set",
+        extraCaLoaded: Boolean(getExtraCaCert()),
     }
 }
 
@@ -232,14 +409,20 @@ function postText(
     headers: Record<string, string>,
     body: string,
 ): Promise<{ status: number, text: string }> {
-    const proxyUrl = getProxyUrl()
+    let proxyConfig: ProxyConfig | null = null
 
-    if (isProxyRequired() && !proxyUrl) {
+    if (isProxyRequired() && !isProxyConfigured()) {
         return Promise.reject(
             new GigaChatConfigError(
                 "GigaChat proxy обязателен: задайте GIGACHAT_PROXY_URL или GIGACHAT_PROXY_HOST/PORT/USERNAME/PASSWORD."
             )
         )
+    }
+
+    try {
+        proxyConfig = getProxyConfig()
+    } catch (error) {
+        return Promise.reject(error)
     }
 
     return new Promise((resolve, reject) => {
@@ -255,10 +438,11 @@ function postText(
                 family: 4,
                 minVersion: "TLSv1.2",
                 maxVersion: "TLSv1.2",
+                ca: getExtraCaCert(),
                 agent: false,
-                createConnection: proxyUrl
+                createConnection: proxyConfig
                     ? (_options, callback) => {
-                        createProxyTlsSocket(target, proxyUrl)
+                        createProxyTlsSocket(target, proxyConfig)
                             .then((socket) => callback(null, socket))
                             .catch((error) => callback(error, null as never))
                         return null
@@ -297,14 +481,7 @@ function postText(
     })
 }
 
-function createProxyTlsSocket(target: URL, proxyUrl: string): Promise<TLSSocket> {
-    let proxy: URL
-    try {
-        proxy = parseProxyUrl(proxyUrl)
-    } catch (error) {
-        return Promise.reject(error)
-    }
-
+function createProxyTlsSocket(target: URL, proxy: ProxyConfig): Promise<TLSSocket> {
     const targetPort = target.port || "443"
     const proxyHeaders: Record<string, string> = {
         Host: `${target.hostname}:${targetPort}`,
@@ -312,7 +489,7 @@ function createProxyTlsSocket(target: URL, proxyUrl: string): Promise<TLSSocket>
 
     if (proxy.username || proxy.password) {
         proxyHeaders["Proxy-Authorization"] = `Basic ${Buffer.from(
-            `${decodeURIComponent(proxy.username)}:${decodeURIComponent(proxy.password)}`
+            `${proxy.username}:${proxy.password}`
         ).toString("base64")}`
     }
 
@@ -338,7 +515,7 @@ function createProxyTlsSocket(target: URL, proxyUrl: string): Promise<TLSSocket>
         }, getRequestTimeoutMs())
         const connectRequest = httpRequest({
             hostname: proxy.hostname,
-            port: proxy.port || "8080",
+            port: proxy.port,
             method: "CONNECT",
             path: `${target.hostname}:${targetPort}`,
             headers: proxyHeaders,
@@ -357,6 +534,7 @@ function createProxyTlsSocket(target: URL, proxyUrl: string): Promise<TLSSocket>
                 servername: target.hostname,
                 minVersion: "TLSv1.2",
                 maxVersion: "TLSv1.2",
+                ca: getExtraCaCert(),
             })
 
             tlsSocket.once("secureConnect", () => finish(null, tlsSocket))
@@ -438,6 +616,9 @@ async function fetchAccessToken() {
             body.toString(),
         )
     } catch (error) {
+        if (error instanceof GigaChatConfigError) {
+            throw error
+        }
         throw toGigaChatConnectionError(error, "OAuth")
     }
 
@@ -486,6 +667,9 @@ export async function createGigaChatCompletion(request: GigaChatChatRequest): Pr
             }),
         )
     } catch (error) {
+        if (error instanceof GigaChatConfigError) {
+            throw error
+        }
         throw toGigaChatConnectionError(error, "API")
     }
 

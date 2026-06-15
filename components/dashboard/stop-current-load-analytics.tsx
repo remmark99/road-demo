@@ -98,8 +98,15 @@ interface HeatmapRow {
     cells: Array<{
         hourKey: string
         hourLabel: string
+        hourTitle: string
         value: number
     }>
+}
+
+interface HeatmapHourColumn {
+    hourKey: string
+    hourLabel: string
+    hourTitle: string
 }
 
 interface LoadSummary {
@@ -123,6 +130,16 @@ const hourlyPeopleConfig = {
 const loadPercentConfig = {
     loadPct: { label: "Индекс загрузки", color: "hsl(152, 57%, 40%)" },
 } satisfies ChartConfig
+
+const HEATMAP_HOUR_COLUMNS: HeatmapHourColumn[] = Array.from({ length: 24 }, (_, index) => {
+    const hour = String(index).padStart(2, "0")
+
+    return {
+        hourKey: hour,
+        hourLabel: String(index + 1).padStart(2, "0"),
+        hourTitle: `${hour}:00-${hour}:59`,
+    }
+})
 
 const numberFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
@@ -359,7 +376,7 @@ function buildLocationSummaries(
 
 function buildHeatmapRows(
     rows: BusynessWindowRow[],
-    hours: HourlyLoadRow[],
+    hours: HeatmapHourColumn[],
     locationIds: string[],
     stopLookup: BusynessStopLookup,
 ): HeatmapRow[] {
@@ -367,7 +384,11 @@ function buildHeatmapRows(
     const cellMap = new Map<string, Map<string, { sum: number; count: number }>>()
 
     for (const row of rows) {
-        const hourKey = floorToHour(row.window_start)
+        const hourOfDay = new Date(row.window_start).getHours()
+        const hour = HEATMAP_HOUR_COLUMNS[hourOfDay]
+        if (!hour) continue
+
+        const hourKey = hour.hourKey
         if (!hourSet.has(hourKey)) continue
 
         const locationCells = cellMap.get(row.location_id) ?? new Map<string, { sum: number; count: number }>()
@@ -391,6 +412,7 @@ function buildHeatmapRows(
                 return {
                     hourKey: hour.hourKey,
                     hourLabel: hour.hourLabel,
+                    hourTitle: hour.hourTitle,
                     value: cell && cell.count > 0 ? Number((cell.sum / cell.count).toFixed(1)) : 0,
                 }
             }),
@@ -611,7 +633,6 @@ export function StopCurrentLoadAnalytics() {
         () => buildSummary(selectedRows, hourlyRows, locationSummaries, displayedRange, expectedLocationCount),
         [selectedRows, hourlyRows, locationSummaries, displayedRange, expectedLocationCount],
     )
-    const heatmapHours = useMemo(() => hourlyRows.slice(-24), [hourlyRows])
     const heatmapLocationIds = useMemo(
         () => locationSummaries
             .slice()
@@ -621,11 +642,17 @@ export function StopCurrentLoadAnalytics() {
         [locationSummaries],
     )
     const heatmapRows = useMemo(
-        () => buildHeatmapRows(selectedRows, heatmapHours, heatmapLocationIds, stopLookup),
-        [selectedRows, heatmapHours, heatmapLocationIds, stopLookup],
+        () => buildHeatmapRows(selectedRows, HEATMAP_HOUR_COLUMNS, heatmapLocationIds, stopLookup),
+        [selectedRows, heatmapLocationIds, stopLookup],
     )
     const heatmapMax = Math.max(...heatmapRows.flatMap((row) => row.cells.map((cell) => cell.value)), 0)
-    const chartTickInterval = Math.max(0, Math.ceil(hourlyRows.length / 12) - 1)
+    const chartUsesDateLabels = displayedRange.to.getTime() - displayedRange.from.getTime() > 36 * 60 * 60 * 1000
+    const chartTickTarget = chartUsesDateLabels ? 8 : 12
+    const chartTickInterval = Math.max(0, Math.ceil(hourlyRows.length / chartTickTarget) - 1)
+    const chartAxisIsCompact = chartUsesDateLabels || hourlyRows.length > 16
+    const chartXAxisHeight = chartAxisIsCompact ? 58 : 30
+    const chartXAxisAngle = chartAxisIsCompact ? -35 : 0
+    const chartXAxisTextAnchor = chartAxisIsCompact ? "end" : "middle"
 
     const allLocationsSelected = effectiveSelectedLocations.length === allLocationIds.length
     const selectedLabel =
@@ -857,6 +884,10 @@ export function StopCurrentLoadAnalytics() {
                                             axisLine={false}
                                             tickMargin={8}
                                             interval={chartTickInterval}
+                                            angle={chartXAxisAngle}
+                                            textAnchor={chartXAxisTextAnchor}
+                                            height={chartXAxisHeight}
+                                            minTickGap={chartAxisIsCompact ? 12 : 6}
                                         />
                                         <YAxis tickLine={false} axisLine={false} tickMargin={8} />
                                         <ChartTooltip content={<ChartTooltipContent />} />
@@ -887,6 +918,10 @@ export function StopCurrentLoadAnalytics() {
                                             axisLine={false}
                                             tickMargin={8}
                                             interval={chartTickInterval}
+                                            angle={chartXAxisAngle}
+                                            textAnchor={chartXAxisTextAnchor}
+                                            height={chartXAxisHeight}
+                                            minTickGap={chartAxisIsCompact ? 12 : 6}
                                         />
                                         <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} />
                                         <ChartTooltip content={<ChartTooltipContent />} />
@@ -910,19 +945,23 @@ export function StopCurrentLoadAnalytics() {
                                 Тепловая карта: час и остановка
                             </CardTitle>
                             <CardDescription>
-                                Среднее наблюдаемое количество людей по остановкам и часам за последние 24 часа выбранного периода
+                                Среднее наблюдаемое количество людей по остановкам и часам суток за выбранный период
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="overflow-x-auto">
                                 <div
-                                    className="grid min-w-[780px] gap-1 text-xs"
-                                    style={{ gridTemplateColumns: `minmax(180px, 1.4fr) repeat(${heatmapHours.length}, minmax(34px, 1fr))` }}
+                                    className="grid min-w-[980px] gap-1 text-xs"
+                                    style={{ gridTemplateColumns: `minmax(180px, 1.4fr) repeat(${HEATMAP_HOUR_COLUMNS.length}, minmax(30px, 1fr))` }}
                                 >
                                     <div className="px-2 py-1 font-medium text-muted-foreground">Остановка</div>
-                                    {heatmapHours.map((hour) => (
-                                        <div key={hour.hourKey} className="px-1 py-1 text-center font-medium text-muted-foreground">
-                                            {hour.hourLabel.replace(":00", "")}
+                                    {HEATMAP_HOUR_COLUMNS.map((hour) => (
+                                        <div
+                                            key={hour.hourKey}
+                                            className="px-1 py-1 text-center font-medium tabular-nums text-muted-foreground"
+                                            title={hour.hourTitle}
+                                        >
+                                            {hour.hourLabel}
                                         </div>
                                     ))}
 
@@ -939,7 +978,7 @@ export function StopCurrentLoadAnalytics() {
                                                         "flex h-9 items-center justify-center rounded-md font-medium tabular-nums",
                                                         getHeatmapCellClass(cell.value, heatmapMax),
                                                     )}
-                                                    title={`${row.label}, ${cell.hourLabel}: ${numberFormat.format(cell.value)} чел.`}
+                                                    title={`${row.label}, ${cell.hourTitle}: в среднем ${numberFormat.format(cell.value)} чел.`}
                                                 >
                                                     {cell.value > 0 ? numberFormat.format(cell.value) : "-"}
                                                 </div>

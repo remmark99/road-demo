@@ -62,6 +62,7 @@ interface StopConditionAnalyticsData {
     fallbackRange: RangeBounds | null
     truncated: boolean
     limit: number
+    sourceUnavailable: boolean
 }
 
 interface StopTrashSummary {
@@ -94,6 +95,8 @@ const stopConfig = {
     maxFill: { label: "Пик заполнения", color: "hsl(0, 84%, 60%)" },
 } satisfies ChartConfig
 
+const TRASH_ATTENTION_THRESHOLD = 70
+const TRASH_CRITICAL_THRESHOLD = 90
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
 const numberFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
 
@@ -178,8 +181,8 @@ function formatFreshness(iso: string | null) {
 }
 
 function getTrashStatus(maxFill: number): ConditionStatus {
-    if (maxFill >= 90) return "critical"
-    if (maxFill >= 70) return "attention"
+    if (maxFill >= TRASH_CRITICAL_THRESHOLD) return "critical"
+    if (maxFill >= TRASH_ATTENTION_THRESHOLD) return "attention"
     return "ok"
 }
 
@@ -219,6 +222,18 @@ async function fetchStopConditionAnalyticsData(range: RangeBounds): Promise<Stop
     let displayedRange = range
     let fallbackRange: RangeBounds | null = null
 
+    if (initialConditionResult.sourceUnavailable) {
+        return {
+            stops,
+            rows: [],
+            displayedRange,
+            fallbackRange,
+            truncated: false,
+            limit: initialConditionResult.limit,
+            sourceUnavailable: true,
+        }
+    }
+
     if (initialConditionResult.rows.length === 0) {
         const latestWindow = await fetchLatestStopConditionWindow()
 
@@ -243,6 +258,7 @@ async function fetchStopConditionAnalyticsData(range: RangeBounds): Promise<Stop
         fallbackRange,
         truncated: conditionResult.truncated,
         limit: conditionResult.limit,
+        sourceUnavailable: conditionResult.sourceUnavailable,
     }
 }
 
@@ -431,17 +447,26 @@ export function StopConditionCurrentAnalytics() {
         }
     }, [range])
 
-    const stopSummaries = useMemo(
+    const allStopSummaries = useMemo(
         () => data ? buildStopTrashSummaries(data) : [],
         [data],
     )
-    const hourlyRows = useMemo(
-        () => data ? buildHourlyTrashRows(data.rows) : [],
-        [data],
+    const stopSummaries = useMemo(
+        () => allStopSummaries.filter((stop) => stop.maxFill >= TRASH_ATTENTION_THRESHOLD),
+        [allStopSummaries],
     )
-    const latestAt = stopSummaries
-        .map((stop) => stop.latestAt)
-        .filter((value): value is string => Boolean(value))
+    const problemRows = useMemo(() => {
+        if (!data) return []
+
+        const problemLocationIds = new Set(stopSummaries.map((stop) => stop.locationId))
+        return data.rows.filter((row) => problemLocationIds.has(row.location_id))
+    }, [data, stopSummaries])
+    const hourlyRows = useMemo(
+        () => buildHourlyTrashRows(problemRows),
+        [problemRows],
+    )
+    const latestAt = (data?.rows ?? [])
+        .map((row) => row.window_start)
         .sort((a, b) => b.localeCompare(a))[0] ?? null
     const averageFill = stopSummaries.length > 0
         ? Number((stopSummaries.reduce((sum, stop) => sum + stop.avgFill, 0) / stopSummaries.length).toFixed(1))
@@ -469,7 +494,7 @@ export function StopConditionCurrentAnalytics() {
                         </Badge>
                     </div>
                     <p className="max-w-3xl text-sm text-muted-foreground">
-                        Текущая аналитика по заполнению урн на остановках: средний уровень, пики и точки для первоочередной уборки.
+                        Текущая аналитика по переполненным урнам на остановках: средний уровень, пики и точки для первоочередной уборки.
                     </p>
                 </div>
                 <div className="text-sm text-muted-foreground lg:text-right">
@@ -496,6 +521,18 @@ export function StopConditionCurrentAnalytics() {
 
             {loading && !data ? (
                 <LoadingGrid />
+            ) : data?.sourceUnavailable ? (
+                <Card className="border-amber-500/30 bg-amber-500/[0.05]">
+                    <CardContent className="flex items-start gap-3 p-4">
+                        <AlertCircle className="mt-0.5 h-5 w-5 text-amber-500" />
+                        <div>
+                            <p className="font-medium text-amber-700 dark:text-amber-300">Источник данных по урнам пока не подключен</p>
+                            <p className="text-sm text-muted-foreground">
+                                Текущий режим ожидает агрегированные окна переполненности урн. После применения SQL-контракта и запуска сбора экран начнет показывать проблемные точки уборки.
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
             ) : error ? (
                 <Card className="border-red-500/30 bg-red-500/[0.04]">
                     <CardContent className="flex items-start gap-3 p-4">
@@ -520,38 +557,52 @@ export function StopConditionCurrentAnalytics() {
                         </div>
                     </CardContent>
                 </Card>
+            ) : data && stopSummaries.length === 0 ? (
+                <Card className="border-emerald-500/30 bg-emerald-500/[0.04]">
+                    <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+                        <div className="rounded-full bg-emerald-500/10 p-4">
+                            <CheckCircle2 className="h-8 w-8 text-emerald-600 dark:text-emerald-300" />
+                        </div>
+                        <div className="space-y-1">
+                            <h3 className="text-lg font-semibold">Переполненных урн нет</h3>
+                            <p className="max-w-md text-sm text-muted-foreground">
+                                За выбранный период все полученные окна ниже порога {TRASH_ATTENTION_THRESHOLD}%.
+                            </p>
+                        </div>
+                    </CardContent>
+                </Card>
             ) : data ? (
                 <>
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                         <KpiCard
-                            title="Остановок с данными"
+                            title="Остановок с переполнением"
                             value={integerFormat.format(stopSummaries.length)}
                             caption="за выбранный период"
-                            detail={`${integerFormat.format(data.rows.length)} окон наблюдения`}
+                            detail={`${integerFormat.format(problemRows.length)} проблемных окон из ${integerFormat.format(data.rows.length)}`}
                             icon={Trash2}
                             tone="normal"
                         />
                         <KpiCard
                             title="Среднее заполнение"
                             value={`${numberFormat.format(averageFill)}%`}
-                            caption="по остановкам с данными"
-                            detail="взвешено по числу кадров"
+                            caption="по проблемным остановкам"
+                            detail={`порог включения от ${TRASH_ATTENTION_THRESHOLD}%`}
                             icon={CheckCircle2}
-                            tone={averageFill >= 70 ? "attention" : "success"}
+                            tone={averageFill >= TRASH_ATTENTION_THRESHOLD ? "attention" : "success"}
                         />
                         <KpiCard
                             title="Пиковое заполнение"
                             value={`${integerFormat.format(maxFill)}%`}
                             caption="максимум за период"
-                            detail={maxFill >= 90 ? "есть критические пики" : "без критического пика"}
+                            detail={maxFill >= TRASH_CRITICAL_THRESHOLD ? "есть критические пики" : "без критического пика"}
                             icon={TriangleAlert}
-                            tone={maxFill >= 90 ? "high" : maxFill >= 70 ? "attention" : "success"}
+                            tone={maxFill >= TRASH_CRITICAL_THRESHOLD ? "high" : maxFill >= TRASH_ATTENTION_THRESHOLD ? "attention" : "success"}
                         />
                         <KpiCard
                             title="Требуют внимания"
                             value={integerFormat.format(criticalStops + attentionStops)}
                             caption={`${integerFormat.format(criticalStops)} критично / ${integerFormat.format(attentionStops)} внимание`}
-                            detail="порог внимания от 70%, критично от 90%"
+                            detail={`порог внимания от ${TRASH_ATTENTION_THRESHOLD}%, критично от ${TRASH_CRITICAL_THRESHOLD}%`}
                             icon={TimerReset}
                             tone={criticalStops > 0 ? "high" : attentionStops > 0 ? "attention" : "success"}
                         />
@@ -565,7 +616,7 @@ export function StopConditionCurrentAnalytics() {
                                     Заполнение по часам
                                 </CardTitle>
                                 <CardDescription>
-                                    Среднее и максимальное заполнение урн в выбранном периоде
+                                    Среднее и максимальное заполнение проблемных урн в выбранном периоде
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -589,7 +640,7 @@ export function StopConditionCurrentAnalytics() {
                                     Точки уборки
                                 </CardTitle>
                                 <CardDescription>
-                                    Остановки с наибольшим пиковым заполнением
+                                    Остановки с пиковым заполнением от {TRASH_ATTENTION_THRESHOLD}%
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -622,7 +673,7 @@ export function StopConditionCurrentAnalytics() {
                         <CardHeader>
                             <CardTitle className="text-base">Сводка по остановкам</CardTitle>
                             <CardDescription>
-                                Уровень заполнения урн, статус и последние данные по каждой остановке
+                                Только остановки с пиковым заполнением урн от {TRASH_ATTENTION_THRESHOLD}%
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
