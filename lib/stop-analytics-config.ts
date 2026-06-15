@@ -182,6 +182,7 @@ export const STOP_SAFETY_ALERT_TYPES = [
     "lying_person",
     "smoking",
     "dogs_without_people",
+    "bin_full",
 ] as const
 
 export type StopSafetyAlertType = (typeof STOP_SAFETY_ALERT_TYPES)[number]
@@ -190,4 +191,5 @@ export const STOP_SAFETY_ALERT_LABELS: Record<StopSafetyAlertType, string> = {
     lying_person: "Лежачий человек",
     smoking: "Курение",
     dogs_without_people: "Бездомные собаки",
+    bin_full: "Переполненная урна",
 }

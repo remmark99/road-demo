@@ -197,7 +197,8 @@ export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: str
             'smoking',
             'lying_person',
             'abandoned_object',
-            'dogs_without_people'
+            'dogs_without_people',
+            'bin_full'
         ]
     }
 }
@@ -431,6 +432,12 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         label: 'Бездомные собаки',
         icon: 'dog',
         color: 'text-amber-500 bg-amber-500/20 border-amber-500/30',
+        category: 'bus_stop_monitoring'
+    },
+    bin_full: {
+        label: 'Переполненная урна',
+        icon: 'trash-2',
+        color: 'text-lime-500 bg-lime-500/20 border-lime-500/30',
         category: 'bus_stop_monitoring'
     }
 }
