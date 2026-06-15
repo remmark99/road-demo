@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
 import { fetchAlerts, ALERT_TYPE_CONFIG, ALERT_CATEGORIES, MODULE_MAP } from "@/lib/api/alerts"
 import { fetchCameras } from "@/lib/api/cameras"
+import { STOP_TRASH_OVERFLOW_ALERT_TYPES } from "@/lib/api/stop-condition-windows"
 import {
   fetchControllerAlerts,
   getSensorLabel,
@@ -78,6 +79,8 @@ import {
 } from "lucide-react"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
+const TRASH_OVERFLOW_FILTER_TYPES = [...STOP_TRASH_OVERFLOW_ALERT_TYPES]
+const TRASH_OVERFLOW_FILTER_KEY = "trash-overflow"
 
 const alertIcons: Record<string, LucideIcon> = {
   snowplow: Truck,
@@ -127,6 +130,55 @@ const alertIcons: Record<string, LucideIcon> = {
   lying_person: PersonStanding,
   abandoned_object: PackageSearch,
   dogs_without_people: Dog,
+}
+
+type AlertTypeFilterButton = {
+  key: string
+  types: string[]
+  label: string
+  Icon: LucideIcon
+}
+
+function isTrashOverflowType(type: string) {
+  return TRASH_OVERFLOW_FILTER_TYPES.includes(type as typeof STOP_TRASH_OVERFLOW_ALERT_TYPES[number])
+}
+
+function buildAlertTypeFilterButtons(types: string[], fallbackIcon: LucideIcon): AlertTypeFilterButton[] {
+  const buttons: AlertTypeFilterButton[] = []
+  let trashOverflowAdded = false
+
+  for (const type of types) {
+    if (isTrashOverflowType(type)) {
+      if (trashOverflowAdded) continue
+
+      const groupedTypes = TRASH_OVERFLOW_FILTER_TYPES.filter((candidate) =>
+        types.includes(candidate)
+      )
+      const primaryType = groupedTypes[0] ?? type
+      const config = ALERT_TYPE_CONFIG[primaryType]
+
+      buttons.push({
+        key: TRASH_OVERFLOW_FILTER_KEY,
+        types: groupedTypes.length > 0 ? groupedTypes : [type],
+        label: config?.label ?? "Переполненная урна",
+        Icon: alertIcons[primaryType] || fallbackIcon,
+      })
+      trashOverflowAdded = true
+      continue
+    }
+
+    const config = ALERT_TYPE_CONFIG[type]
+    if (!config) continue
+
+    buttons.push({
+      key: type,
+      types: [type],
+      label: config.label,
+      Icon: alertIcons[type] || fallbackIcon,
+    })
+  }
+
+  return buttons
 }
 
 type DemoAlertSeed = {
@@ -496,15 +548,22 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
     return cam ? cam.name : `Камера #${index}`
   }
 
-  const toggleType = (type: string) => {
+  const toggleTypes = (types: readonly string[]) => {
     setLoading(true)
     setPage(0)
-    if (repairTypes.includes(type)) {
+    if (types.some((type) => repairTypes.includes(type))) {
       setRepairShortcutSelected(false)
     }
+    const typeSet = new Set(types)
     setSelectedTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+      types.some((type) => prev.includes(type))
+        ? prev.filter((type) => !typeSet.has(type))
+        : Array.from(new Set([...prev, ...types]))
     )
+  }
+
+  const toggleType = (type: string) => {
+    toggleTypes([type])
   }
 
   const toggleRepairShortcut = () => {
@@ -848,21 +907,20 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                   Остановочные пункты
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {ALERT_CATEGORIES.bus_stop_monitoring.types.map((type) => {
-                    const config = ALERT_TYPE_CONFIG[type]
-                    if (!config) return null
-                    const Icon = alertIcons[type] || BusFront
-                    const isSelected = selectedTypes.includes(type)
+                  {buildAlertTypeFilterButtons(ALERT_CATEGORIES.bus_stop_monitoring.types, BusFront).map((filter) => {
+                    const isSelected = filter.types.some((type) => selectedTypes.includes(type))
+                    const Icon = filter.Icon
+
                     return (
                       <Button
-                        key={type}
+                        key={filter.key}
                         variant={isSelected ? "default" : "outline"}
                         size="sm"
                         className="gap-2"
-                        onClick={() => toggleType(type)}
+                        onClick={() => toggleTypes(filter.types)}
                       >
                         <Icon className="h-3.5 w-3.5" />
-                        {config.label}
+                        {filter.label}
                       </Button>
                     )
                   })}

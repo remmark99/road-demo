@@ -245,7 +245,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "road_repair", "city"]
-const STOPS_DASHBOARDS = ["stop_kpi", "stop_districts", "stop_passenger", "stop_security", "stop_vandalism", "stop_condition"]
+const STOPS_DASHBOARDS = ["stop_kpi", "stop_passenger", "stop_security", "stop_condition", "stop_districts", "stop_vandalism"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]
 const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]
