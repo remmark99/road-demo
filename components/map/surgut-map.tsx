@@ -6,6 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
 import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
+import { fetchBusStopHeatmapData, type BusStopHeatmapResult } from "@/lib/api/bus-stop-heatmap"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
 import { fetchAnchorsGeoJSON } from "@/lib/api/anchors"
 import { SHORELINE_GEOJSON } from "@/lib/mock/shoreline"
@@ -204,11 +205,13 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [busStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
   const [parksData, setParksData] = useState<any>(null)
   const [anchorsData, setAnchorsData] = useState<AnchorsGeoJSON | null>(null)
+  const [heatmapData, setHeatmapData] = useState<BusStopHeatmapResult | null>(null)
 
   // Filter States
   const [cameraFilters, setCameraFilters] = useState({ online: true, offline: false })
   const [busStopFilters, setBusStopFilters] = useState({ online: true, offline: false, incidents: true, unequipped: true })
   const [showClusters, setShowClusters] = useState(true)
+  const [showHeatmap, setShowHeatmap] = useState(false)
 
   const [selectedContractor, setSelectedContractor] = useState<string>("all")
 
@@ -1122,6 +1125,66 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     })
   }, [isDark])
 
+  // Add heatmap layer for bus stop alert density
+  const addBusStopHeatmap = useCallback(() => {
+    if (!map.current) return
+
+    const sourceId = "bus-stops-heatmap"
+    if (map.current.getSource(sourceId)) return
+
+    map.current.addSource(sourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    })
+
+    // Heatmap layer — rendered below bus stop markers
+    map.current.addLayer({
+      id: "bus-stops-heatmap-layer",
+      type: "heatmap",
+      source: sourceId,
+      paint: {
+        // Weight based on alertWeight property (0–1)
+        "heatmap-weight": [
+          "interpolate", ["linear"],
+          ["get", "alertWeight"],
+          0, 0.1,
+          0.5, 0.5,
+          1, 1
+        ],
+        // Intensity ramps up with zoom
+        "heatmap-intensity": [
+          "interpolate", ["linear"], ["zoom"],
+          10, 0.8,
+          15, 1.5,
+          18, 2
+        ],
+        // Color ramp: transparent → green → yellow → orange → red
+        "heatmap-color": [
+          "interpolate", ["linear"],
+          ["heatmap-density"],
+          0, "rgba(0, 0, 0, 0)",
+          0.15, "rgba(74, 222, 128, 0.4)",   // green
+          0.35, "rgba(250, 204, 21, 0.6)",   // yellow
+          0.55, "rgba(251, 146, 60, 0.7)",   // orange
+          0.8, "rgba(239, 68, 68, 0.85)",    // red
+          1, "rgba(185, 28, 28, 0.95)"       // dark red
+        ],
+        // Radius grows with zoom for nice blending
+        "heatmap-radius": [
+          "interpolate", ["linear"], ["zoom"],
+          10, 30,
+          13, 50,
+          15, 80,
+          18, 120
+        ],
+        "heatmap-opacity": 0.85
+      },
+      layout: {
+        "visibility": "none"
+      }
+    }, "bus-stops-clusters") // Insert below bus stop clusters
+  }, [isDark])
+
   const addShoreline = useCallback(() => {
     if (!map.current) return
 
@@ -1164,8 +1227,10 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
     if (hasModule('stops')) {
       fetchBusStopsGeoJSON().then(setBusStopsData)
+      fetchBusStopHeatmapData(24).then(setHeatmapData)
     } else {
       setBusStopsData({ type: "FeatureCollection", features: [] })
+      setHeatmapData(null)
     }
 
     if (hasModule('parks')) {
@@ -1234,10 +1299,11 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       addAnchors()
       addRoads()
       addBusStops()
+      addBusStopHeatmap()
       addCameraLayers()
       addAnchors()
     })
-  }, [isDark, addRoads, addBusStops, addCameraLayers, addParks, addAnchors, addShoreline, mapLoaded])
+  }, [isDark, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline, mapLoaded])
 
   // Initialize map - this should only run once
   useEffect(() => {
@@ -1296,6 +1362,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     addAnchors()
     addRoads()
     addBusStops()
+    addBusStopHeatmap()
     addCameraLayers()
     addAnchors()
 
@@ -1318,7 +1385,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         map.current?.off('click', clickHandler)
       }
     }
-  }, [mapLoaded, addRoads, addBusStops, addCameraLayers, addParks, addAnchors, addShoreline])
+  }, [mapLoaded, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline])
 
   // Sync parks data to source
   useEffect(() => {
@@ -1588,6 +1655,54 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     }
   }, [busStopsData, cameras, mapLoaded, addBusStops, busStopFilters])
 
+  // Sync heatmap data to the GeoJSON source
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !heatmapData || !busStopsData) return
+    const source = map.current.getSource("bus-stops-heatmap") as maplibregl.GeoJSONSource
+    if (!source) return
+
+    const maxCount = heatmapData.maxAlertCount || 1
+
+    // Build GeoJSON features: one point per bus stop with alertWeight
+    const features = busStopsData.features
+      .map(f => {
+        const entry = heatmapData.entries.find(e => e.busStopId === f.properties.id)
+        if (!entry) return null
+        return {
+          type: "Feature" as const,
+          properties: {
+            busStopId: f.properties.id,
+            name: f.properties.name,
+            alertCount: entry.alertCount,
+            alertWeight: entry.alertCount / maxCount, // 0–1 normalized
+            maxSeverity: entry.maxSeverity,
+          },
+          geometry: f.geometry,
+        }
+      })
+      .filter(Boolean)
+
+    source.setData({ type: "FeatureCollection", features: features as any })
+
+    // Toggle visibility
+    if (map.current.getLayer("bus-stops-heatmap-layer")) {
+      map.current.setLayoutProperty(
+        "bus-stops-heatmap-layer",
+        "visibility",
+        showHeatmap ? "visible" : "none"
+      )
+    }
+  }, [heatmapData, busStopsData, mapLoaded, showHeatmap, addBusStopHeatmap])
+
+  // Auto-refresh heatmap data every 5 minutes
+  useEffect(() => {
+    if (!hasModule('stops') || !showHeatmap) return
+    const interval = setInterval(() => {
+      fetchBusStopHeatmapData(24).then(setHeatmapData)
+    }, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [hasModule, showHeatmap])
+
   // Update bus stops visibility independently of full re-add
   useEffect(() => {
     if (!map.current || !mapLoaded) return
@@ -1776,6 +1891,15 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                   <Checkbox id="bus-unequipped" checked={busStopFilters.unequipped} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, unequipped: !!checked }))} />
                   <Label htmlFor="bus-unequipped" className="text-sm cursor-pointer">Без оборудования</Label>
                 </div>
+                <div className="flex items-center space-x-2 pt-1 border-t border-border/50">
+                  <Checkbox id="bus-heatmap" checked={showHeatmap} onCheckedChange={(checked) => setShowHeatmap(!!checked)} />
+                  <Label htmlFor="bus-heatmap" className="text-sm cursor-pointer font-medium">🔥 Тепловая карта</Label>
+                </div>
+                {showHeatmap && heatmapData && (
+                  <div className="text-xs text-muted-foreground pl-6 -mt-1">
+                    {heatmapData.totalAlerts} событий за 24ч
+                  </div>
+                )}
               </div>
             )}
           </CardContent>

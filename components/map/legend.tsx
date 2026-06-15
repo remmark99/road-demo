@@ -185,6 +185,22 @@ export function Legend() {
                   <span className="text-muted-foreground">Без оборудования</span>
                 </div>
               </div>
+              {/* Heatmap gradient legend */}
+              <div className="mt-3 pt-2 border-t border-border/50">
+                <div className="text-xs font-medium mb-1.5 flex items-center gap-1.5">
+                  🔥 Тепловая карта
+                </div>
+                <div
+                  className="h-2 rounded-full w-full"
+                  style={{
+                    background: "linear-gradient(to right, #4ade80, #facc15, #fb923c, #ef4444, #b91c1c)"
+                  }}
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
+                  <span>Мало</span>
+                  <span>Много событий</span>
+                </div>
+              </div>
             </div>
             <Separator />
           </>
