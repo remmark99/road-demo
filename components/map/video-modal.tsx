@@ -318,9 +318,10 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
                 const config = ALERT_TYPE_CONFIG[alert.alert_type] || ALERT_TYPE_CONFIG.canny
                 const Icon = alertIcons[alert.alert_type] || Snowflake
                 return (
-                  <div
+                  <Link
                     key={alert.id}
-                    className="flex items-center gap-3 p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors overflow-hidden"
+                    href={`/notifications?camera=${camera.cameraIndex}&alertId=${alert.id}`}
+                    className="flex items-center gap-3 p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors overflow-hidden cursor-pointer"
                   >
                     <div className={`p-1.5 rounded shrink-0 ${config.color}`}>
                       <Icon className="h-3.5 w-3.5" />
@@ -333,7 +334,7 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
                       <Clock className="h-3 w-3" />
                       {formatTimeAgo(alert.timestamp)}
                     </div>
-                  </div>
+                  </Link>
                 )
               })}
             </div>

@@ -238,17 +238,7 @@ export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: str
             'lying_person',
             'abandoned_object',
             'dogs_without_people',
-            'trash_overflow',
-            'trash_bin_overflow',
-            'bin_overflow',
-            'bin_full',
-            'garbage_overflow',
-            'stop_trash_overflow',
-            'stop_bin_overflow',
-            'overflowing_trash',
-            'overflowing_bin',
-            'trash_full',
-            'park_trash_overflow'
+            'bin_full'
         ]
     }
 }
@@ -484,64 +474,10 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         color: 'text-amber-500 bg-amber-500/20 border-amber-500/30',
         category: 'bus_stop_monitoring'
     },
-    trash_overflow: {
-        label: 'Переполненная урна',
-        icon: 'trash-2',
-        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
-        category: 'bus_stop_monitoring'
-    },
-    trash_bin_overflow: {
-        label: 'Переполненная урна',
-        icon: 'trash-2',
-        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
-        category: 'bus_stop_monitoring'
-    },
-    bin_overflow: {
-        label: 'Переполненная урна',
-        icon: 'trash-2',
-        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
-        category: 'bus_stop_monitoring'
-    },
     bin_full: {
         label: 'Переполненная урна',
         icon: 'trash-2',
-        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
-        category: 'bus_stop_monitoring'
-    },
-    garbage_overflow: {
-        label: 'Переполненная урна',
-        icon: 'trash-2',
-        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
-        category: 'bus_stop_monitoring'
-    },
-    stop_trash_overflow: {
-        label: 'Переполненная урна',
-        icon: 'trash-2',
-        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
-        category: 'bus_stop_monitoring'
-    },
-    stop_bin_overflow: {
-        label: 'Переполненная урна',
-        icon: 'trash-2',
-        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
-        category: 'bus_stop_monitoring'
-    },
-    overflowing_trash: {
-        label: 'Переполненная урна',
-        icon: 'trash-2',
-        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
-        category: 'bus_stop_monitoring'
-    },
-    overflowing_bin: {
-        label: 'Переполненная урна',
-        icon: 'trash-2',
-        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
-        category: 'bus_stop_monitoring'
-    },
-    trash_full: {
-        label: 'Переполненная урна',
-        icon: 'trash-2',
-        color: 'text-orange-500 bg-orange-500/20 border-orange-500/30',
+        color: 'text-lime-500 bg-lime-500/20 border-lime-500/30',
         category: 'bus_stop_monitoring'
     }
 }

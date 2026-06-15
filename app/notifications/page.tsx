@@ -465,6 +465,8 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
     () => getQueryNumberValues(searchParams, ["camera", "cameras"]),
     [searchParams]
   )
+  const initialCamera = searchParams.get("camera")
+  const initialAlertId = searchParams.get("alertId")
   const { hasModule } = useModuleAccess()
   const hasRoads = hasModule("roads")
   const hasShore = hasModule("shore")
@@ -480,7 +482,19 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(25)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(initialAlertId)
+
+  useEffect(() => {
+    if (initialAlertId && !loading) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`alert-${initialAlertId}`)
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "center" })
+        }
+      }, 150)
+      return () => clearTimeout(timer)
+    }
+  }, [initialAlertId, loading])
 
   const allowedTypes = useMemo(() => {
     const types: string[] = []
@@ -933,17 +947,23 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
 
           {/* Camera filter */}
           <div>
-            <div className="text-sm text-muted-foreground mb-2">Камеры</div>
-            <div className="flex flex-wrap gap-2">
-              {onlineCameras.slice(0, 10).map((camera) => {
+            <div className="text-sm text-muted-foreground mb-2">
+              Камеры
+              <span className="ml-2 text-xs opacity-60">
+                ({cameras.length})
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
+              {cameras.map((camera) => {
                 const isSelected = selectedCameras.includes(camera.cameraIndex)
+                const isOffline = camera.status !== "online"
                 return (
                   <Tooltip key={camera.cameraIndex}>
                     <TooltipTrigger asChild>
                       <Button
                         variant={isSelected ? "default" : "outline"}
                         size="sm"
-                        className="gap-1.5"
+                        className={`gap-1.5 ${isOffline && !isSelected ? "opacity-50" : ""}`}
                         onClick={() => toggleCamera(camera.cameraIndex)}
                       >
                         <CameraIcon className="h-3 w-3" />
@@ -958,15 +978,13 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                       ) : (
                         <p className="text-xs opacity-80">Без описания</p>
                       )}
+                      {isOffline && (
+                        <p className="text-xs text-destructive">Оффлайн</p>
+                      )}
                     </TooltipContent>
                   </Tooltip>
                 )
               })}
-              {onlineCameras.length > 10 && (
-                <span className="text-xs text-muted-foreground self-center ml-2">
-                  +{onlineCameras.length - 10} камер
-                </span>
-              )}
             </div>
             {selectedCameras.length > 0 && (
               <div className="mt-2 text-xs text-muted-foreground">
@@ -1025,13 +1043,19 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
             const Icon = alertIcons[alert.alert_type] || Snowflake
             const demoAlert = isDemoAlert(alert)
             const isExpanded = expandedId === alert.id
+            const isHighlighted = alert.id === initialAlertId
 
             return (
               <Card
+                id={`alert-${alert.id}`}
                 key={alert.id}
-                className={`transition-colors hover:border-primary/50 ${
+                className={`transition-all duration-300 hover:border-primary/50 ${
                   demoAlert ? "cursor-default" : "cursor-pointer"
-                } ${isExpanded ? "border-primary" : ""}`}
+                } ${isExpanded ? "border-primary" : ""} ${
+                  isHighlighted
+                    ? "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-[0_0_15px_rgba(59,130,246,0.35)] dark:shadow-[0_0_15px_rgba(255,255,255,0.15)] border-primary"
+                    : ""
+                }`}
                 onClick={() =>
                   demoAlert ? undefined : setExpandedId(isExpanded ? null : alert.id)
                 }
