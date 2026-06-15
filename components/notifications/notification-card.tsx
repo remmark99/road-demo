@@ -101,16 +101,16 @@ export function NotificationCard({ alert, isExpanded, onToggle }: NotificationCa
     )}>
       <CardHeader className="pb-2" onClick={onToggle}>
         <div className="flex items-start justify-between">
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-3 min-w-0 flex-1">
             <div className={cn(
-              "p-2 rounded-lg border",
+              "p-2 rounded-lg border shrink-0",
               config.className
             )}>
               <Icon className="h-5 w-5" />
             </div>
-            <div>
-              <CardTitle className="text-base">{config.label}</CardTitle>
-              <CardDescription className="mt-1">
+            <div className="min-w-0 flex-1">
+              <CardTitle className="text-base truncate">{config.label}</CardTitle>
+              <CardDescription className="mt-1 line-clamp-2 break-words">
                 {alert.message}
               </CardDescription>
             </div>
