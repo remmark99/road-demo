@@ -8,11 +8,12 @@ import {
     YAxis,
 } from "recharts"
 import {
-    BarChart3,
-    CheckCircle2,
+    CalendarClock,
+    Hammer,
     Map,
-    MapPin,
+    ShieldAlert,
     Target,
+    type LucideIcon,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -31,19 +32,91 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { STOP_DISTRICT_COVERAGE_ESTIMATES } from "@/lib/stop-analytics-config"
+import { STOP_EQUIPMENT_PLAN_TARGET } from "@/lib/stop-analytics-config"
 import { cn } from "@/lib/utils"
 
-type KpiTone = "normal" | "success" | "attention"
+type KpiTone = "normal" | "attention" | "danger"
+type DistrictPriority = "Критический" | "Высокий" | "Средний"
 
-const districtCoverageConfig = {
-    coverageMidPct: { label: "Покрытие", color: "hsl(221, 83%, 53%)" },
+interface PlannedDistrictEvent {
+    districtName: string
+    vandalismEvents: number
+    safetyEvents: number
+    conditionEvents: number
+    priority: DistrictPriority
+    nextWindow: string
+    focus: string
+    action: string
+}
+
+const eventForecastConfig = {
+    vandalismEvents: { label: "Вандализм", color: "hsl(0, 84%, 60%)" },
+    safetyEvents: { label: "Безопасность", color: "hsl(38, 92%, 50%)" },
+    conditionEvents: { label: "Состояние", color: "hsl(199, 89%, 48%)" },
 } satisfies ChartConfig
 
-const districtStopsConfig = {
-    connectedStops: { label: "Подключено", color: "hsl(160, 84%, 39%)" },
-    estimatedRemainingMin: { label: "Осталось минимум", color: "hsl(38, 92%, 50%)" },
-} satisfies ChartConfig
+const plannedDistrictEvents: PlannedDistrictEvent[] = [
+    {
+        districtName: "10 микрорайон",
+        vandalismEvents: 18,
+        safetyEvents: 11,
+        conditionEvents: 8,
+        priority: "Критический",
+        nextWindow: "июль 2026",
+        focus: "разбитые стекла, граффити, ночные группы",
+        action: "Антивандальный обход, проверка камер после 22:00, заявка на усиление освещения",
+    },
+    {
+        districtName: "24 микрорайон",
+        vandalismEvents: 14,
+        safetyEvents: 13,
+        conditionEvents: 10,
+        priority: "Критический",
+        nextWindow: "июль 2026",
+        focus: "урны, остановочные павильоны, скопления у павильонов",
+        action: "Совместный выезд эксплуатации и безопасности с фиксацией повторных точек",
+    },
+    {
+        districtName: "20А микрорайон",
+        vandalismEvents: 12,
+        safetyEvents: 7,
+        conditionEvents: 6,
+        priority: "Высокий",
+        nextWindow: "август 2026",
+        focus: "повреждение конструкций, курение, мусор у павильона",
+        action: "Поставить район в еженедельный список осмотра и добавить вечерний контроль",
+    },
+    {
+        districtName: "31 микрорайон",
+        vandalismEvents: 9,
+        safetyEvents: 8,
+        conditionEvents: 5,
+        priority: "Высокий",
+        nextWindow: "август 2026",
+        focus: "конфликты у остановок, оставленные предметы, загрязнение",
+        action: "Подготовить сценарии алертов по безопасности и регламент реакции диспетчера",
+    },
+    {
+        districtName: "Старый Сургут",
+        vandalismEvents: 7,
+        safetyEvents: 5,
+        conditionEvents: 4,
+        priority: "Средний",
+        nextWindow: "сентябрь 2026",
+        focus: "точечные повреждения, сезонная нагрузка, туристический поток",
+        action: "Добавить район в календарь профилактических осмотров перед пиковыми днями",
+    },
+    {
+        districtName: "Парк За Саймой",
+        vandalismEvents: 6,
+        safetyEvents: 9,
+        conditionEvents: 7,
+        priority: "Высокий",
+        nextWindow: "сентябрь 2026",
+        focus: "вечерняя нагрузка, безопасность пассажиров, состояние урн",
+        action: "Согласовать вечерние проверки и отдельную метку риска для остановок у парка",
+    },
+]
 
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
 
@@ -59,19 +132,20 @@ function KpiCard({
     value: string
     caption: string
     detail: string
-    icon: typeof Map
+    icon: LucideIcon
     tone?: KpiTone
 }) {
     return (
         <Card className="overflow-hidden">
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
-                <div className="space-y-1">
+                <div className="min-w-0 space-y-1">
                     <CardDescription>{title}</CardDescription>
                     <CardTitle
                         className={cn(
-                            "text-3xl font-semibold tabular-nums",
-                            tone === "success" && "text-emerald-600 dark:text-emerald-400",
+                            "font-semibold tabular-nums",
+                            value.length > 8 ? "text-2xl leading-tight" : "text-3xl",
                             tone === "attention" && "text-amber-600 dark:text-amber-400",
+                            tone === "danger" && "text-red-600 dark:text-red-400",
                         )}
                     >
                         {value}
@@ -80,8 +154,8 @@ function KpiCard({
                 <div
                     className={cn(
                         "rounded-md border p-2",
-                        tone === "success" && "border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300",
                         tone === "attention" && "border-amber-500/20 bg-amber-500/10 text-amber-600 dark:text-amber-300",
+                        tone === "danger" && "border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-300",
                         tone === "normal" && "border-primary/20 bg-primary/10 text-primary",
                     )}
                 >
@@ -96,23 +170,32 @@ function KpiCard({
     )
 }
 
+function getPriorityClass(priority: DistrictPriority) {
+    if (priority === "Критический") {
+        return "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
+    }
+
+    if (priority === "Высокий") {
+        return "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+    }
+
+    return "border-primary/30 bg-primary/10 text-primary"
+}
+
 export function StopDistrictPlanAnalytics() {
-    const districtRows = STOP_DISTRICT_COVERAGE_ESTIMATES
+    const districtRows = plannedDistrictEvents
         .map((district) => ({
             ...district,
-            estimatedRemainingMin: Math.max(0, district.estimatedTotalMin - district.connectedStops),
+            totalEvents: district.vandalismEvents + district.safetyEvents + district.conditionEvents,
         }))
-        .sort((a, b) => a.coverageMidPct - b.coverageMidPct || a.districtName.localeCompare(b.districtName, "ru"))
-    const districtCount = districtRows.length
-    const connectedStops = districtRows.reduce((sum, district) => sum + district.connectedStops, 0)
-    const estimatedMin = districtRows.reduce((sum, district) => sum + district.estimatedTotalMin, 0)
-    const estimatedMax = districtRows.reduce((sum, district) => sum + district.estimatedTotalMax, 0)
-    const estimatedLabel = estimatedMin === estimatedMax
-        ? integerFormat.format(estimatedMin)
-        : `${integerFormat.format(estimatedMin)}-${integerFormat.format(estimatedMax)}`
-    const minCoverage = Math.floor((connectedStops / estimatedMax) * 100)
-    const maxCoverage = Math.round((connectedStops / estimatedMin) * 100)
-    const weakestDistrict = districtRows[0]
+        .sort((a, b) => b.totalEvents - a.totalEvents || a.districtName.localeCompare(b.districtName, "ru"))
+    const vandalismLeaders = districtRows
+        .slice()
+        .sort((a, b) => b.vandalismEvents - a.vandalismEvents || a.districtName.localeCompare(b.districtName, "ru"))
+    const topVandalismDistrict = vandalismLeaders[0]
+    const maxVandalismEvents = topVandalismDistrict?.vandalismEvents ?? 1
+    const totalPlannedEvents = districtRows.reduce((sum, district) => sum + district.totalEvents, 0)
+    const criticalDistricts = districtRows.filter((district) => district.priority === "Критический").length
 
     return (
         <div className="h-full overflow-auto p-6 space-y-6">
@@ -121,12 +204,12 @@ export function StopDistrictPlanAnalytics() {
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">Районы</h2>
                         <Badge variant="outline" className="gap-1">
-                            <Map className="h-3 w-3" />
-                            план покрытия
+                            <CalendarClock className="h-3 w-3" />
+                            план событий
                         </Badge>
                     </div>
                     <p className="max-w-3xl text-sm text-muted-foreground">
-                        Районная оценка покрытия остановок видеонаблюдением и приоритеты дальнейшего оснащения.
+                        Будущие районные события по вандализму, безопасности и состоянию остановок для планирования выездов.
                     </p>
                 </div>
             </div>
@@ -134,32 +217,32 @@ export function StopDistrictPlanAnalytics() {
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <KpiCard
                     title="Районов в плане"
-                    value={integerFormat.format(districtCount)}
-                    caption="районная витрина остановок"
-                    detail="по текущему контуру оснащения"
+                    value={integerFormat.format(districtRows.length)}
+                    caption="событийная дорожная карта"
+                    detail="районы с будущими сценариями"
                     icon={Map}
                 />
                 <KpiCard
-                    title="Подключено"
-                    value={integerFormat.format(connectedStops)}
-                    caption="остановок с видеонаблюдением"
-                    detail={`${estimatedLabel} всего примерно`}
-                    icon={CheckCircle2}
-                    tone="success"
-                />
-                <KpiCard
-                    title="Оценка покрытия"
-                    value={`${minCoverage}-${maxCoverage}%`}
-                    caption="по районам из текущего контура"
-                    detail="диапазон от нижней и верхней оценки"
-                    icon={BarChart3}
+                    title="Будущих событий"
+                    value={integerFormat.format(totalPlannedEvents)}
+                    caption="прогноз и план реагирования"
+                    detail="вандализм, безопасность, эксплуатация"
+                    icon={CalendarClock}
                     tone="attention"
                 />
                 <KpiCard
-                    title="Главный приоритет"
-                    value={weakestDistrict?.districtName ?? "Нет данных"}
-                    caption="минимальная средняя оценка покрытия"
-                    detail={weakestDistrict ? `${weakestDistrict.coverageLabel} сейчас` : "нет районной оценки"}
+                    title="Топ по вандализму"
+                    value={topVandalismDistrict?.districtName ?? "Нет данных"}
+                    caption="район с максимальным прогнозом"
+                    detail={topVandalismDistrict ? `${integerFormat.format(topVandalismDistrict.vandalismEvents)} событий в плане` : "нет плановых событий"}
+                    icon={Hammer}
+                    tone="danger"
+                />
+                <KpiCard
+                    title="Дооснащение"
+                    value={integerFormat.format(STOP_EQUIPMENT_PLAN_TARGET)}
+                    caption="остановок планируется дооснастить"
+                    detail={`${integerFormat.format(criticalDistricts)} района требуют первоочередного контроля`}
                     icon={Target}
                     tone="attention"
                 />
@@ -169,15 +252,15 @@ export function StopDistrictPlanAnalytics() {
                 <Card className="xl:col-span-7">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-base">
-                            <BarChart3 className="h-5 w-5 text-blue-500" />
-                            Покрытие по районам
+                            <ShieldAlert className="h-5 w-5 text-amber-500" />
+                            Будущие события по районам
                         </CardTitle>
                         <CardDescription>
-                            Средняя точка диапазона покрытия; точные значения показаны в таблице
+                            Плановые сигналы, которые нужно включить в мониторинг и регламенты выезда
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <ChartContainer config={districtCoverageConfig} className="h-[320px] w-full">
+                        <ChartContainer config={eventForecastConfig} className="h-[340px] w-full">
                             <BarChart
                                 data={districtRows}
                                 layout="vertical"
@@ -189,8 +272,7 @@ export function StopDistrictPlanAnalytics() {
                                     tickLine={false}
                                     axisLine={false}
                                     tickMargin={8}
-                                    domain={[0, 100]}
-                                    unit="%"
+                                    allowDecimals={false}
                                 />
                                 <YAxis
                                     type="category"
@@ -202,45 +284,70 @@ export function StopDistrictPlanAnalytics() {
                                     interval={0}
                                 />
                                 <ChartTooltip content={<ChartTooltipContent />} />
-                                <Bar dataKey="coverageMidPct" fill="var(--color-coverageMidPct)" radius={[0, 5, 5, 0]} />
+                                <Bar dataKey="vandalismEvents" stackId="events" fill="var(--color-vandalismEvents)" radius={[0, 0, 0, 0]} />
+                                <Bar dataKey="safetyEvents" stackId="events" fill="var(--color-safetyEvents)" radius={[0, 0, 0, 0]} />
+                                <Bar dataKey="conditionEvents" stackId="events" fill="var(--color-conditionEvents)" radius={[0, 5, 5, 0]} />
                             </BarChart>
                         </ChartContainer>
+                        <div className="mt-4 flex flex-wrap gap-4 text-xs text-muted-foreground">
+                            <span className="inline-flex items-center gap-2">
+                                <span className="h-2.5 w-2.5 rounded-sm bg-red-500" />
+                                Вандализм
+                            </span>
+                            <span className="inline-flex items-center gap-2">
+                                <span className="h-2.5 w-2.5 rounded-sm bg-amber-500" />
+                                Безопасность
+                            </span>
+                            <span className="inline-flex items-center gap-2">
+                                <span className="h-2.5 w-2.5 rounded-sm bg-sky-500" />
+                                Состояние
+                            </span>
+                        </div>
                     </CardContent>
                 </Card>
 
                 <Card className="xl:col-span-5">
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2 text-base">
-                            <MapPin className="h-5 w-5 text-emerald-500" />
-                            Остаток до нижней оценки
+                            <Hammer className="h-5 w-5 text-red-500" />
+                            Топ районов по вандализму
                         </CardTitle>
                         <CardDescription>
-                            Сколько остановок нужно добавить минимум по каждому району
+                            Где в первую очередь планировать антивандальные проверки
                         </CardDescription>
                     </CardHeader>
-                    <CardContent>
-                        <ChartContainer config={districtStopsConfig} className="h-[320px] w-full">
-                            <BarChart
-                                data={districtRows}
-                                margin={{ left: 0, right: 12, top: 12, bottom: 0 }}
-                            >
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="districtName" tickLine={false} axisLine={false} tickMargin={8} />
-                                <YAxis tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
-                                <ChartTooltip content={<ChartTooltipContent />} />
-                                <Bar dataKey="connectedStops" stackId="district" fill="var(--color-connectedStops)" radius={[5, 5, 0, 0]} />
-                                <Bar dataKey="estimatedRemainingMin" stackId="district" fill="var(--color-estimatedRemainingMin)" radius={[5, 5, 0, 0]} />
-                            </BarChart>
-                        </ChartContainer>
+                    <CardContent className="space-y-3">
+                        {vandalismLeaders.slice(0, 5).map((district, index) => (
+                            <div key={district.districtName} className="rounded-md border p-3">
+                                <div className="mb-2 flex items-center justify-between gap-3">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                        <Badge variant="outline" className="shrink-0">#{index + 1}</Badge>
+                                        <span className="truncate font-medium">{district.districtName}</span>
+                                    </div>
+                                    <span className="shrink-0 text-sm font-semibold tabular-nums text-red-600 dark:text-red-400">
+                                        {integerFormat.format(district.vandalismEvents)}
+                                    </span>
+                                </div>
+                                <div className="h-2 rounded-full bg-muted">
+                                    <div
+                                        className="h-full rounded-full bg-red-500"
+                                        style={{
+                                            width: `${Math.max(8, (district.vandalismEvents / maxVandalismEvents) * 100)}%`,
+                                        }}
+                                    />
+                                </div>
+                                <p className="mt-2 text-xs text-muted-foreground">{district.focus}</p>
+                            </div>
+                        ))}
                     </CardContent>
                 </Card>
             </div>
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="text-base">Районная таблица покрытия</CardTitle>
+                    <CardTitle className="text-base">План будущих событий</CardTitle>
                     <CardDescription>
-                        Подключенные остановки, примерный общий объем района и диапазон покрытия
+                        Районные сценарии, сроки и действия для диспетчерского и эксплуатационного контуров
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -248,20 +355,26 @@ export function StopDistrictPlanAnalytics() {
                         <TableHeader>
                             <TableRow>
                                 <TableHead>Район</TableHead>
-                                <TableHead className="text-right">Подключено</TableHead>
-                                <TableHead className="text-right">Всего примерно</TableHead>
-                                <TableHead className="text-right">Покрытие</TableHead>
-                                <TableHead>Подключенные остановки</TableHead>
+                                <TableHead>Приоритет</TableHead>
+                                <TableHead>Период</TableHead>
+                                <TableHead>Будущие события</TableHead>
+                                <TableHead>Основное действие</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {districtRows.map((district) => (
                                 <TableRow key={district.districtName}>
                                     <TableCell className="font-medium">{district.districtName}</TableCell>
-                                    <TableCell className="text-right tabular-nums">{integerFormat.format(district.connectedStops)}</TableCell>
-                                    <TableCell className="text-right tabular-nums">{district.estimatedTotalLabel}</TableCell>
-                                    <TableCell className="text-right tabular-nums">{district.coverageLabel}</TableCell>
-                                    <TableCell className="text-muted-foreground">{district.connectedStopNames.join(", ")}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline" className={cn("whitespace-nowrap", getPriorityClass(district.priority))}>
+                                            {district.priority}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell className="whitespace-nowrap">{district.nextWindow}</TableCell>
+                                    <TableCell className="min-w-56 text-sm text-muted-foreground">
+                                        Вандализм: {integerFormat.format(district.vandalismEvents)} · безопасность: {integerFormat.format(district.safetyEvents)} · состояние: {integerFormat.format(district.conditionEvents)}
+                                    </TableCell>
+                                    <TableCell className="min-w-72 text-muted-foreground">{district.action}</TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>

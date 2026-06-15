@@ -16,7 +16,6 @@ import {
     Clock3,
     TimerReset,
     Trash2,
-    TriangleAlert,
 } from "lucide-react"
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
@@ -39,30 +38,42 @@ import {
 } from "@/components/ui/table"
 import { getBusStopIdFromLocationId } from "@/lib/api/busyness-windows"
 import {
-    fetchLatestStopConditionWindow,
-    fetchStopConditionWindows,
-    type FetchStopConditionWindowsResult,
-    type StopConditionWindowRow,
+    fetchLatestStopTrashOverflowAlert,
+    fetchStopTrashOverflowAlerts,
+    type StopTrashOverflowAlertRow,
 } from "@/lib/api/stop-condition-windows"
 import {
     fetchCurrentStops,
     type CurrentStopInfo,
     type RangeBounds,
 } from "@/lib/api/stop-current-analytics"
-import { getStopComplexByLocationId } from "@/lib/stop-analytics-config"
+import { getStopComplexByCameraIndex, getStopComplexByLocationId } from "@/lib/stop-analytics-config"
 import { cn } from "@/lib/utils"
 
 type KpiTone = "normal" | "success" | "attention" | "high"
-type ConditionStatus = "ok" | "attention" | "critical"
 
 interface StopConditionAnalyticsData {
     stops: CurrentStopInfo[]
-    rows: StopConditionWindowRow[]
+    events: TrashOverflowEvent[]
     displayedRange: RangeBounds
     fallbackRange: RangeBounds | null
     truncated: boolean
     limit: number
-    sourceUnavailable: boolean
+}
+
+interface TrashOverflowEvent {
+    id: string
+    locationId: string
+    timestamp: string
+}
+
+interface TrashOverflowEpisode {
+    id: string
+    locationId: string
+    startAt: string
+    endAt: string
+    durationMs: number
+    confirmations: number
 }
 
 interface StopTrashSummary {
@@ -71,34 +82,45 @@ interface StopTrashSummary {
     label: string
     detail: string
     districtName: string
-    avgFill: number
-    maxFill: number
-    latestFill: number
-    windows: number
-    samples: number
+    totalOverflowMs: number
+    longestEpisodeMs: number
+    longestEpisodeStartAt: string | null
+    longestEpisodeEndAt: string | null
+    episodeCount: number
+    confirmations: number
     latestAt: string | null
-    status: ConditionStatus
+}
+
+interface TrashEpisodeDisplayRow extends TrashOverflowEpisode {
+    stopId: number | null
+    label: string
+    detail: string
+    districtName: string
 }
 
 interface HourlyTrashRow {
     hour: string
-    avgFill: number
-    maxFill: number
+    confirmations: number
+    stops: number
+}
+
+interface StopDurationChartRow {
+    label: string
+    totalHours: number
 }
 
 const hourlyConfig = {
-    avgFill: { label: "Среднее заполнение", color: "hsl(32, 95%, 53%)" },
-    maxFill: { label: "Пиковое заполнение", color: "hsl(0, 84%, 60%)" },
+    confirmations: { label: "Подтверждения", color: "hsl(32, 95%, 53%)" },
+    stops: { label: "Остановки", color: "hsl(199, 89%, 48%)" },
 } satisfies ChartConfig
 
 const stopConfig = {
-    maxFill: { label: "Пик заполнения", color: "hsl(0, 84%, 60%)" },
+    totalHours: { label: "Часы переполнения", color: "hsl(0, 84%, 60%)" },
 } satisfies ChartConfig
 
-const TRASH_ATTENTION_THRESHOLD = 70
-const TRASH_CRITICAL_THRESHOLD = 90
+const OVERFLOW_EPISODE_GAP_MS = 2 * 60 * 60 * 1000
+const TRASH_EVENT_LIMIT = 5000
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
-const numberFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
 
 function startOfLocalDay(date: Date) {
     const result = new Date(date)
@@ -158,13 +180,70 @@ function getRangeBounds(result: TimeRangeResult): RangeBounds {
     }
 }
 
-function toFiniteNumber(value: number | null | undefined) {
-    return Number.isFinite(value) ? Number(value) : 0
+function getTimestampMs(iso: string) {
+    const timestamp = new Date(iso).getTime()
+    return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function getStopCameraIndexCandidates(cameraIndex: number | null) {
+    if (cameraIndex === null) return []
+
+    const candidates = [cameraIndex]
+    if (cameraIndex >= 10000) {
+        candidates.push(cameraIndex - 10000)
+    }
+
+    return candidates
+}
+
+function getAlertLocationId(alert: StopTrashOverflowAlertRow) {
+    const metadataLocation = alert.metadata?.location_id ?? alert.metadata?.locationId ?? alert.metadata?.stop_location_id
+    if (typeof metadataLocation === "string" && metadataLocation.trim()) {
+        return metadataLocation.trim()
+    }
+
+    for (const cameraIndex of getStopCameraIndexCandidates(alert.camera_index)) {
+        const complex = getStopComplexByCameraIndex(cameraIndex)
+        if (complex) {
+            return complex.locationId
+        }
+    }
+
+    if (typeof alert.camera_index === "number") {
+        return `camera-${alert.camera_index}`
+    }
+
+    return `alert-${alert.id}`
+}
+
+function buildEventsFromTrashAlerts(alerts: StopTrashOverflowAlertRow[]): TrashOverflowEvent[] {
+    return alerts
+        .map((alert) => ({
+            id: alert.id,
+            locationId: getAlertLocationId(alert),
+            timestamp: alert.timestamp,
+        }))
+        .filter((event) => getTimestampMs(event.timestamp) !== null)
+        .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
 }
 
 function formatDateTime(iso: string | null) {
     if (!iso) return "Нет данных"
     return format(new Date(iso), "dd.MM.yyyy HH:mm", { locale: ru })
+}
+
+function formatInterval(startAt: string | null, endAt: string | null) {
+    if (!startAt || !endAt) return "Нет данных"
+
+    const startDate = new Date(startAt)
+    const endDate = new Date(endAt)
+    const sameDay = format(startDate, "yyyy-MM-dd") === format(endDate, "yyyy-MM-dd")
+
+    if (sameDay) {
+        return `${format(startDate, "dd.MM.yyyy HH:mm", { locale: ru })}-${format(endDate, "HH:mm", { locale: ru })}`
+    }
+
+    return `${formatDateTime(startAt)} - ${formatDateTime(endAt)}`
 }
 
 function formatFreshness(iso: string | null) {
@@ -180,22 +259,26 @@ function formatFreshness(iso: string | null) {
     return `${Math.round(diffHours / 24)} дн назад`
 }
 
-function getTrashStatus(maxFill: number): ConditionStatus {
-    if (maxFill >= TRASH_CRITICAL_THRESHOLD) return "critical"
-    if (maxFill >= TRASH_ATTENTION_THRESHOLD) return "attention"
-    return "ok"
+function formatDuration(durationMs: number) {
+    const totalMinutes = Math.max(0, Math.round(durationMs / 60000))
+    if (totalMinutes === 0) return "0 ч"
+
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+
+    if (hours > 0 && minutes > 0) {
+        return `${integerFormat.format(hours)} ч ${integerFormat.format(minutes)} мин`
+    }
+
+    if (hours > 0) {
+        return `${integerFormat.format(hours)} ч`
+    }
+
+    return `${integerFormat.format(minutes)} мин`
 }
 
-function getStatusLabel(status: ConditionStatus) {
-    if (status === "critical") return "Критично"
-    if (status === "attention") return "Внимание"
-    return "Норма"
-}
-
-function getStatusClassName(status: ConditionStatus) {
-    if (status === "critical") return "border-red-500/20 bg-red-500/10 text-red-700 dark:text-red-300"
-    if (status === "attention") return "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-300"
-    return "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+function durationToHours(durationMs: number) {
+    return Number((Math.max(0, durationMs) / 3600000).toFixed(1))
 }
 
 function buildStopDisplay(locationId: string, stopsById: Map<number, CurrentStopInfo>) {
@@ -213,99 +296,174 @@ function buildStopDisplay(locationId: string, stopsById: Map<number, CurrentStop
     }
 }
 
-async function fetchStopConditionAnalyticsData(range: RangeBounds): Promise<StopConditionAnalyticsData> {
-    const [stops, initialConditionResult] = await Promise.all([
-        fetchCurrentStops(),
-        fetchStopConditionWindows({ from: range.from, to: range.to }),
-    ])
-    let conditionResult: FetchStopConditionWindowsResult = initialConditionResult
-    let displayedRange = range
-    let fallbackRange: RangeBounds | null = null
+async function fetchTrashOverflowEventsForRange(range: RangeBounds) {
+    const alerts = await fetchStopTrashOverflowAlerts({
+        from: range.from,
+        to: range.to,
+        limit: TRASH_EVENT_LIMIT,
+    })
 
-    if (initialConditionResult.sourceUnavailable) {
+    if (alerts.length > 0) {
         return {
-            stops,
-            rows: [],
-            displayedRange,
-            fallbackRange,
+            events: buildEventsFromTrashAlerts(alerts),
+            displayedRange: range,
+            fallbackRange: null,
+            truncated: alerts.length >= TRASH_EVENT_LIMIT,
+        }
+    }
+
+    const latestAlert = await fetchLatestStopTrashOverflowAlert()
+    if (!latestAlert) {
+        return {
+            events: [],
+            displayedRange: range,
+            fallbackRange: null,
             truncated: false,
-            limit: initialConditionResult.limit,
-            sourceUnavailable: true,
         }
     }
 
-    if (initialConditionResult.rows.length === 0) {
-        const latestWindow = await fetchLatestStopConditionWindow()
-
-        if (latestWindow) {
-            const latestDate = new Date(latestWindow.window_start)
-            fallbackRange = {
-                from: startOfLocalDay(latestDate),
-                to: endOfLocalDay(latestDate),
-            }
-            displayedRange = fallbackRange
-            conditionResult = await fetchStopConditionWindows({
-                from: fallbackRange.from,
-                to: fallbackRange.to,
-            })
-        }
+    const latestDate = new Date(latestAlert.timestamp)
+    const fallbackRange = {
+        from: startOfLocalDay(latestDate),
+        to: endOfLocalDay(latestDate),
     }
+    const fallbackAlerts = await fetchStopTrashOverflowAlerts({
+        from: fallbackRange.from,
+        to: fallbackRange.to,
+        limit: TRASH_EVENT_LIMIT,
+    })
 
     return {
-        stops,
-        rows: conditionResult.rows,
-        displayedRange,
+        events: buildEventsFromTrashAlerts(fallbackAlerts),
+        displayedRange: fallbackRange,
         fallbackRange,
-        truncated: conditionResult.truncated,
-        limit: conditionResult.limit,
-        sourceUnavailable: conditionResult.sourceUnavailable,
+        truncated: fallbackAlerts.length >= TRASH_EVENT_LIMIT,
     }
 }
 
-function buildStopTrashSummaries(data: StopConditionAnalyticsData): StopTrashSummary[] {
-    const stopsById = new Map(data.stops.map((stop) => [stop.id, stop]))
+async function fetchStopConditionAnalyticsData(range: RangeBounds): Promise<StopConditionAnalyticsData> {
+    const [stops, eventResult] = await Promise.all([
+        fetchCurrentStops(),
+        fetchTrashOverflowEventsForRange(range),
+    ])
+
+    return {
+        stops,
+        events: eventResult.events,
+        displayedRange: eventResult.displayedRange,
+        fallbackRange: eventResult.fallbackRange,
+        truncated: eventResult.truncated,
+        limit: TRASH_EVENT_LIMIT,
+    }
+}
+
+function buildTrashOverflowEpisodes(events: TrashOverflowEvent[]): TrashOverflowEpisode[] {
+    const eventsByLocation = new Map<string, TrashOverflowEvent[]>()
+
+    for (const event of events) {
+        const list = eventsByLocation.get(event.locationId) ?? []
+        list.push(event)
+        eventsByLocation.set(event.locationId, list)
+    }
+
+    const episodes: TrashOverflowEpisode[] = []
+
+    for (const [locationId, locationEvents] of eventsByLocation.entries()) {
+        const sortedEvents = [...locationEvents].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+        let current: TrashOverflowEpisode | null = null
+
+        for (const event of sortedEvents) {
+            const eventMs = getTimestampMs(event.timestamp)
+            if (eventMs === null) continue
+
+            if (!current) {
+                current = {
+                    id: `${locationId}-${event.timestamp}`,
+                    locationId,
+                    startAt: event.timestamp,
+                    endAt: event.timestamp,
+                    durationMs: 0,
+                    confirmations: 1,
+                }
+                continue
+            }
+
+            const currentStartMs = getTimestampMs(current.startAt)
+            const currentEndMs = getTimestampMs(current.endAt)
+            const isSameEpisode = (
+                currentStartMs !== null &&
+                currentEndMs !== null &&
+                eventMs - currentEndMs <= OVERFLOW_EPISODE_GAP_MS
+            )
+
+            if (isSameEpisode) {
+                current.endAt = event.timestamp
+                current.durationMs = Math.max(0, eventMs - currentStartMs)
+                current.confirmations += 1
+            } else {
+                episodes.push(current)
+                current = {
+                    id: `${locationId}-${event.timestamp}`,
+                    locationId,
+                    startAt: event.timestamp,
+                    endAt: event.timestamp,
+                    durationMs: 0,
+                    confirmations: 1,
+                }
+            }
+        }
+
+        if (current) {
+            episodes.push(current)
+        }
+    }
+
+    return episodes.sort((a, b) => b.durationMs - a.durationMs || b.confirmations - a.confirmations || b.endAt.localeCompare(a.endAt))
+}
+
+function buildStopTrashSummaries(
+    stops: CurrentStopInfo[],
+    episodes: TrashOverflowEpisode[],
+): StopTrashSummary[] {
+    const stopsById = new Map(stops.map((stop) => [stop.id, stop]))
     const locationMap = new Map<
         string,
         {
-            latestRow: StopConditionWindowRow | null
-            weightedFillSum: number
-            weight: number
-            maxFill: number
-            windows: number
-            samples: number
+            totalOverflowMs: number
+            longestEpisode: TrashOverflowEpisode | null
+            episodeCount: number
+            confirmations: number
+            latestAt: string | null
         }
     >()
 
-    for (const row of data.rows) {
-        const current = locationMap.get(row.location_id) ?? {
-            latestRow: null,
-            weightedFillSum: 0,
-            weight: 0,
-            maxFill: 0,
-            windows: 0,
-            samples: 0,
-        }
-        const sampleWeight = Math.max(1, toFiniteNumber(row.sample_count))
-        const avgFill = toFiniteNumber(row.trash_fill_avg)
-
-        current.weightedFillSum += avgFill * sampleWeight
-        current.weight += sampleWeight
-        current.maxFill = Math.max(current.maxFill, toFiniteNumber(row.trash_fill_max))
-        current.windows += 1
-        current.samples += sampleWeight
-
-        if (!current.latestRow || row.window_start > current.latestRow.window_start) {
-            current.latestRow = row
+    for (const episode of episodes) {
+        const current = locationMap.get(episode.locationId) ?? {
+            totalOverflowMs: 0,
+            longestEpisode: null,
+            episodeCount: 0,
+            confirmations: 0,
+            latestAt: null,
         }
 
-        locationMap.set(row.location_id, current)
+        current.totalOverflowMs += episode.durationMs
+        current.episodeCount += 1
+        current.confirmations += episode.confirmations
+
+        if (!current.latestAt || episode.endAt > current.latestAt) {
+            current.latestAt = episode.endAt
+        }
+
+        if (!current.longestEpisode || episode.durationMs > current.longestEpisode.durationMs) {
+            current.longestEpisode = episode
+        }
+
+        locationMap.set(episode.locationId, current)
     }
 
     return Array.from(locationMap.entries())
         .map(([locationId, value]) => {
             const display = buildStopDisplay(locationId, stopsById)
-            const avgFill = value.weight > 0 ? Number((value.weightedFillSum / value.weight).toFixed(1)) : 0
-            const maxFill = Math.round(value.maxFill)
 
             return {
                 locationId,
@@ -313,39 +471,70 @@ function buildStopTrashSummaries(data: StopConditionAnalyticsData): StopTrashSum
                 label: display.label,
                 detail: display.detail,
                 districtName: display.districtName,
-                avgFill,
-                maxFill,
-                latestFill: Math.round(toFiniteNumber(value.latestRow?.trash_fill_avg)),
-                windows: value.windows,
-                samples: value.samples,
-                latestAt: value.latestRow?.window_start ?? null,
-                status: getTrashStatus(maxFill),
+                totalOverflowMs: value.totalOverflowMs,
+                longestEpisodeMs: value.longestEpisode?.durationMs ?? 0,
+                longestEpisodeStartAt: value.longestEpisode?.startAt ?? null,
+                longestEpisodeEndAt: value.longestEpisode?.endAt ?? null,
+                episodeCount: value.episodeCount,
+                confirmations: value.confirmations,
+                latestAt: value.latestAt,
             }
         })
-        .sort((a, b) => b.maxFill - a.maxFill || b.avgFill - a.avgFill || a.label.localeCompare(b.label, "ru"))
+        .sort((a, b) => (
+            b.totalOverflowMs - a.totalOverflowMs ||
+            b.longestEpisodeMs - a.longestEpisodeMs ||
+            b.confirmations - a.confirmations ||
+            a.label.localeCompare(b.label, "ru")
+        ))
 }
 
-function buildHourlyTrashRows(rows: StopConditionWindowRow[]): HourlyTrashRow[] {
-    const hourMap = new Map<string, { weightedFillSum: number; weight: number; maxFill: number }>()
+function buildEpisodeDisplayRows(
+    stops: CurrentStopInfo[],
+    episodes: TrashOverflowEpisode[],
+): TrashEpisodeDisplayRow[] {
+    const stopsById = new Map(stops.map((stop) => [stop.id, stop]))
 
-    for (const row of rows) {
-        const hour = format(new Date(row.window_start), "HH:00")
-        const current = hourMap.get(hour) ?? { weightedFillSum: 0, weight: 0, maxFill: 0 }
-        const sampleWeight = Math.max(1, toFiniteNumber(row.sample_count))
+    return episodes.map((episode) => {
+        const display = buildStopDisplay(episode.locationId, stopsById)
 
-        current.weightedFillSum += toFiniteNumber(row.trash_fill_avg) * sampleWeight
-        current.weight += sampleWeight
-        current.maxFill = Math.max(current.maxFill, toFiniteNumber(row.trash_fill_max))
+        return {
+            ...episode,
+            stopId: display.stopId,
+            label: display.label,
+            detail: display.detail,
+            districtName: display.districtName,
+        }
+    })
+}
+
+function buildHourlyTrashRows(events: TrashOverflowEvent[]): HourlyTrashRow[] {
+    const hourMap = new Map<string, { confirmations: number; locations: Set<string> }>()
+
+    for (const event of events) {
+        const hour = format(new Date(event.timestamp), "HH:00")
+        const current = hourMap.get(hour) ?? { confirmations: 0, locations: new Set<string>() }
+
+        current.confirmations += 1
+        current.locations.add(event.locationId)
         hourMap.set(hour, current)
     }
 
     return Array.from(hourMap.entries())
         .map(([hour, value]) => ({
             hour,
-            avgFill: value.weight > 0 ? Number((value.weightedFillSum / value.weight).toFixed(1)) : 0,
-            maxFill: Math.round(value.maxFill),
+            confirmations: value.confirmations,
+            stops: value.locations.size,
         }))
         .sort((a, b) => a.hour.localeCompare(b.hour))
+}
+
+function buildStopDurationChartRows(summaries: StopTrashSummary[]): StopDurationChartRow[] {
+    return summaries
+        .slice(0, 8)
+        .map((summary) => ({
+            label: summary.label,
+            totalHours: durationToHours(summary.totalOverflowMs),
+        }))
 }
 
 function KpiCard({
@@ -447,34 +636,33 @@ export function StopConditionCurrentAnalytics() {
         }
     }, [range])
 
-    const allStopSummaries = useMemo(
-        () => data ? buildStopTrashSummaries(data) : [],
+    const episodes = useMemo(
+        () => data ? buildTrashOverflowEpisodes(data.events) : [],
         [data],
     )
     const stopSummaries = useMemo(
-        () => allStopSummaries.filter((stop) => stop.maxFill >= TRASH_ATTENTION_THRESHOLD),
-        [allStopSummaries],
+        () => data ? buildStopTrashSummaries(data.stops, episodes) : [],
+        [data, episodes],
     )
-    const problemRows = useMemo(() => {
-        if (!data) return []
-
-        const problemLocationIds = new Set(stopSummaries.map((stop) => stop.locationId))
-        return data.rows.filter((row) => problemLocationIds.has(row.location_id))
-    }, [data, stopSummaries])
+    const episodeRows = useMemo(
+        () => data ? buildEpisodeDisplayRows(data.stops, episodes).slice(0, 10) : [],
+        [data, episodes],
+    )
     const hourlyRows = useMemo(
-        () => buildHourlyTrashRows(problemRows),
-        [problemRows],
+        () => data ? buildHourlyTrashRows(data.events) : [],
+        [data],
     )
-    const latestAt = (data?.rows ?? [])
-        .map((row) => row.window_start)
+    const topStopRows = useMemo(
+        () => buildStopDurationChartRows(stopSummaries),
+        [stopSummaries],
+    )
+    const latestAt = (data?.events ?? [])
+        .map((event) => event.timestamp)
         .sort((a, b) => b.localeCompare(a))[0] ?? null
-    const averageFill = stopSummaries.length > 0
-        ? Number((stopSummaries.reduce((sum, stop) => sum + stop.avgFill, 0) / stopSummaries.length).toFixed(1))
-        : 0
-    const maxFill = stopSummaries.reduce((max, stop) => Math.max(max, stop.maxFill), 0)
-    const criticalStops = stopSummaries.filter((stop) => stop.status === "critical").length
-    const attentionStops = stopSummaries.filter((stop) => stop.status === "attention").length
-    const topStopRows = stopSummaries.slice(0, 8)
+    const totalDurationMs = episodes.reduce((sum, episode) => sum + episode.durationMs, 0)
+    const totalConfirmations = data?.events.length ?? 0
+    const longestEpisode = episodes[0] ?? null
+    const repeatedEpisodes = episodes.filter((episode) => episode.confirmations > 1).length
 
     const handleTimeRangeChange = (nextRange: TimeRangeResult) => {
         setTimeRange(nextRange)
@@ -490,16 +678,16 @@ export function StopConditionCurrentAnalytics() {
                         <h2 className="text-xl font-semibold">Состояние остановок</h2>
                         <Badge variant="outline" className="gap-1">
                             <Trash2 className="h-3 w-3" />
-                            переполненность урн
+                            переполненные урны
                         </Badge>
                     </div>
                     <p className="max-w-3xl text-sm text-muted-foreground">
-                        Текущая аналитика по переполненным урнам на остановках: средний уровень, пики и точки для первоочередной уборки.
+                        Текущая аналитика группирует подтверждения переполненных урн в эпизоды по одной остановке. Повторные фиксации без длительного разрыва считаются одним периодом, за который урна оставалась переполненной.
                     </p>
                 </div>
                 <div className="text-sm text-muted-foreground lg:text-right">
                     <div>Период: {formatDateTime(data?.displayedRange.from.toISOString() ?? range.from.toISOString())} - {formatDateTime(data?.displayedRange.to.toISOString() ?? range.to.toISOString())}</div>
-                    <div>Последние данные: {formatFreshness(latestAt)}</div>
+                    <div>Последнее подтверждение: {formatFreshness(latestAt)}</div>
                 </div>
             </div>
 
@@ -510,7 +698,7 @@ export function StopConditionCurrentAnalytics() {
                     <CardContent className="flex items-start gap-3 p-4">
                         <AlertCircle className="mt-0.5 h-5 w-5 text-amber-500" />
                         <div>
-                            <p className="font-medium text-amber-700 dark:text-amber-300">За выбранный период данных по урнам нет</p>
+                            <p className="font-medium text-amber-700 dark:text-amber-300">За выбранный период событий по урнам нет</p>
                             <p className="text-sm text-muted-foreground">
                                 Показан последний доступный день: {formatDateTime(data.fallbackRange.from.toISOString())} - {formatDateTime(data.fallbackRange.to.toISOString())}.
                             </p>
@@ -519,20 +707,22 @@ export function StopConditionCurrentAnalytics() {
                 </Card>
             )}
 
-            {loading && !data ? (
-                <LoadingGrid />
-            ) : data?.sourceUnavailable ? (
-                <Card className="border-amber-500/30 bg-amber-500/[0.05]">
+            {data?.truncated && !error && (
+                <Card className="border-sky-500/30 bg-sky-500/[0.05]">
                     <CardContent className="flex items-start gap-3 p-4">
-                        <AlertCircle className="mt-0.5 h-5 w-5 text-amber-500" />
+                        <AlertCircle className="mt-0.5 h-5 w-5 text-sky-500" />
                         <div>
-                            <p className="font-medium text-amber-700 dark:text-amber-300">Источник данных по урнам пока не подключен</p>
+                            <p className="font-medium text-sky-700 dark:text-sky-300">Показана верхняя граница выборки</p>
                             <p className="text-sm text-muted-foreground">
-                                Текущий режим ожидает агрегированные окна переполненности урн. После применения SQL-контракта и запуска сбора экран начнет показывать проблемные точки уборки.
+                                За период найдено не меньше {integerFormat.format(data.limit)} подтверждений переполнения. Для полного разбора сузьте период фильтром.
                             </p>
                         </div>
                     </CardContent>
                 </Card>
+            )}
+
+            {loading && !data ? (
+                <LoadingGrid />
             ) : error ? (
                 <Card className="border-red-500/30 bg-red-500/[0.04]">
                     <CardContent className="flex items-start gap-3 p-4">
@@ -543,30 +733,16 @@ export function StopConditionCurrentAnalytics() {
                         </div>
                     </CardContent>
                 </Card>
-            ) : data && data.rows.length === 0 ? (
-                <Card className="border-dashed">
-                    <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-                        <div className="rounded-full bg-muted p-4">
-                            <Trash2 className="h-8 w-8 text-muted-foreground" />
-                        </div>
-                        <div className="space-y-1">
-                            <h3 className="text-lg font-semibold">Нет данных по переполненности урн</h3>
-                            <p className="max-w-md text-sm text-muted-foreground">
-                                Источник текущего состояния пока не содержит окон наблюдения за выбранный период.
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
-            ) : data && stopSummaries.length === 0 ? (
+            ) : data && data.events.length === 0 ? (
                 <Card className="border-emerald-500/30 bg-emerald-500/[0.04]">
                     <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
                         <div className="rounded-full bg-emerald-500/10 p-4">
                             <CheckCircle2 className="h-8 w-8 text-emerald-600 dark:text-emerald-300" />
                         </div>
                         <div className="space-y-1">
-                            <h3 className="text-lg font-semibold">Переполненных урн нет</h3>
+                            <h3 className="text-lg font-semibold">Переполненных урн не зафиксировано</h3>
                             <p className="max-w-md text-sm text-muted-foreground">
-                                За выбранный период все полученные окна ниже порога {TRASH_ATTENTION_THRESHOLD}%.
+                                За выбранный период нет подтвержденных событий переполнения урн на остановках.
                             </p>
                         </div>
                     </CardContent>
@@ -578,33 +754,33 @@ export function StopConditionCurrentAnalytics() {
                             title="Остановок с переполнением"
                             value={integerFormat.format(stopSummaries.length)}
                             caption="за выбранный период"
-                            detail={`${integerFormat.format(problemRows.length)} проблемных окон из ${integerFormat.format(data.rows.length)}`}
+                            detail={`${integerFormat.format(totalConfirmations)} подтверждений от видеоаналитики`}
                             icon={Trash2}
                             tone="normal"
                         />
                         <KpiCard
-                            title="Среднее заполнение"
-                            value={`${numberFormat.format(averageFill)}%`}
-                            caption="по проблемным остановкам"
-                            detail={`порог включения от ${TRASH_ATTENTION_THRESHOLD}%`}
-                            icon={CheckCircle2}
-                            tone={averageFill >= TRASH_ATTENTION_THRESHOLD ? "attention" : "success"}
+                            title="Суммарная длительность"
+                            value={formatDuration(totalDurationMs)}
+                            caption="по всем эпизодам"
+                            detail="считается как время от первого до последнего подтверждения в эпизоде"
+                            icon={Clock3}
+                            tone={totalDurationMs > 0 ? "attention" : "success"}
                         />
                         <KpiCard
-                            title="Пиковое заполнение"
-                            value={`${integerFormat.format(maxFill)}%`}
-                            caption="максимум за период"
-                            detail={maxFill >= TRASH_CRITICAL_THRESHOLD ? "есть критические пики" : "без критического пика"}
-                            icon={TriangleAlert}
-                            tone={maxFill >= TRASH_CRITICAL_THRESHOLD ? "high" : maxFill >= TRASH_ATTENTION_THRESHOLD ? "attention" : "success"}
-                        />
-                        <KpiCard
-                            title="Требуют внимания"
-                            value={integerFormat.format(criticalStops + attentionStops)}
-                            caption={`${integerFormat.format(criticalStops)} критично / ${integerFormat.format(attentionStops)} внимание`}
-                            detail={`порог внимания от ${TRASH_ATTENTION_THRESHOLD}%, критично от ${TRASH_CRITICAL_THRESHOLD}%`}
+                            title="Самый долгий эпизод"
+                            value={formatDuration(longestEpisode?.durationMs ?? 0)}
+                            caption={longestEpisode ? formatInterval(longestEpisode.startAt, longestEpisode.endAt) : "нет эпизодов"}
+                            detail={longestEpisode ? `${integerFormat.format(longestEpisode.confirmations)} подтверждений` : "подтверждений нет"}
                             icon={TimerReset}
-                            tone={criticalStops > 0 ? "high" : attentionStops > 0 ? "attention" : "success"}
+                            tone={longestEpisode && longestEpisode.durationMs > 0 ? "high" : "success"}
+                        />
+                        <KpiCard
+                            title="Эпизодов"
+                            value={integerFormat.format(episodes.length)}
+                            caption={`${integerFormat.format(repeatedEpisodes)} повторных / ${integerFormat.format(episodes.length - repeatedEpisodes)} разовых`}
+                            detail="разрыв больше 2 часов начинает новый эпизод"
+                            icon={AlertCircle}
+                            tone={repeatedEpisodes > 0 ? "attention" : "normal"}
                         />
                     </div>
 
@@ -613,10 +789,10 @@ export function StopConditionCurrentAnalytics() {
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-base">
                                     <Clock3 className="h-5 w-5 text-amber-500" />
-                                    Заполнение по часам
+                                    Подтверждения по часам
                                 </CardTitle>
                                 <CardDescription>
-                                    Среднее и максимальное заполнение проблемных урн в выбранном периоде
+                                    Сколько раз видеоаналитика фиксировала переполненную урну и на скольких остановках это повторялось
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -624,10 +800,10 @@ export function StopConditionCurrentAnalytics() {
                                     <BarChart data={hourlyRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                         <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} />
-                                        <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} unit="%" />
+                                        <YAxis tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
                                         <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Bar dataKey="avgFill" fill="var(--color-avgFill)" radius={[5, 5, 0, 0]} />
-                                        <Bar dataKey="maxFill" fill="var(--color-maxFill)" radius={[5, 5, 0, 0]} />
+                                        <Bar dataKey="confirmations" fill="var(--color-confirmations)" radius={[5, 5, 0, 0]} />
+                                        <Bar dataKey="stops" fill="var(--color-stops)" radius={[5, 5, 0, 0]} />
                                     </BarChart>
                                 </ChartContainer>
                             </CardContent>
@@ -640,7 +816,7 @@ export function StopConditionCurrentAnalytics() {
                                     Точки уборки
                                 </CardTitle>
                                 <CardDescription>
-                                    Остановки с пиковым заполнением от {TRASH_ATTENTION_THRESHOLD}%
+                                    Остановки с наибольшей суммарной длительностью переполнения
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -651,7 +827,7 @@ export function StopConditionCurrentAnalytics() {
                                         margin={{ left: 0, right: 16, top: 8, bottom: 0 }}
                                     >
                                         <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                        <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} unit="%" />
+                                        <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} unit=" ч" />
                                         <YAxis
                                             type="category"
                                             dataKey="label"
@@ -662,7 +838,7 @@ export function StopConditionCurrentAnalytics() {
                                             interval={0}
                                         />
                                         <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Bar dataKey="maxFill" fill="var(--color-maxFill)" radius={[0, 5, 5, 0]} />
+                                        <Bar dataKey="totalHours" fill="var(--color-totalHours)" radius={[0, 5, 5, 0]} />
                                     </BarChart>
                                 </ChartContainer>
                             </CardContent>
@@ -671,9 +847,9 @@ export function StopConditionCurrentAnalytics() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Сводка по остановкам</CardTitle>
+                            <CardTitle className="text-base">Эпизоды переполнения</CardTitle>
                             <CardDescription>
-                                Только остановки с пиковым заполнением урн от {TRASH_ATTENTION_THRESHOLD}%
+                                Один эпизод объединяет подтверждения по одной остановке, пока между ними нет длительного перерыва
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -682,35 +858,29 @@ export function StopConditionCurrentAnalytics() {
                                     <TableRow>
                                         <TableHead>Остановка</TableHead>
                                         <TableHead>Район</TableHead>
-                                        <TableHead className="text-right">Сейчас</TableHead>
-                                        <TableHead className="text-right">Среднее</TableHead>
-                                        <TableHead className="text-right">Пик</TableHead>
-                                        <TableHead>Статус</TableHead>
-                                        <TableHead>Последние данные</TableHead>
+                                        <TableHead className="text-right">Длительность</TableHead>
+                                        <TableHead className="text-right">Подтверждения</TableHead>
+                                        <TableHead>Интервал</TableHead>
+                                        <TableHead>Последнее подтверждение</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {stopSummaries.map((stop) => (
-                                        <TableRow key={stop.locationId}>
+                                    {episodeRows.map((episode) => (
+                                        <TableRow key={episode.id}>
                                             <TableCell>
                                                 <div className="flex flex-col">
-                                                    <span className="font-medium">{stop.label}</span>
-                                                    <span className="text-xs text-muted-foreground">{stop.detail}</span>
+                                                    <span className="font-medium">{episode.label}</span>
+                                                    <span className="text-xs text-muted-foreground">{episode.detail}</span>
                                                 </div>
                                             </TableCell>
-                                            <TableCell>{stop.districtName}</TableCell>
-                                            <TableCell className="text-right tabular-nums">{integerFormat.format(stop.latestFill)}%</TableCell>
-                                            <TableCell className="text-right tabular-nums">{numberFormat.format(stop.avgFill)}%</TableCell>
-                                            <TableCell className="text-right tabular-nums">{integerFormat.format(stop.maxFill)}%</TableCell>
-                                            <TableCell>
-                                                <Badge variant="outline" className={cn("border px-2 py-1 text-[11px] font-semibold", getStatusClassName(stop.status))}>
-                                                    {getStatusLabel(stop.status)}
-                                                </Badge>
-                                            </TableCell>
+                                            <TableCell>{episode.districtName}</TableCell>
+                                            <TableCell className="text-right font-medium tabular-nums">{formatDuration(episode.durationMs)}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{integerFormat.format(episode.confirmations)}</TableCell>
+                                            <TableCell>{formatInterval(episode.startAt, episode.endAt)}</TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col">
-                                                    <span>{formatFreshness(stop.latestAt)}</span>
-                                                    <span className="text-xs text-muted-foreground">{formatDateTime(stop.latestAt)}</span>
+                                                    <span>{formatFreshness(episode.endAt)}</span>
+                                                    <span className="text-xs text-muted-foreground">{formatDateTime(episode.endAt)}</span>
                                                 </div>
                                             </TableCell>
                                         </TableRow>

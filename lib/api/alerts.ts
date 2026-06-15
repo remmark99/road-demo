@@ -1,6 +1,10 @@
 import { supabase } from '../supabase'
 import type { Alert } from '../types'
-import { STOP_SAFETY_ALERT_TYPES, type StopSafetyAlertType } from "@/lib/stop-analytics-config"
+import {
+    STOP_SAFETY_ALERT_TYPES,
+    isStopSafetyAlertType,
+    type StopSafetyAlertType,
+} from "@/lib/stop-analytics-config"
 
 export interface FetchAlertsOptions {
     types?: string[]        // filter by alert_type
@@ -45,6 +49,7 @@ export interface StopSafetyAlert {
 }
 
 export type LyingPersonAlertMetadata = StopSafetyAlertMetadata
+type StopSafetyAlertRow = Omit<StopSafetyAlert, "alert_type"> & { alert_type: string }
 export type LyingPersonAlert = StopSafetyAlert
 
 export async function fetchAlerts(options: FetchAlertsOptions = {}): Promise<AlertsResult> {
@@ -129,7 +134,9 @@ export async function fetchStopSafetyAlerts(limit: number = 2000): Promise<StopS
         return []
     }
 
-    return (data || []) as StopSafetyAlert[]
+    return ((data || []) as StopSafetyAlertRow[]).filter((alert): alert is StopSafetyAlert => (
+        isStopSafetyAlertType(alert.alert_type)
+    ))
 }
 
 export async function fetchLyingPersonAlerts(limit: number = 2000): Promise<LyingPersonAlert[]> {

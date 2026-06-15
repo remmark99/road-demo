@@ -290,7 +290,6 @@ export function StopKpiCurrentAnalytics() {
     )
     const totalStops = data?.stops.length ?? 0
     const cityStopTotal = Math.max(totalStops, STOP_CITY_TOTAL)
-    const planPct = cityStopTotal > 0 ? (STOP_EQUIPMENT_PLAN_TARGET / cityStopTotal) * 100 : 0
     const readyPct = STOP_EQUIPMENT_PLAN_TARGET > 0 ? (STOP_EQUIPPED_COUNT / STOP_EQUIPMENT_PLAN_TARGET) * 100 : 0
     const operationalPct = STOP_EQUIPPED_COUNT > 0 ? (STOP_OPERATIONAL_COUNT / STOP_EQUIPPED_COUNT) * 100 : 0
     const liveDataPct = STOP_EQUIPPED_COUNT > 0 ? (liveStopIds.size / STOP_EQUIPPED_COUNT) * 100 : 0
@@ -357,8 +356,8 @@ export function StopKpiCurrentAnalytics() {
                     <KpiCard
                         title="План оснащения"
                         value={integerFormat.format(STOP_EQUIPMENT_PLAN_TARGET)}
-                        caption="планируется к оснащению"
-                        detail={`${integerFormat.format(Math.round(planPct))}% городского справочника`}
+                        caption="план дооснащения"
+                        detail={`${integerFormat.format(STOP_EQUIPMENT_PLAN_TARGET)} остановок планируется дооснастить`}
                         icon={MapPin}
                         tone="attention"
                     />
