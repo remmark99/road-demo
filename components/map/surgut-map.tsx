@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
 import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
-import { fetchBusStopHeatmapData, type BusStopHeatmapResult } from "@/lib/api/bus-stop-heatmap"
+import { fetchBusStopHeatmapData, fetchBusStopOccupancyHeatmapData, type BusStopHeatmapResult, type BusStopOccupancyHeatmapResult } from "@/lib/api/bus-stop-heatmap"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
 import { fetchAnchorsGeoJSON } from "@/lib/api/anchors"
 import { SHORELINE_GEOJSON } from "@/lib/mock/shoreline"
@@ -209,6 +209,8 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [parksData, setParksData] = useState<any>(null)
   const [anchorsData, setAnchorsData] = useState<AnchorsGeoJSON | null>(null)
   const [heatmapData, setHeatmapData] = useState<BusStopHeatmapResult | null>(null)
+  const [heatmapMode, setHeatmapMode] = useState<"safety" | "occupancy">("safety")
+  const [occupancyData, setOccupancyData] = useState<BusStopOccupancyHeatmapResult | null>(null)
 
   // Filter States
   const [cameraFilters, setCameraFilters] = useState({ online: true, offline: false })
@@ -1664,30 +1666,57 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
   // Sync heatmap data to the GeoJSON source
   useEffect(() => {
-    if (!map.current || !mapLoaded || !heatmapData || !busStopsData) return
+    if (!map.current || !mapLoaded || !busStopsData) return
     const source = map.current.getSource("bus-stops-heatmap") as maplibregl.GeoJSONSource
     if (!source) return
 
-    const maxCount = heatmapData.maxAlertCount || 1
+    let features: any[] = []
 
-    // Build GeoJSON features: one point per bus stop with alertWeight
-    const features = busStopsData.features
-      .map(f => {
-        const entry = heatmapData.entries.find(e => e.busStopId === f.properties.id)
-        if (!entry) return null
-        return {
-          type: "Feature" as const,
-          properties: {
-            busStopId: f.properties.id,
-            name: f.properties.name,
-            alertCount: entry.alertCount,
-            alertWeight: entry.alertCount / maxCount, // 0–1 normalized
-            maxSeverity: entry.maxSeverity,
-          },
-          geometry: f.geometry,
-        }
-      })
-      .filter(Boolean)
+    if (heatmapMode === "safety") {
+      if (!heatmapData) return
+      const maxCount = heatmapData.maxAlertCount || 1
+
+      // Build GeoJSON features: one point per bus stop with alertWeight
+      features = busStopsData.features
+        .map(f => {
+          const entry = heatmapData.entries.find(e => e.busStopId === f.properties.id)
+          if (!entry) return null
+          return {
+            type: "Feature" as const,
+            properties: {
+              busStopId: f.properties.id,
+              name: f.properties.name,
+              alertCount: entry.alertCount,
+              alertWeight: entry.alertCount / maxCount, // 0–1 normalized
+              maxSeverity: entry.maxSeverity,
+            },
+            geometry: f.geometry,
+          }
+        })
+        .filter(Boolean)
+    } else {
+      if (!occupancyData) return
+      const maxAverage = occupancyData.maxAveragePeople || 1
+
+      // Build GeoJSON features: one point per bus stop with alertWeight
+      features = busStopsData.features
+        .map(f => {
+          const entry = occupancyData.entries.find(e => e.busStopId === f.properties.id)
+          if (!entry) return null
+          return {
+            type: "Feature" as const,
+            properties: {
+              busStopId: f.properties.id,
+              name: f.properties.name,
+              alertCount: Math.round(entry.averagePeople),
+              alertWeight: entry.averagePeople / maxAverage, // 0–1 normalized
+              maxSeverity: entry.peakPeople > 5 ? 3 : 1,
+            },
+            geometry: f.geometry,
+          }
+        })
+        .filter(Boolean)
+    }
 
     source.setData({ type: "FeatureCollection", features: features as any })
 
@@ -1699,22 +1728,30 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         showHeatmap ? "visible" : "none"
       )
     }
-  }, [heatmapData, busStopsData, mapLoaded, showHeatmap, addBusStopHeatmap])
+  }, [heatmapData, occupancyData, heatmapMode, busStopsData, mapLoaded, showHeatmap, addBusStopHeatmap])
 
   // Fetch heatmap data when dependencies change
   useEffect(() => {
     if (!hasModule('stops')) return
-    fetchBusStopHeatmapData(heatmapTimeWindow, heatmapAlertTypes).then(setHeatmapData)
-  }, [hasModule, heatmapTimeWindow, heatmapAlertTypes])
+    if (heatmapMode === "safety") {
+      fetchBusStopHeatmapData(heatmapTimeWindow, heatmapAlertTypes).then(setHeatmapData)
+    } else {
+      fetchBusStopOccupancyHeatmapData(heatmapTimeWindow).then(setOccupancyData)
+    }
+  }, [hasModule, heatmapMode, heatmapTimeWindow, heatmapAlertTypes])
 
   // Auto-refresh heatmap data every 5 minutes
   useEffect(() => {
     if (!hasModule('stops') || !showHeatmap) return
     const interval = setInterval(() => {
-      fetchBusStopHeatmapData(heatmapTimeWindow, heatmapAlertTypes).then(setHeatmapData)
+      if (heatmapMode === "safety") {
+        fetchBusStopHeatmapData(heatmapTimeWindow, heatmapAlertTypes).then(setHeatmapData)
+      } else {
+        fetchBusStopOccupancyHeatmapData(heatmapTimeWindow).then(setOccupancyData)
+      }
     }, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [hasModule, showHeatmap, heatmapTimeWindow, heatmapAlertTypes])
+  }, [hasModule, showHeatmap, heatmapMode, heatmapTimeWindow, heatmapAlertTypes])
 
   // Update bus stops visibility independently of full re-add
   useEffect(() => {
@@ -1919,6 +1956,19 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                     </PopoverTrigger>
                     <PopoverContent side="right" className="w-64 p-4 space-y-4">
                       <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Показатель</h4>
+                        <Select value={heatmapMode} onValueChange={(v: "safety" | "occupancy") => setHeatmapMode(v)}>
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue placeholder="Выберите показатель" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="safety">События безопасности</SelectItem>
+                            <SelectItem value="occupancy">Загруженность остановок</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
                         <h4 className="font-medium text-sm">Период данных</h4>
                         <Select value={heatmapTimeWindow.toString()} onValueChange={(v) => setHeatmapTimeWindow(Number(v))}>
                           <SelectTrigger className="h-8 text-sm">
@@ -1933,38 +1983,42 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                         </Select>
                       </div>
 
-                      <div className="space-y-2">
-                        <h4 className="font-medium text-sm">Типы событий</h4>
-                        <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
-                          {STOP_SAFETY_ALERT_TYPES.map((type) => {
-                            const isChecked = heatmapAlertTypes.includes(type)
-                            return (
-                              <div key={type} className="flex items-center space-x-2">
-                                <Checkbox 
-                                  id={`heatmap-type-${type}`}
-                                  checked={isChecked}
-                                  onCheckedChange={(checked) => {
-                                    if (checked) {
-                                      setHeatmapAlertTypes(prev => [...prev, type])
-                                    } else {
-                                      setHeatmapAlertTypes(prev => prev.filter(t => t !== type))
-                                    }
-                                  }}
-                                />
-                                <Label htmlFor={`heatmap-type-${type}`} className="text-xs font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
-                                  {STOP_SAFETY_ALERT_LABELS[type]}
-                                </Label>
-                              </div>
-                            )
-                          })}
+                      {heatmapMode === "safety" && (
+                        <div className="space-y-2">
+                          <h4 className="font-medium text-sm">Типы событий</h4>
+                          <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                            {STOP_SAFETY_ALERT_TYPES.map((type) => {
+                              const isChecked = heatmapAlertTypes.includes(type)
+                              return (
+                                <div key={type} className="flex items-center space-x-2">
+                                  <Checkbox 
+                                    id={`heatmap-type-${type}`}
+                                    checked={isChecked}
+                                    onCheckedChange={(checked) => {
+                                      if (checked) {
+                                        setHeatmapAlertTypes(prev => [...prev, type])
+                                      } else {
+                                        setHeatmapAlertTypes(prev => prev.filter(t => t !== type))
+                                      }
+                                    }}
+                                  />
+                                  <Label htmlFor={`heatmap-type-${type}`} className="text-xs font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                    {STOP_SAFETY_ALERT_LABELS[type]}
+                                  </Label>
+                                </div>
+                              )
+                            })}
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </PopoverContent>
                   </Popover>
                 </div>
-                {showHeatmap && heatmapData && (
+                {showHeatmap && (
                   <div className="text-xs text-muted-foreground pl-6 -mt-1">
-                    {heatmapData.totalAlerts} событий за выбранный период
+                    {heatmapMode === "safety" && heatmapData
+                      ? `${heatmapData.totalAlerts} событий за выбранный период`
+                      : "Загруженность по датчикам пассажиропотока"}
                   </div>
                 )}
               </div>

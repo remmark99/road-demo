@@ -103,3 +103,106 @@ export async function fetchBusStopHeatmapData(
 
     return { entries, maxAlertCount, totalAlerts }
 }
+
+export interface BusStopOccupancyHeatmapEntry {
+    busStopId: number
+    averagePeople: number
+    peakPeople: number
+    sampleCount: number
+}
+
+export interface BusStopOccupancyHeatmapResult {
+    entries: BusStopOccupancyHeatmapEntry[]
+    maxAveragePeople: number
+    totalPeople: number
+}
+
+/**
+ * Fetch passenger load (busyness windows) aggregated by bus stop.
+ *
+ * 1. Fetch busyness windows within the given time window (with fallback to latest window if none).
+ * 2. Aggregate average and peak people by bus_stop_id (derived from location_id).
+ */
+export async function fetchBusStopOccupancyHeatmapData(
+    hoursBack: number = 24
+): Promise<BusStopOccupancyHeatmapResult> {
+    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString()
+    let queryDate = since
+
+    const { data: initialCheck, error: checkError } = await supabase
+        .from('busyness_windows')
+        .select('window_start')
+        .gte('window_start', since)
+        .limit(1)
+
+    if (checkError) {
+        console.error('Error checking busyness windows:', checkError)
+    }
+
+    if (!initialCheck || initialCheck.length === 0) {
+        // Fallback to latest available window_start day
+        const { data: latestWindow, error: latestError } = await supabase
+            .from('busyness_windows')
+            .select('window_start')
+            .order('window_start', { ascending: false })
+            .limit(1)
+
+        if (!latestError && latestWindow && latestWindow.length > 0) {
+            const latestDate = new Date(latestWindow[0].window_start)
+            // Go back hoursBack from the latest date
+            const fallbackSince = new Date(latestDate.getTime() - hoursBack * 60 * 60 * 1000).toISOString()
+            queryDate = fallbackSince
+        }
+    }
+
+    const { data: rows, error } = await supabase
+        .from('busyness_windows')
+        .select('location_id, person_count_avg, person_count_max, sample_count')
+        .gte('window_start', queryDate)
+
+    if (error) {
+        console.error('Error fetching busyness windows for heatmap:', error)
+        return { entries: [], maxAveragePeople: 0, totalPeople: 0 }
+    }
+
+    // Aggregate by busStopId
+    const aggregation = new Map<number, { sum: number; count: number; maxPeak: number }>()
+
+    for (const row of (rows || [])) {
+        const [rawId] = row.location_id.split("-")
+        const busStopId = Number(rawId)
+        if (!Number.isInteger(busStopId)) continue
+
+        const entry = aggregation.get(busStopId) ?? { sum: 0, count: 0, maxPeak: 0 }
+        
+        const avg = row.person_count_avg ?? 0
+        const maxVal = row.person_count_max ?? 0
+        
+        entry.sum += avg
+        entry.count += 1
+        if (maxVal > entry.maxPeak) {
+            entry.maxPeak = maxVal
+        }
+        aggregation.set(busStopId, entry)
+    }
+
+    const entries: BusStopOccupancyHeatmapEntry[] = []
+    let maxAveragePeople = 0
+    let totalPeople = 0
+
+    for (const [busStopId, data] of aggregation) {
+        const avgPeople = data.count > 0 ? data.sum / data.count : 0
+        entries.push({
+            busStopId,
+            averagePeople: avgPeople,
+            peakPeople: data.maxPeak,
+            sampleCount: data.count
+        })
+        if (avgPeople > maxAveragePeople) {
+            maxAveragePeople = avgPeople
+        }
+        totalPeople += avgPeople
+    }
+
+    return { entries, maxAveragePeople, totalPeople }
+}
