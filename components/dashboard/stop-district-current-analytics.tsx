@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import {
@@ -13,6 +14,8 @@ import {
 import {
     AlertCircle,
     BarChart3,
+    Bell,
+    ExternalLink,
     Map,
     MapPin,
     ShieldAlert,
@@ -73,6 +76,18 @@ const districtEventsConfig = {
 
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
 const numberFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
+
+function buildNotificationsHref(types: readonly string[]) {
+    const params = new URLSearchParams()
+    const uniqueTypes = Array.from(new Set(types.filter(Boolean)))
+
+    if (uniqueTypes.length > 0) {
+        params.set("types", uniqueTypes.join(","))
+    }
+
+    const query = params.toString()
+    return query ? `/notifications?${query}` : "/notifications"
+}
 
 function startOfLocalDay(date: Date) {
     const result = new Date(date)
@@ -284,6 +299,9 @@ export function StopDistrictCurrentAnalytics() {
     const liveDirections = districtSummaries.reduce((sum, district) => sum + district.liveDirections, 0)
     const selectedSafetyEvents = districtEventRows.reduce((sum, district) => sum + district.selectedSafetyEvents, 0)
     const alertFilterLabel = alertFilter === "all" ? "Все события" : STOP_SAFETY_ALERT_LABELS[alertFilter]
+    const districtNotificationsHref = buildNotificationsHref(
+        alertFilter === "all" ? STOP_SAFETY_ALERT_TYPES : [alertFilter]
+    )
     const latestAt = districtSummaries
         .map((district) => district.latestAt)
         .filter((value): value is string => Boolean(value))
@@ -467,14 +485,23 @@ export function StopDistrictCurrentAnalytics() {
                         <Card className="xl:col-span-4">
                             <CardHeader>
                                 <div className="space-y-3">
-                                    <div>
-                                        <CardTitle className="flex items-center gap-2 text-base">
-                                            <ShieldAlert className="h-5 w-5 text-red-500" />
-                                            События по районам
-                                        </CardTitle>
-                                        <CardDescription>
-                                            Гистограмма по выбранному типу события
-                                        </CardDescription>
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <div className="space-y-1.5">
+                                            <CardTitle className="flex items-center gap-2 text-base">
+                                                <ShieldAlert className="h-5 w-5 text-red-500" />
+                                                События по районам
+                                            </CardTitle>
+                                            <CardDescription>
+                                                Гистограмма по выбранному типу события
+                                            </CardDescription>
+                                        </div>
+                                        <Button asChild variant="outline" size="sm" className="shrink-0">
+                                            <Link href={districtNotificationsHref}>
+                                                <Bell className="h-4 w-4" />
+                                                Уведомления
+                                                <ExternalLink className="h-3.5 w-3.5" />
+                                            </Link>
+                                        </Button>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                         <Button

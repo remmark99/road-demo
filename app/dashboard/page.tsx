@@ -17,7 +17,6 @@ import {
   ShieldAlert,
   Hammer,
   ClipboardCheck,
-  Heater,
   AlertCircle,
   ShieldCheck,
   LifeBuoy,
@@ -43,7 +42,6 @@ import { StopConditionCurrentAnalytics } from "@/components/dashboard/stop-condi
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
 import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
 import { ConditionAnalytics } from "@/components/dashboard/condition-analytics"
-import { WarmStopAnalytics } from "@/components/dashboard/warmstop-analytics"
 import { ShoreSecurityAnalytics } from "@/components/dashboard/shore-security-analytics"
 import { ShoreSafetyAnalytics } from "@/components/dashboard/shore-safety-analytics"
 import { ShoreEmergencyAnalytics } from "@/components/dashboard/shore-emergency-analytics"
@@ -63,12 +61,10 @@ type DashboardView =
   | "city"
   | "stop_kpi"
   | "stop_districts"
-  | "stop_load"
   | "stop_security"
   | "stop_passenger"
   | "stop_vandalism"
   | "stop_condition"
-  | "stop_warmstop"
   | "shore_security"
   | "shore_safety"
   | "shore_emergency"
@@ -141,7 +137,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
   },
   {
     id: "stop_kpi",
-    label: "Показатели остановок",
+    label: "Технический статус",
     icon: BusFront,
     module: "stops",
     stopModes: {
@@ -150,21 +146,12 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
   },
   {
     id: "stop_districts",
-    label: "Районы",
+    label: "Микрорайоны",
     icon: Map,
     module: "stops",
     stopModes: {
       current: StopDistrictCurrentAnalytics,
       plan: StopDistrictPlanAnalytics,
-    },
-  },
-  {
-    id: "stop_load",
-    label: "Загруженность остановок",
-    icon: Users2,
-    module: "stops",
-    stopModes: {
-      current: StopCurrentLoadAnalytics,
     },
   },
   {
@@ -183,6 +170,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     icon: Users2,
     module: "stops",
     stopModes: {
+      current: StopCurrentLoadAnalytics,
       plan: PassengerAnalytics,
     },
   },
@@ -203,15 +191,6 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     stopModes: {
       current: StopConditionCurrentAnalytics,
       plan: ConditionAnalytics,
-    },
-  },
-  {
-    id: "stop_warmstop",
-    label: "Теплая остановка",
-    icon: Heater,
-    module: "stops",
-    stopModes: {
-      plan: WarmStopAnalytics,
     },
   },
   {
@@ -266,7 +245,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "road_repair", "city"]
-const STOPS_DASHBOARDS = ["stop_kpi", "stop_districts", "stop_load", "stop_security", "stop_passenger", "stop_vandalism", "stop_condition", "stop_warmstop"]
+const STOPS_DASHBOARDS = ["stop_kpi", "stop_districts", "stop_passenger", "stop_security", "stop_vandalism", "stop_condition"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]
 const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]

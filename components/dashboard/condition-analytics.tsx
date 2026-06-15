@@ -32,8 +32,11 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import {
     Activity,
     AlertCircle,
+    DoorOpen,
+    Droplets,
     Flame,
     Gauge,
+    Hammer,
     MoveRight,
     ShieldAlert,
     ShieldCheck,
@@ -41,8 +44,10 @@ import {
     TimerReset,
     Trash2,
     TriangleAlert,
+    Zap,
     Users2,
     Snowflake,
+    Thermometer,
     type LucideIcon,
 } from "lucide-react"
 import {
@@ -55,6 +60,7 @@ import {
     TRASH_WARNING,
     FOGGING_WARNING,
     type ConditionSeverity,
+    type ConditionReading,
     type ConditionType,
     type StopConditionPriority,
     getConditionHourlyHealth,
@@ -63,6 +69,10 @@ import {
     getConditionPriorityStops,
     type BusStopId,
 } from "@/lib/mock/condition-mock-data"
+import {
+    doorStatusData,
+    type DoorStatusReading,
+} from "@/lib/mock/warmstop-mock-data"
 import { cn } from "@/lib/utils"
 
 // ─── Chart Configs ───────────────────────────────────
@@ -76,6 +86,19 @@ const pulseConfig = {
 const issueMixConfig = {
     warningCount: { label: "Предупреждения", color: "hsl(38, 92%, 50%)" },
     criticalCount: { label: "Критические", color: "hsl(0, 84%, 60%)" },
+} satisfies ChartConfig
+
+const sensorTrendConfig = {
+    insideTemperature: { label: "Температура внутри, °C", color: "hsl(24, 95%, 53%)" },
+    humidity: { label: "Влажность, %", color: "hsl(199, 89%, 48%)" },
+    voltage: { label: "Напряжение, В", color: "hsl(262, 83%, 58%)" },
+    glassBreakEvents: { label: "Разбитие стекла", color: "hsl(0, 84%, 60%)" },
+} satisfies ChartConfig
+
+const doorTrendConfig = {
+    openCount: { label: "Открытия", color: "hsl(199, 89%, 48%)" },
+    longOpenCount: { label: "Долго открыта", color: "hsl(0, 84%, 60%)" },
+    openPct: { label: "Время открытой двери, %", color: "hsl(38, 92%, 50%)" },
 } satisfies ChartConfig
 
 const STATUS_META: Record<
@@ -178,6 +201,199 @@ function getActionDetail(stop: StopConditionPriority) {
     return `Пик ${formatHourWindow(stop.peakHour)}. Урны до ${stop.maxTrash}%, стекло до ${stop.maxFogging}%.`
 }
 
+interface SensorHourlyRow {
+    hour: string
+    insideTemperature: number
+    humidity: number
+    voltage: number
+    glassBreakEvents: number
+}
+
+interface StopSensorSnapshot {
+    stopId: BusStopId
+    stopName: string
+    avgInsideTemperature: number
+    avgHumidity: number
+    minVoltage: number
+    glassBreakEvents: number
+    status: ConditionSeverity
+    issue: string
+}
+
+interface DoorHourlyRow {
+    hour: string
+    openCount: number
+    longOpenCount: number
+    openPct: number
+}
+
+interface StopDoorSnapshot {
+    stopId: BusStopId
+    stopName: string
+    openCount: number
+    longOpenCount: number
+    avgOpenPct: number
+    status: ConditionSeverity
+}
+
+function roundAverage(sum: number, count: number, digits = 0) {
+    if (count === 0) return 0
+    const multiplier = 10 ** digits
+    return Math.round((sum / count) * multiplier) / multiplier
+}
+
+function buildSensorHourlyRows(readings: ConditionReading[]): SensorHourlyRow[] {
+    const map = new Map<
+        string,
+        { tempSum: number; humiditySum: number; voltageSum: number; glassEvents: number; count: number }
+    >()
+
+    for (let hour = 0; hour < 24; hour++) {
+        map.set(`${String(hour).padStart(2, "0")}:00`, {
+            tempSum: 0,
+            humiditySum: 0,
+            voltageSum: 0,
+            glassEvents: 0,
+            count: 0,
+        })
+    }
+
+    for (const reading of readings) {
+        const row = map.get(reading.hour)!
+        row.tempSum += reading.insideTemperature
+        row.humiditySum += reading.humidity
+        row.voltageSum += reading.voltage
+        row.glassEvents += reading.glassBreakLevel >= 80 ? 1 : 0
+        row.count++
+    }
+
+    return Array.from(map.entries()).map(([hour, row]) => ({
+        hour,
+        insideTemperature: roundAverage(row.tempSum, row.count, 1),
+        humidity: roundAverage(row.humiditySum, row.count),
+        voltage: roundAverage(row.voltageSum, row.count),
+        glassBreakEvents: row.glassEvents,
+    }))
+}
+
+function resolveSensorStatus(snapshot: Omit<StopSensorSnapshot, "status" | "issue">): Pick<StopSensorSnapshot, "status" | "issue"> {
+    if (snapshot.glassBreakEvents > 0) {
+        return { status: "critical", issue: "датчик разбития стекла" }
+    }
+
+    if (snapshot.minVoltage < 210) {
+        return { status: "critical", issue: "низкое напряжение" }
+    }
+
+    if (snapshot.avgInsideTemperature < 14 || snapshot.avgInsideTemperature > 29) {
+        return { status: "attention", issue: "температура вне нормы" }
+    }
+
+    if (snapshot.avgHumidity > 68) {
+        return { status: "attention", issue: "повышенная влажность" }
+    }
+
+    return { status: "healthy", issue: "датчики в норме" }
+}
+
+function buildStopSensorSnapshots(readings: ConditionReading[]): StopSensorSnapshot[] {
+    return BUS_STOPS.map((stop) => {
+        const stopReadings = readings.filter((reading) => reading.stopId === stop.id)
+        const base = {
+            stopId: stop.id,
+            stopName: stop.name.split("/")[0].trim(),
+            avgInsideTemperature: roundAverage(
+                stopReadings.reduce((sum, reading) => sum + reading.insideTemperature, 0),
+                stopReadings.length,
+                1
+            ),
+            avgHumidity: roundAverage(
+                stopReadings.reduce((sum, reading) => sum + reading.humidity, 0),
+                stopReadings.length
+            ),
+            minVoltage: stopReadings.reduce(
+                (minValue, reading) => Math.min(minValue, reading.voltage),
+                Number.POSITIVE_INFINITY
+            ),
+            glassBreakEvents: stopReadings.filter((reading) => reading.glassBreakLevel >= 80).length,
+        }
+        const normalizedBase = {
+            ...base,
+            minVoltage: Number.isFinite(base.minVoltage) ? base.minVoltage : 0,
+        }
+        const status = resolveSensorStatus(normalizedBase)
+
+        return {
+            ...normalizedBase,
+            ...status,
+        }
+    }).sort((a, b) => (
+        a.status === b.status
+            ? a.stopName.localeCompare(b.stopName, "ru")
+            : a.status === "critical"
+                ? -1
+                : b.status === "critical"
+                    ? 1
+                    : a.status === "attention"
+                        ? -1
+                        : 1
+    ))
+}
+
+function buildDoorHourlyRows(readings: DoorStatusReading[]): DoorHourlyRow[] {
+    const map = new Map<string, { openCount: number; longOpenCount: number; openPctSum: number; count: number }>()
+
+    for (let hour = 0; hour < 24; hour++) {
+        map.set(`${String(hour).padStart(2, "0")}:00`, {
+            openCount: 0,
+            longOpenCount: 0,
+            openPctSum: 0,
+            count: 0,
+        })
+    }
+
+    for (const reading of readings) {
+        const row = map.get(reading.hour)!
+        row.openCount += reading.openCount
+        row.longOpenCount += reading.longOpenCount
+        row.openPctSum += reading.openPct
+        row.count++
+    }
+
+    return Array.from(map.entries()).map(([hour, row]) => ({
+        hour,
+        openCount: row.openCount,
+        longOpenCount: row.longOpenCount,
+        openPct: roundAverage(row.openPctSum, row.count),
+    }))
+}
+
+function buildStopDoorSnapshots(readings: DoorStatusReading[]): StopDoorSnapshot[] {
+    return BUS_STOPS.map((stop) => {
+        const stopReadings = readings.filter((reading) => reading.stopId === stop.id)
+        const openCount = stopReadings.reduce((sum, reading) => sum + reading.openCount, 0)
+        const longOpenCount = stopReadings.reduce((sum, reading) => sum + reading.longOpenCount, 0)
+        const avgOpenPct = roundAverage(
+            stopReadings.reduce((sum, reading) => sum + reading.openPct, 0),
+            stopReadings.length
+        )
+        const status: ConditionSeverity = longOpenCount > 8 ? "attention" : "healthy"
+
+        return {
+            stopId: stop.id,
+            stopName: stop.name.split("/")[0].trim(),
+            openCount,
+            longOpenCount,
+            avgOpenPct,
+            status,
+        }
+    }).sort((a, b) => (
+        b.longOpenCount - a.longOpenCount ||
+        b.avgOpenPct - a.avgOpenPct ||
+        a.stopName.localeCompare(b.stopName, "ru")
+    ))
+}
+
 function filterSelectedStops<T extends { stopId: BusStopId }>(data: T[], selectedStops: BusStopId[]) {
     if (selectedStops.length === 0) return [] as T[]
     if (selectedStops.length === BUS_STOPS.length) return data
@@ -259,6 +475,24 @@ export function ConditionAnalytics() {
         [readingsFiltered, alertsFiltered]
     )
     const issueMix = useMemo(() => getConditionIssueMix(alertsFiltered), [alertsFiltered])
+    const sensorHourlyRows = useMemo(() => buildSensorHourlyRows(readingsFiltered), [readingsFiltered])
+    const sensorSnapshots = useMemo(() => buildStopSensorSnapshots(readingsFiltered), [readingsFiltered])
+    const sensorProblemStops = sensorSnapshots.filter((snapshot) => snapshot.status !== "healthy")
+    const sensorHealthyStops = sensorSnapshots.filter((snapshot) => snapshot.status === "healthy").length
+    const avgInsideTemperature = roundAverage(
+        readingsFiltered.reduce((sum, reading) => sum + reading.insideTemperature, 0),
+        readingsFiltered.length,
+        1
+    )
+    const avgHumidity = roundAverage(
+        readingsFiltered.reduce((sum, reading) => sum + reading.humidity, 0),
+        readingsFiltered.length
+    )
+    const minVoltage = readingsFiltered.reduce(
+        (minValue, reading) => Math.min(minValue, reading.voltage),
+        Number.POSITIVE_INFINITY
+    )
+    const glassBreakEvents = readingsFiltered.filter((reading) => reading.glassBreakLevel >= 80).length
 
     const selectedLabel =
         selectedStops.length === BUS_STOPS.length
@@ -423,6 +657,172 @@ export function ConditionAnalytics() {
                                 </CardContent>
                             </Card>
                         </div>
+
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                            <Card className="border-orange-500/20 bg-orange-500/[0.05]">
+                                <CardContent className="pt-4 pb-3 px-4">
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <Thermometer className="h-4 w-4 text-orange-500" />
+                                        Температура внутри
+                                    </div>
+                                    <div className="mt-3 text-3xl font-semibold tabular-nums">{avgInsideTemperature}°C</div>
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                        Норма 18-26°C, просадки подсвечены в списке датчиков.
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border-sky-500/20 bg-sky-500/[0.05]">
+                                <CardContent className="pt-4 pb-3 px-4">
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <Droplets className="h-4 w-4 text-sky-500" />
+                                        Влажность
+                                    </div>
+                                    <div className="mt-3 text-3xl font-semibold tabular-nums">{avgHumidity}%</div>
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                        Большинство павильонов держится в комфортной зоне.
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border-violet-500/20 bg-violet-500/[0.05]">
+                                <CardContent className="pt-4 pb-3 px-4">
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <Zap className="h-4 w-4 text-violet-500" />
+                                        Минимум напряжения
+                                    </div>
+                                    <div className="mt-3 text-3xl font-semibold tabular-nums">
+                                        {Number.isFinite(minVoltage) ? minVoltage : 0} В
+                                    </div>
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                        Ниже 210 В считается проблемным питанием.
+                                    </p>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="border-red-500/20 bg-red-500/[0.05]">
+                                <CardContent className="pt-4 pb-3 px-4">
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                        <Hammer className="h-4 w-4 text-red-500" />
+                                        Разбитие стекла
+                                    </div>
+                                    <div className="mt-3 text-3xl font-semibold tabular-nums">{glassBreakEvents}</div>
+                                    <p className="mt-2 text-sm text-muted-foreground">
+                                        Учебные срабатывания датчика за выбранный период.
+                                    </p>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <div className="grid gap-6 xl:grid-cols-12">
+                            <Card className="xl:col-span-7">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="flex items-center gap-2 text-base">
+                                        <Thermometer className="h-5 w-5 text-orange-500" />
+                                        Микроклимат павильонов
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Температура внутри и влажность по часам для выбранных остановок.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <ChartContainer config={sensorTrendConfig} className="h-[300px] w-full">
+                                        <ComposedChart data={sensorHourlyRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                            <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} interval={2} />
+                                            <YAxis yAxisId="temp" tickLine={false} axisLine={false} tickMargin={8} domain={[0, 35]} />
+                                            <YAxis yAxisId="humidity" orientation="right" tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} />
+                                            <ChartTooltip content={<ChartTooltipContent />} />
+                                            <ChartLegend content={<ChartLegendContent />} />
+                                            <ReferenceLine yAxisId="temp" y={18} stroke="hsl(24, 95%, 53%)" strokeDasharray="4 4" />
+                                            <Line yAxisId="temp" type="monotone" dataKey="insideTemperature" stroke="var(--color-insideTemperature)" strokeWidth={2.5} dot={false} />
+                                            <Line yAxisId="humidity" type="monotone" dataKey="humidity" stroke="var(--color-humidity)" strokeWidth={2.5} dot={false} />
+                                        </ComposedChart>
+                                    </ChartContainer>
+                                </CardContent>
+                            </Card>
+
+                            <Card className="xl:col-span-5">
+                                <CardHeader className="pb-2">
+                                    <CardTitle className="flex items-center gap-2 text-base">
+                                        <Zap className="h-5 w-5 text-violet-500" />
+                                        Питание и стекло
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Напряжение сети и срабатывания датчика разбития.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent>
+                                    <ChartContainer config={sensorTrendConfig} className="h-[300px] w-full">
+                                        <ComposedChart data={sensorHourlyRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                            <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} interval={2} />
+                                            <YAxis yAxisId="voltage" tickLine={false} axisLine={false} tickMargin={8} domain={[190, 240]} />
+                                            <YAxis yAxisId="glass" orientation="right" tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
+                                            <ChartTooltip content={<ChartTooltipContent />} />
+                                            <ChartLegend content={<ChartLegendContent />} />
+                                            <ReferenceLine yAxisId="voltage" y={210} stroke="hsl(0, 84%, 60%)" strokeDasharray="4 4" />
+                                            <Bar yAxisId="glass" dataKey="glassBreakEvents" fill="var(--color-glassBreakEvents)" radius={[5, 5, 0, 0]} maxBarSize={16} opacity={0.7} />
+                                            <Line yAxisId="voltage" type="monotone" dataKey="voltage" stroke="var(--color-voltage)" strokeWidth={2.5} dot={false} />
+                                        </ComposedChart>
+                                    </ChartContainer>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center gap-2 text-base">
+                                    <Gauge className="h-5 w-5 text-emerald-500" />
+                                    Датчики по остановкам
+                                </CardTitle>
+                                <CardDescription>
+                                    Большинство остановок в норме, проблемные датчики подняты наверх списка.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                                    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-3">
+                                        <div className="text-xs text-muted-foreground">В норме</div>
+                                        <div className="mt-2 text-2xl font-semibold tabular-nums">{sensorHealthyStops}</div>
+                                    </div>
+                                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-3">
+                                        <div className="text-xs text-muted-foreground">С проблемами</div>
+                                        <div className="mt-2 text-2xl font-semibold tabular-nums">{sensorProblemStops.length}</div>
+                                    </div>
+                                    <div className="rounded-lg border border-muted bg-muted/30 p-3">
+                                        <div className="text-xs text-muted-foreground">Всего датчиков</div>
+                                        <div className="mt-2 text-2xl font-semibold tabular-nums">{sensorSnapshots.length * 4}</div>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+                                    {sensorSnapshots.map((snapshot) => (
+                                        <div
+                                            key={snapshot.stopId}
+                                            className={cn(
+                                                "rounded-lg border p-3",
+                                                STATUS_META[snapshot.status].panelClassName
+                                            )}
+                                        >
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <div className="truncate text-sm font-semibold">{snapshot.stopName}</div>
+                                                    <div className="mt-1 text-xs text-muted-foreground">{snapshot.issue}</div>
+                                                </div>
+                                                <StatusBadge status={snapshot.status} />
+                                            </div>
+                                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                                                <div>Темп.: {snapshot.avgInsideTemperature}°C</div>
+                                                <div>Влажн.: {snapshot.avgHumidity}%</div>
+                                                <div>Питание: {snapshot.minVoltage} В</div>
+                                                <div>Стекло: {snapshot.glassBreakEvents}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
 
                         <div className="grid gap-6 xl:grid-cols-12">
                             <Card className="xl:col-span-8">

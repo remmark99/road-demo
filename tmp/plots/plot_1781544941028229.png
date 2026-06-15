@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="430" viewBox="0 0 980 430" role="img" aria-label="Связь с загрузкой: события переполненных урн">
+    <style>
+        .bg { fill: #ffffff; }
+        .title { font: 700 24px Arial, sans-serif; fill: #111827; }
+        .subtitle { font: 400 13px Arial, sans-serif; fill: #6b7280; }
+        .label { font: 500 14px Arial, sans-serif; fill: #111827; }
+        .value { font: 700 13px Arial, sans-serif; fill: #111827; }
+        .tick { font: 400 12px Arial, sans-serif; fill: #6b7280; }
+        .grid { stroke: #e5e7eb; stroke-width: 1; stroke-dasharray: 4 6; }
+        .axis { stroke: #9ca3af; stroke-width: 1.2; }
+        .track { fill: #f3f4f6; }
+    </style>
+    <rect width="980" height="430" rx="18" class="bg" />
+    <text x="36" y="44" class="title">Связь с загрузкой: события переполненных урн</text>
+    <text x="36" y="68" class="subtitle">Топ 6 по подтвержденным данным. Значения показаны в событ..</text>
+    <line x1="286" y1="78" x2="286" y2="382" class="grid" /><text x="286" y="408" text-anchor="middle" class="tick">0</text><line x1="438.5" y1="78" x2="438.5" y2="382" class="grid" /><text x="438.5" y="408" text-anchor="middle" class="tick">28</text><line x1="591" y1="78" x2="591" y2="382" class="grid" /><text x="591" y="408" text-anchor="middle" class="tick">56</text><line x1="743.5" y1="78" x2="743.5" y2="382" class="grid" /><text x="743.5" y="408" text-anchor="middle" class="tick">84</text><line x1="896" y1="78" x2="896" y2="382" class="grid" /><text x="896" y="408" text-anchor="middle" class="tick">112</text>
+    <line x1="286" y1="78" x2="286" y2="382" class="axis" />
+    <text x="36" y="112" class="label">Старый Сургут</text><rect x="286" y="94" width="610" height="22" rx="6" class="track" /><rect x="286" y="94" width="610" height="22" rx="6" fill="#2563eb" /><text x="844" y="110" class="value">112 событ.</text><text x="36" y="158" class="label">20А микрорайон</text><rect x="286" y="140" width="610" height="22" rx="6" class="track" /><rect x="286" y="140" width="533.75" height="22" rx="6" fill="#16a34a" /><text x="829.75" y="156" class="value">98 событ.</text><text x="36" y="204" class="label">Никольский</text><rect x="286" y="186" width="610" height="22" rx="6" class="track" /><rect x="286" y="186" width="92.58928571428571" height="22" rx="6" fill="#f59e0b" /><text x="388.5892857142857" y="202" class="value">17 событ.</text><text x="36" y="250" class="label">Парк За Саймой</text><rect x="286" y="232" width="610" height="22" rx="6" class="track" /><rect x="286" y="232" width="32.67857142857142" height="22" rx="6" fill="#dc2626" /><text x="328.67857142857144" y="248" class="value">6 событ.</text><text x="36" y="296" class="label">24 микрорайон</text><rect x="286" y="278" width="610" height="22" rx="6" class="track" /><rect x="286" y="278" width="16.33928571428571" height="22" rx="6" fill="#7c3aed" /><text x="312.3392857142857" y="294" class="value">3 событ.</text><text x="36" y="342" class="label">ул. Гагарина</text><rect x="286" y="324" width="610" height="22" rx="6" class="track" /><rect x="286" y="324" width="6" height="22" rx="6" fill="#0891b2" /><text x="302" y="340" class="value">1 событ.</text>
+    
+</svg>

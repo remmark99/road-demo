@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import {
@@ -13,10 +14,13 @@ import {
 import {
     AlertCircle,
     BarChart3,
+    Bell,
     Camera,
     Cigarette,
     Clock3,
+    ExternalLink,
     MapPin,
+    PackageSearch,
     PawPrint,
     ShieldAlert,
     UserRound,
@@ -120,6 +124,33 @@ const PERIOD_BUCKET_LABELS: Record<PeriodBucket, string> = {
     week: "По неделям",
 }
 
+function buildNotificationsHref({
+    types,
+    cameraIndexes = [],
+}: {
+    types: readonly string[]
+    cameraIndexes?: readonly number[]
+}) {
+    const params = new URLSearchParams()
+    const uniqueTypes = Array.from(new Set(types.filter(Boolean)))
+    const uniqueCameraIndexes = Array.from(new Set(cameraIndexes.filter(Number.isFinite)))
+
+    if (uniqueTypes.length > 0) {
+        params.set("types", uniqueTypes.join(","))
+    }
+
+    if (uniqueCameraIndexes.length > 0) {
+        params.set("cameras", uniqueCameraIndexes.join(","))
+    }
+
+    const query = params.toString()
+    return query ? `/notifications?${query}` : "/notifications"
+}
+
+function getAlertCameraIndexes(alert: StopSafetyAlert) {
+    return typeof alert.camera_index === "number" ? [alert.camera_index] : []
+}
+
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
 const numberFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
 
@@ -183,12 +214,6 @@ function getRangeBounds(result: TimeRangeResult): RangeBounds {
         from: startOfLocalDay(now),
         to: now,
     }
-}
-
-function isWithinRange(iso: string, range: RangeBounds) {
-    const time = new Date(iso).getTime()
-
-    return time >= range.from.getTime() && time <= range.to.getTime()
 }
 
 function formatDateTime(iso: string | null) {
@@ -456,6 +481,7 @@ function buildSummary(
 
 function getAlertTypeIcon(type: StopSafetyAlertType) {
     if (type === "smoking") return Cigarette
+    if (type === "abandoned_object") return PackageSearch
     if (type === "dogs_without_people") return PawPrint
     if (type === "lying_person") return UserRound
 
@@ -464,6 +490,7 @@ function getAlertTypeIcon(type: StopSafetyAlertType) {
 
 function getAlertTypeColor(type: StopSafetyAlertType) {
     if (type === "smoking") return "text-orange-500 bg-orange-500/10 border-orange-500/20"
+    if (type === "abandoned_object") return "text-violet-500 bg-violet-500/10 border-violet-500/20"
     if (type === "dogs_without_people") return "text-amber-500 bg-amber-500/10 border-amber-500/20"
     if (type === "lying_person") return "text-red-500 bg-red-500/10 border-red-500/20"
 
@@ -558,14 +585,13 @@ export function StopLyingPersonAnalytics() {
     useEffect(() => {
         let cancelled = false
 
-        fetchStopSafetyAlerts()
+        fetchStopSafetyAlerts({ from: range.from, to: range.to })
             .then(async (result) => {
-                const filteredAlerts = result.filter((alert) => isWithinRange(alert.timestamp, range))
-                const locationIds = getAllAlertLocationIds(filteredAlerts)
+                const locationIds = getAllAlertLocationIds(result)
                 const nextStopLookup = await fetchBusStopsForLocations(locationIds)
 
                 if (cancelled) return
-                setAlerts(filteredAlerts)
+                setAlerts(result)
                 setStopLookup(nextStopLookup)
                 setError(null)
             })
@@ -604,6 +630,9 @@ export function StopLyingPersonAnalytics() {
     )
     const periodTickInterval = Math.max(0, Math.ceil(periodRows.length / 8) - 1)
     const noRows = !loading && alerts.length === 0 && !error
+    const safetyNotificationsHref = buildNotificationsHref({
+        types: STOP_SAFETY_ALERT_TYPES,
+    })
 
     const handleTimeRangeChange = (nextRange: TimeRangeResult) => {
         setTimeRange(nextRange)
@@ -642,7 +671,7 @@ export function StopLyingPersonAnalytics() {
                     <KpiCard
                         title="Событий за период"
                         value={integerFormat.format(summary.totalEvents)}
-                        caption="лежачие люди, курение, бездомные собаки"
+                        caption="лежачие люди, курение, предметы, собаки"
                         detail="только события остановок"
                         icon={ShieldAlert}
                         tone={getAlertTone(summary.totalEvents)}
@@ -696,6 +725,7 @@ export function StopLyingPersonAnalytics() {
                             <h3 className="text-lg font-medium">Нет событий за выбранный период</h3>
                             <p className="mt-1 max-w-md text-sm text-muted-foreground">
                                 За выбранный период нет событий по лежачим людям, курению или бездомным собакам.
+                                Если появятся оставленные предметы, они будут учтены в этой же витрине.
                             </p>
                         </div>
                     </CardContent>
@@ -830,7 +860,7 @@ export function StopLyingPersonAnalytics() {
                                 Распределение реальных событий остановок по подтвержденным типам
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="grid gap-3 md:grid-cols-3">
+                        <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             {typeSummaries.map((item) => {
                                 const Icon = getAlertTypeIcon(item.type)
 
@@ -854,13 +884,24 @@ export function StopLyingPersonAnalytics() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-base">
-                                <ShieldAlert className="h-5 w-5 text-red-500" />
-                                Последние события
-                            </CardTitle>
-                            <CardDescription>
-                                Реальные записи событий без отображения изображений и кадров
-                            </CardDescription>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="space-y-1.5">
+                                    <CardTitle className="flex items-center gap-2 text-base">
+                                        <ShieldAlert className="h-5 w-5 text-red-500" />
+                                        Последние события
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Реальные записи событий без отображения изображений и кадров
+                                    </CardDescription>
+                                </div>
+                                <Button asChild variant="outline" size="sm" className="shrink-0">
+                                    <Link href={safetyNotificationsHref}>
+                                        <Bell className="h-4 w-4" />
+                                        Уведомления
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                    </Link>
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <Table>
@@ -872,6 +913,7 @@ export function StopLyingPersonAnalytics() {
                                         <TableHead className="text-right">Камера</TableHead>
                                         <TableHead className="text-right">Уверенность</TableHead>
                                         <TableHead className="text-right">Детали</TableHead>
+                                        <TableHead className="text-right">Уведомления</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -882,6 +924,10 @@ export function StopLyingPersonAnalytics() {
                                             : { label: "Остановка не определена", detail: `Камера ${alert.camera_index ?? "-"}` }
                                         const config = ALERT_TYPE_CONFIG[alert.alert_type]
                                         const Icon = getAlertTypeIcon(alert.alert_type)
+                                        const alertNotificationsHref = buildNotificationsHref({
+                                            types: [alert.alert_type],
+                                            cameraIndexes: getAlertCameraIndexes(alert),
+                                        })
 
                                         return (
                                             <TableRow key={alert.id}>
@@ -909,6 +955,14 @@ export function StopLyingPersonAnalytics() {
                                                     {alert.alert_type === "lying_person"
                                                         ? formatDuration(alert.metadata?.lying_duration_seconds)
                                                         : "-"}
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button asChild variant="ghost" size="sm" className="h-8">
+                                                        <Link href={alertNotificationsHref}>
+                                                            Открыть
+                                                            <ExternalLink className="h-3.5 w-3.5" />
+                                                        </Link>
+                                                    </Button>
                                                 </TableCell>
                                             </TableRow>
                                         )

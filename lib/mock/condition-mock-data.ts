@@ -29,6 +29,10 @@ export interface ConditionReading {
     hour: string
     trashLevel: number    // 0-100 (% fill)
     foggingLevel: number  // 0-100 (% coverage)
+    insideTemperature: number
+    humidity: number
+    voltage: number
+    glassBreakLevel: number
     stopId: BusStopId
     day: number
 }
@@ -57,10 +61,40 @@ function generateConditionReadings(): ConditionReading[] {
                 else if (h >= 17 && h <= 20) foggingBase = 15 + Math.round(seededRandom(seed + 2) * 25)
                 else foggingBase = 30 + Math.round(seededRandom(seed + 2) * 35)
 
+                const stopNumber = Number.parseInt(stop.id.replace("stop-", ""), 10)
+                let insideTemperature = 21 + Math.round((seededRandom(seed + 3) - 0.5) * 5)
+                if (h <= 6) insideTemperature -= 2
+                if (h >= 12 && h <= 16) insideTemperature += 1
+                if (stopNumber === 4 && day % 5 === 0 && h >= 4 && h <= 8) {
+                    insideTemperature -= 8
+                }
+
+                let humidity = 42 + Math.round(seededRandom(seed + 4) * 16)
+                if (h <= 8) humidity += 5
+                if (stopNumber === 2 && day % 3 === 0 && h >= 6 && h <= 10) {
+                    humidity += 28
+                }
+
+                let voltage = 224 + Math.round((seededRandom(seed + 5) - 0.5) * 8)
+                if (stopNumber === 5 && day % 4 === 0 && h >= 18 && h <= 21) {
+                    voltage -= 19
+                }
+
+                const glassBreakLevel =
+                    stopNumber === 3 && day % 6 === 0 && h === 21
+                        ? 100
+                        : seededRandom(seed + 6) > 0.985
+                            ? 35
+                            : 0
+
                 data.push({
                     hour: `${String(h).padStart(2, "0")}:00`,
                     trashLevel: trashAccum,
                     foggingLevel: foggingBase,
+                    insideTemperature,
+                    humidity: Math.min(100, humidity),
+                    voltage,
+                    glassBreakLevel,
                     stopId: stop.id,
                     day,
                 })

@@ -181,6 +181,7 @@ export function getStopComplexByCameraIndex(cameraIndex: number | null | undefin
 export const STOP_SAFETY_ALERT_TYPES = [
     "lying_person",
     "smoking",
+    "abandoned_object",
     "dogs_without_people",
 ] as const
 
@@ -193,5 +194,6 @@ export function isStopSafetyAlertType(alertType: string): alertType is StopSafet
 export const STOP_SAFETY_ALERT_LABELS: Record<StopSafetyAlertType, string> = {
     lying_person: "Лежачий человек",
     smoking: "Курение",
+    abandoned_object: "Оставленные предметы",
     dogs_without_people: "Бездомные собаки",
 }

@@ -27,7 +27,9 @@ if npm run lint -- \
   components/dashboard/passenger-analytics.tsx \
   components/dashboard/vandalism-analytics.tsx \
   components/dashboard/warmstop-analytics.tsx \
+  app/api/stop-load-analytics/route.ts \
   lib/api/busyness-windows.ts \
+  lib/api/stop-load-analytics.ts \
   lib/api/stop-condition-windows.ts \
   lib/api/stop-current-analytics.ts \
   lib/api/alerts.ts \
@@ -73,6 +75,52 @@ if rg -q "fetchStopTrashOverflowAlerts|STOP_TRASH_OVERFLOW_ALERT_TYPES|bin_full"
   echo "SUMMARY: event-based trash overflow duration analytics found"
 else
   echo "SUMMARY: event-based trash overflow duration analytics missing"
+  exit 1
+fi
+
+if rg -q "FetchStopSafetyAlertsOptions|gte\\('timestamp'|lte\\('timestamp'" lib/api/alerts.ts \
+  && rg -q "fetchStopSafetyAlerts\\(\\{ from: range\\.from, to: range\\.to \\}\\)" components/dashboard/stop-lying-person-analytics.tsx \
+  && rg -q "fetchStopSafetyAlerts\\(\\{ from: range\\.from, to: range\\.to \\}\\)|fetchStopSafetyAlerts\\(\\{[[:space:]]*from: fallbackRange\\.from" lib/api/stop-current-analytics.ts; then
+  echo "SUMMARY: stop safety alerts are filtered by selected period at query time"
+else
+  echo "SUMMARY: stop safety alerts are not filtered by selected period at query time"
+  rg -n "fetchStopSafetyAlerts|gte\\('timestamp'|lte\\('timestamp'" lib/api/alerts.ts lib/api/stop-current-analytics.ts components/dashboard/stop-lying-person-analytics.tsx || true
+  exit 1
+fi
+
+if rg -q "fetchStopLoadAnalytics" components/dashboard/stop-current-load-analytics.tsx lib/api/stop-load-analytics.ts \
+  && rg -q "StopLoadAnalyticsResponse|fetchBusynessRows|responseCache|PARALLEL_PAGE_REQUESTS" app/api/stop-load-analytics/route.ts; then
+  echo "SUMMARY: stop load analytics is served by a single same-origin aggregate endpoint"
+else
+  echo "SUMMARY: stop load aggregate endpoint is missing"
+  rg -n "fetchStopLoadAnalytics|StopLoadAnalyticsResponse|fetchBusynessRows|responseCache|PARALLEL_PAGE_REQUESTS" components/dashboard/stop-current-load-analytics.tsx lib/api/stop-load-analytics.ts app/api/stop-load-analytics/route.ts || true
+  exit 1
+fi
+
+if rg -q "fetchBusynessWindows|fetchLatestBusynessWindow|fetchBusStopsForLocations|busyness_windows" components/dashboard/stop-current-load-analytics.tsx; then
+  echo "SUMMARY: stop load browser component still fetches raw busyness windows directly"
+  rg -n "fetchBusynessWindows|fetchLatestBusynessWindow|fetchBusStopsForLocations|busyness_windows" components/dashboard/stop-current-load-analytics.tsx || true
+  exit 1
+else
+  echo "SUMMARY: stop load browser component no longer paginates raw busyness_windows"
+fi
+
+if rg -q "DEFAULT_LIMIT = 20000|PAGE_SIZE = 5000|busStopsFeatureCollectionPromise" lib/api/busyness-windows.ts \
+  && rg -q "currentStopsPromise" lib/api/stop-current-analytics.ts; then
+  echo "SUMMARY: stop analytics uses bounded busyness pagination and cached stop directories"
+else
+  echo "SUMMARY: stop analytics pagination/cache safeguards are missing"
+  rg -n "DEFAULT_LIMIT|PAGE_SIZE|busStopsFeatureCollectionPromise|currentStopsPromise" lib/api/busyness-windows.ts lib/api/stop-current-analytics.ts || true
+  exit 1
+fi
+
+if rg -q '"abandoned_object"' lib/stop-analytics-config.ts \
+  && rg -q "Оставленные предметы" lib/stop-analytics-config.ts components/dashboard/stop-lying-person-analytics.tsx \
+  && rg -q "PackageSearch" components/dashboard/stop-lying-person-analytics.tsx; then
+  echo "SUMMARY: abandoned-object safety events are included in stop analytics"
+else
+  echo "SUMMARY: abandoned-object safety events are missing from stop analytics"
+  rg -n "abandoned_object|Оставленные предметы|PackageSearch" lib/stop-analytics-config.ts components/dashboard/stop-lying-person-analytics.tsx || true
   exit 1
 fi
 

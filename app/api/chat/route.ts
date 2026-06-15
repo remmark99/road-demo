@@ -3,6 +3,8 @@ import {
     createUIMessageStreamResponse,
     type UIMessage,
 } from "ai"
+import { promises as fs } from "node:fs"
+import path from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
@@ -17,6 +19,7 @@ import {
 import {
     STOP_SAFETY_ALERT_LABELS,
     STOP_SAFETY_ALERT_TYPES,
+    getStopComplexByCameraIndex,
     getStopComplexByLocationId,
 } from "@/lib/stop-analytics-config"
 
@@ -73,7 +76,7 @@ type StopAlertRow = {
     alert_type: string
     severity: number | null
     message: string | null
-    metadata: { location_id?: string } | null
+    metadata: Record<string, unknown> | null
     timestamp: string
     camera_index: number | null
 }
@@ -99,6 +102,25 @@ const TOOL_TAG_PATTERN = /\[ИСПОЛЬЗУЙ:\s*([\w-]+)\]\s*/i
 const TOOL_TAG_CLEAN_PATTERN = /\[ИСПОЛЬЗУЙ:\s*[\w-]+\]\s*/gi
 const ISO_DATE_TIME_PATTERN = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?\b/g
 const TEXT_PART_ID = "assistant-text"
+const LOCAL_PLOTS_DIR = path.join(process.cwd(), "tmp", "plots")
+const STOP_ALERT_MODULE_NAMES = [
+    "stops",
+    "bus_stop_monitoring",
+    "stop_monitoring",
+]
+const STOP_TRASH_OVERFLOW_ALERT_TYPES = [
+    "trash_overflow",
+    "trash_bin_overflow",
+    "bin_overflow",
+    "bin_full",
+    "garbage_overflow",
+    "stop_trash_overflow",
+    "stop_bin_overflow",
+    "overflowing_trash",
+    "overflowing_bin",
+    "trash_full",
+    "park_trash_overflow",
+]
 const STOP_KNOWN_TOOL_NAMES = new Set([
     "get_stop_current_load_summary",
     "get_stop_safety_events",
@@ -488,7 +510,7 @@ function isSafetyRequest(text: string) {
 }
 
 function isLoadRequest(text: string) {
-    return /загруж|нагруз|люд|пассаж|пик|очеред|толп|посещаем/i.test(text)
+    return /загруж|нагруж|нагруз|люд|пассаж|пик|очеред|толп|посещаем/i.test(text)
 }
 
 function isStopLoadTrashRelationRequest(text: string) {
@@ -800,6 +822,35 @@ function getStopDisplayName(locationId: string) {
     return complex?.stopName || `Остановочное направление ${locationId}`
 }
 
+function getStopCameraIndexCandidates(cameraIndex: number | null) {
+    if (cameraIndex === null) {
+        return []
+    }
+
+    const candidates = [cameraIndex]
+    if (cameraIndex >= 10000) {
+        candidates.push(cameraIndex - 10000)
+    }
+
+    return candidates
+}
+
+function getStopLocationIdFromAlert(row: Pick<StopAlertRow, "metadata" | "camera_index">) {
+    const metadataLocation = row.metadata?.location_id ?? row.metadata?.locationId ?? row.metadata?.stop_location_id
+    if (typeof metadataLocation === "string" && metadataLocation.trim()) {
+        return metadataLocation.trim()
+    }
+
+    for (const cameraIndex of getStopCameraIndexCandidates(row.camera_index)) {
+        const complex = getStopComplexByCameraIndex(cameraIndex)
+        if (complex) {
+            return complex.locationId
+        }
+    }
+
+    return null
+}
+
 async function fetchDirectStopLoadSummary(hours = 24, limit = 8) {
     const supabase = getSupabaseDirectClient()
 
@@ -978,7 +1029,7 @@ async function fetchDirectStopLoadTrashRelation(hours = 336) {
     }
 
     const since = hoursAgoIso(hours)
-    const [loadResult, trashResult] = await Promise.all([
+    const [loadResult, trashWindowResult, trashAlertResult] = await Promise.all([
         runSupabaseQuery<BusynessWindowRow[]>(() => supabase
             .from("busyness_windows")
             .select("location_id,window_start,window_end,person_count_avg,person_count_max,sample_count")
@@ -990,6 +1041,14 @@ async function fetchDirectStopLoadTrashRelation(hours = 336) {
             .select("location_id,window_start,window_end,trash_fill_avg,trash_fill_max,sample_count,created_at")
             .gte("window_start", since)
             .order("window_start", { ascending: false })
+            .limit(5000)),
+        runSupabaseQuery<StopAlertRow[]>(() => supabase
+            .from("alerts")
+            .select("alert_type,severity,message,metadata,timestamp,camera_index")
+            .in("module_name", STOP_ALERT_MODULE_NAMES)
+            .in("alert_type", STOP_TRASH_OVERFLOW_ALERT_TYPES)
+            .gte("timestamp", since)
+            .order("timestamp", { ascending: false })
             .limit(5000)),
     ])
 
@@ -1003,21 +1062,24 @@ async function fetchDirectStopLoadTrashRelation(hours = 336) {
     }
 
     const loadRows = (loadResult.data || []) as BusynessWindowRow[]
-    if (trashResult.error) {
+    const windowRows = trashWindowResult.error ? [] : ((trashWindowResult.data || []) as StopConditionWindowRow[])
+    const alertRows = trashAlertResult.error ? [] : ((trashAlertResult.data || []) as StopAlertRow[])
+    const trashSource = windowRows.length > 0 ? "condition_windows" : "alerts"
+
+    if (windowRows.length === 0 && alertRows.length === 0) {
         return JSON.stringify({
             ok: false,
             kind: "stop_load_trash_relation",
-            reason: isStopConditionSourceMissing(trashResult.error)
+            reason: trashWindowResult.error && isStopConditionSourceMissing(trashWindowResult.error)
                 ? "trash_source_not_connected"
-                : "trash_source_unavailable",
-            message: trashResult.error.message || "Не удалось получить заполненность урн.",
+                : "trash_source_empty",
+            message: trashWindowResult.error?.message || trashAlertResult.error?.message || "Не удалось получить события или окна переполненности урн.",
             period_hours: hours,
             load_locations: new Set(loadRows.map((row) => row.location_id)).size,
             latest_load_window: loadRows[0]?.window_start || null,
         })
     }
 
-    const trashRows = (trashResult.data || []) as StopConditionWindowRow[]
     const loadByLocation = new Map<string, {
         location_id: string
         name: string
@@ -1035,6 +1097,7 @@ async function fetchDirectStopLoadTrashRelation(hours = 336) {
         max_fill: number
         sample_count: number
         windows: number
+        events: number
         problem_windows: number
         critical_windows: number
         latest_window: string
@@ -1066,33 +1129,65 @@ async function fetchDirectStopLoadTrashRelation(hours = 336) {
         loadByLocation.set(row.location_id, current)
     }
 
-    for (const row of trashRows) {
-        const current = trashByLocation.get(row.location_id) || {
-            location_id: row.location_id,
-            fill_sum: 0,
-            fill_count: 0,
-            max_fill: 0,
-            sample_count: 0,
-            windows: 0,
-            problem_windows: 0,
-            critical_windows: 0,
-            latest_window: row.window_start,
+    if (trashSource === "condition_windows") {
+        for (const row of windowRows) {
+            const current = trashByLocation.get(row.location_id) || {
+                location_id: row.location_id,
+                fill_sum: 0,
+                fill_count: 0,
+                max_fill: 0,
+                sample_count: 0,
+                windows: 0,
+                events: 0,
+                problem_windows: 0,
+                critical_windows: 0,
+                latest_window: row.window_start,
+            }
+            const avgFill = asNumber(row.trash_fill_avg)
+            const maxFill = asNumber(row.trash_fill_max)
+            if (avgFill !== null) {
+                current.fill_sum += avgFill
+                current.fill_count += 1
+            }
+            current.max_fill = Math.max(current.max_fill, maxFill ?? 0)
+            current.sample_count += asNumber(row.sample_count) ?? 0
+            current.problem_windows += (maxFill ?? avgFill ?? 0) >= 70 ? 1 : 0
+            current.critical_windows += (maxFill ?? avgFill ?? 0) >= 90 ? 1 : 0
+            current.windows += 1
+            if (row.window_start > current.latest_window) {
+                current.latest_window = row.window_start
+            }
+            trashByLocation.set(row.location_id, current)
         }
-        const avgFill = asNumber(row.trash_fill_avg)
-        const maxFill = asNumber(row.trash_fill_max)
-        if (avgFill !== null) {
-            current.fill_sum += avgFill
-            current.fill_count += 1
+    } else {
+        for (const row of alertRows) {
+            const locationId = getStopLocationIdFromAlert(row)
+            if (!locationId) {
+                continue
+            }
+            const current = trashByLocation.get(locationId) || {
+                location_id: locationId,
+                fill_sum: 0,
+                fill_count: 0,
+                max_fill: 100,
+                sample_count: 0,
+                windows: 0,
+                events: 0,
+                problem_windows: 0,
+                critical_windows: 0,
+                latest_window: row.timestamp,
+            }
+            const severity = asNumber(row.severity)
+            current.events += 1
+            current.problem_windows += 1
+            current.critical_windows += severity !== null && severity >= 4 ? 1 : 0
+            current.windows += 1
+            current.max_fill = Math.max(current.max_fill, 100)
+            if (row.timestamp > current.latest_window) {
+                current.latest_window = row.timestamp
+            }
+            trashByLocation.set(locationId, current)
         }
-        current.max_fill = Math.max(current.max_fill, maxFill ?? 0)
-        current.sample_count += asNumber(row.sample_count) ?? 0
-        current.problem_windows += (maxFill ?? avgFill ?? 0) >= 70 ? 1 : 0
-        current.critical_windows += (maxFill ?? avgFill ?? 0) >= 90 ? 1 : 0
-        current.windows += 1
-        if (row.window_start > current.latest_window) {
-            current.latest_window = row.window_start
-        }
-        trashByLocation.set(row.location_id, current)
     }
 
     const rows = [...loadByLocation.values()]
@@ -1103,7 +1198,8 @@ async function fetchDirectStopLoadTrashRelation(hours = 336) {
             }
             const avgPeople = load.avg_count > 0 ? load.avg_sum / load.avg_count : 0
             const avgTrashFill = trash.fill_count > 0 ? trash.fill_sum / trash.fill_count : 0
-            const riskScore = avgPeople * 10 + avgTrashFill + trash.problem_windows * 5 + trash.critical_windows * 10
+            const trashSignal = trashSource === "condition_windows" ? avgTrashFill : trash.events
+            const riskScore = avgPeople * 10 + trashSignal * (trashSource === "condition_windows" ? 1 : 12) + trash.problem_windows * 5 + trash.critical_windows * 10
 
             return {
                 location_id: load.location_id,
@@ -1111,8 +1207,9 @@ async function fetchDirectStopLoadTrashRelation(hours = 336) {
                 avg_people: Number(avgPeople.toFixed(1)),
                 peak_people: load.peak_people,
                 load_windows: load.windows,
-                avg_trash_fill: Number(avgTrashFill.toFixed(1)),
-                max_trash_fill: Number(trash.max_fill.toFixed(1)),
+                avg_trash_fill: trashSource === "condition_windows" ? Number(avgTrashFill.toFixed(1)) : null,
+                max_trash_fill: trashSource === "condition_windows" ? Number(trash.max_fill.toFixed(1)) : null,
+                trash_events: trash.events,
                 trash_windows: trash.windows,
                 problem_windows: trash.problem_windows,
                 critical_windows: trash.critical_windows,
@@ -1126,28 +1223,35 @@ async function fetchDirectStopLoadTrashRelation(hours = 336) {
 
     const correlationAvg = computePearsonCorrelation(rows.map((row) => ({
         x: row.avg_people,
-        y: row.avg_trash_fill,
+        y: trashSource === "condition_windows" ? (row.avg_trash_fill ?? 0) : row.trash_events,
     })))
     const correlationMax = computePearsonCorrelation(rows.map((row) => ({
         x: row.peak_people,
-        y: row.max_trash_fill,
+        y: trashSource === "condition_windows" ? (row.max_trash_fill ?? 0) : row.trash_events,
     })))
 
     return JSON.stringify({
         ok: true,
         kind: "stop_load_trash_relation",
         period_hours: hours,
+        trash_source: trashSource,
+        trash_metric_label: trashSource === "condition_windows"
+            ? "заполненность урн"
+            : "события переполненных урн",
         load_locations: loadByLocation.size,
         trash_locations: trashByLocation.size,
+        trash_events: alertRows.length,
         common_locations: rows.length,
         latest_load_window: loadRows[0]?.window_start || null,
-        latest_trash_window: trashRows[0]?.window_start || null,
+        latest_trash_window: trashSource === "condition_windows"
+            ? windowRows[0]?.window_start || null
+            : alertRows[0]?.timestamp || null,
         correlation_avg: correlationAvg,
         correlation_avg_label: describeCorrelation(correlationAvg),
         correlation_max: correlationMax,
         correlation_max_label: describeCorrelation(correlationMax),
-        problem_locations: rows.filter((row) => row.max_trash_fill >= 70).length,
-        critical_locations: rows.filter((row) => row.max_trash_fill >= 90).length,
+        problem_locations: rows.filter((row) => trashSource === "condition_windows" ? (row.max_trash_fill ?? 0) >= 70 : row.trash_events > 0).length,
+        critical_locations: rows.filter((row) => trashSource === "condition_windows" ? (row.max_trash_fill ?? 0) >= 90 : row.critical_windows > 0).length,
         rows: rows.slice(0, 12),
         note: "Analyze whether load and overflowing trash bins move together. Separate correlation from causation.",
     })
@@ -1243,7 +1347,8 @@ async function callDirectSupabaseStopTool(toolName: string) {
 
 function formatKnownToolOutput(toolName: string, output: string) {
     const trimmedOutput = output.trim()
-    if (toolName === "create_plot" && /^\/plots\/plot_\d+\.png$/.test(trimmedOutput)) {
+    const isPlotTool = toolName === "create_plot" || toolName === "build_bar_chart"
+    if (isPlotTool && /^\/plots\/plot_\d+\.png$/.test(trimmedOutput)) {
         return `График построен: ${trimmedOutput}.`
     }
 
@@ -1325,8 +1430,18 @@ function formatKnownToolOutput(toolName: string, output: string) {
         ].join("\n")
     }
 
-    if (toolName === "create_plot") {
-        return `График построен: ${payload.url || payload.path || "файл создан"}.`
+    if (isPlotTool) {
+        const markdown = typeof payload.markdown === "string" ? payload.markdown : ""
+        const path = typeof payload.url === "string"
+            ? payload.url
+            : typeof payload.path === "string"
+                ? payload.path
+                : ""
+
+        return [
+            "График построен.",
+            markdown || path,
+        ].filter(Boolean).join("\n")
     }
 
     if (toolName === "list_tables") {
@@ -1353,7 +1468,7 @@ function formatKnownToolOutput(toolName: string, output: string) {
 function getLocalToolDefinitions(mode: AssistantMode): GigaChatFunctionDefinition[] {
     const chartTool: GigaChatFunctionDefinition = {
         name: "build_bar_chart",
-        description: "Build a compact markdown bar chart from already retrieved analytical rows. Use after data is available and the user asks for a chart, comparison, top list, or visualization.",
+        description: "Render a real chart image from already retrieved analytical rows and return /plots/plot_*.png plus markdown. Use after data is available and the user asks for a chart, comparison, top list, or visualization.",
         parameters: {
             type: "object",
             properties: {
@@ -1623,36 +1738,140 @@ async function executeStopReadonlySql(sql: string) {
     })
 }
 
-function buildMarkdownBarChart(args: Record<string, unknown>) {
-    const title = String(args.title || "График")
+function escapeSvgText(value: string) {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+}
+
+function escapeMarkdownAlt(value: string) {
+    return value.replace(/[\[\]\n\r]/g, " ").trim()
+}
+
+function truncateChartLabel(value: string, maxLength = 34) {
+    const normalized = value.replace(/\s+/g, " ").trim()
+    if (normalized.length <= maxLength) {
+        return normalized
+    }
+
+    return `${normalized.slice(0, maxLength - 3)}...`
+}
+
+function getBarChartPoints(args: Record<string, unknown>) {
     const xValues = Array.isArray(args.x_values) ? args.x_values.map(String) : []
     const yValues = Array.isArray(args.y_values) ? args.y_values.map(Number) : []
-    const unit = typeof args.unit === "string" ? args.unit : ""
-    const points = xValues
+
+    return xValues
         .map((label, index) => ({
-            label,
+            label: truncateChartLabel(label),
             value: Number.isFinite(yValues[index]) ? yValues[index] : 0,
         }))
         .filter((point) => point.label)
         .slice(0, 12)
-    const maxValue = Math.max(...points.map((point) => point.value), 1)
+}
 
-    return [
-        `### ${title}`,
-        "",
-        ...points.map((point) => {
-            const width = Math.max(1, Math.round((point.value / maxValue) * 24))
-            return `${point.label} | ${"█".repeat(width)} ${USER_NUMBER_FORMAT.format(point.value)}${unit ? ` ${unit}` : ""}`
-        }),
-    ].join("\n")
+function buildBarChartSvg(args: Record<string, unknown>) {
+    const title = String(args.title || "График")
+    const unit = typeof args.unit === "string" ? args.unit : ""
+    const points = getBarChartPoints(args)
+    const width = 980
+    const left = 36
+    const labelWidth = 250
+    const plotX = left + labelWidth
+    const plotWidth = 610
+    const right = 44
+    const top = 96
+    const rowHeight = 46
+    const barHeight = 22
+    const bottom = 58
+    const height = Math.max(310, top + bottom + Math.max(points.length, 1) * rowHeight)
+    const maxValue = Math.max(...points.map((point) => point.value), 1)
+    const palette = ["#2563eb", "#16a34a", "#f59e0b", "#dc2626", "#7c3aed", "#0891b2"]
+    const ticks = [0, 0.25, 0.5, 0.75, 1]
+
+    const grid = ticks.map((tick) => {
+        const x = plotX + plotWidth * tick
+        const value = USER_NUMBER_FORMAT.format(maxValue * tick)
+
+        return [
+            `<line x1="${x}" y1="${top - 18}" x2="${x}" y2="${height - bottom + 10}" class="grid" />`,
+            `<text x="${x}" y="${height - 22}" text-anchor="middle" class="tick">${escapeSvgText(value)}</text>`,
+        ].join("")
+    }).join("")
+
+    const bars = points.map((point, index) => {
+        const y = top + index * rowHeight
+        const value = Math.max(point.value, 0)
+        const barWidth = Math.max(value > 0 ? 6 : 0, (value / maxValue) * plotWidth)
+        const valueText = `${USER_NUMBER_FORMAT.format(point.value)}${unit ? ` ${unit}` : ""}`
+        const valueX = Math.min(plotX + barWidth + 10, width - right - 92)
+
+        return [
+            `<text x="${left}" y="${y + 16}" class="label">${escapeSvgText(point.label)}</text>`,
+            `<rect x="${plotX}" y="${y - 2}" width="${plotWidth}" height="${barHeight}" rx="6" class="track" />`,
+            `<rect x="${plotX}" y="${y - 2}" width="${barWidth}" height="${barHeight}" rx="6" fill="${palette[index % palette.length]}" />`,
+            `<text x="${valueX}" y="${y + 14}" class="value">${escapeSvgText(valueText)}</text>`,
+        ].join("")
+    }).join("")
+
+    const emptyState = points.length === 0
+        ? `<text x="${plotX}" y="${top + 18}" class="label">Нет данных для построения графика</text>`
+        : ""
+
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeSvgText(title)}">
+    <style>
+        .bg { fill: #ffffff; }
+        .title { font: 700 24px Arial, sans-serif; fill: #111827; }
+        .subtitle { font: 400 13px Arial, sans-serif; fill: #6b7280; }
+        .label { font: 500 14px Arial, sans-serif; fill: #111827; }
+        .value { font: 700 13px Arial, sans-serif; fill: #111827; }
+        .tick { font: 400 12px Arial, sans-serif; fill: #6b7280; }
+        .grid { stroke: #e5e7eb; stroke-width: 1; stroke-dasharray: 4 6; }
+        .axis { stroke: #9ca3af; stroke-width: 1.2; }
+        .track { fill: #f3f4f6; }
+    </style>
+    <rect width="${width}" height="${height}" rx="18" class="bg" />
+    <text x="${left}" y="44" class="title">${escapeSvgText(title)}</text>
+    <text x="${left}" y="68" class="subtitle">Топ ${points.length || 0} по подтвержденным данным. Значения показаны ${unit ? `в ${escapeSvgText(unit)}` : "в единицах показателя"}.</text>
+    ${grid}
+    <line x1="${plotX}" y1="${top - 18}" x2="${plotX}" y2="${height - bottom + 10}" class="axis" />
+    ${bars}
+    ${emptyState}
+</svg>`
+}
+
+async function buildImageBarChart(args: Record<string, unknown>) {
+    const title = String(args.title || "График")
+    const points = getBarChartPoints(args)
+    const suffix = Math.floor(Math.random() * 1000).toString().padStart(3, "0")
+    const filename = `plot_${Date.now()}${suffix}.png`
+    const localPath = path.join(LOCAL_PLOTS_DIR, filename)
+    const svg = buildBarChartSvg(args)
+
+    await fs.mkdir(LOCAL_PLOTS_DIR, { recursive: true })
+    await fs.writeFile(localPath, svg, "utf8")
+
+    return JSON.stringify({
+        ok: true,
+        chart_type: "bar",
+        renderer: "local_svg",
+        points_count: points.length,
+        path: `/plots/${filename}`,
+        markdown: `![${escapeMarkdownAlt(title)}](/plots/${filename})`,
+    })
+}
+
+async function buildFormattedBarChart(args: Record<string, unknown>) {
+    const output = await buildImageBarChart(args)
+    return formatKnownToolOutput("build_bar_chart", output) || ""
 }
 
 async function callLocalTool(mode: AssistantMode, name: string, args: Record<string, unknown>) {
     if (name === "build_bar_chart") {
-        return JSON.stringify({
-            ok: true,
-            chart_markdown: buildMarkdownBarChart(args),
-        })
+        return buildImageBarChart(args)
     }
 
     if (name === "query_stop_supabase_readonly" && mode === "stops") {
@@ -1722,7 +1941,7 @@ function formatAliveQuickAnswer(mode: AssistantMode) {
         : "Да, я на связи в режиме «Платформа». Могу объяснить модули, показатели и подготовить аналитический разбор по доступным данным."
 }
 
-function formatStopLoadQuickFromOutput(output: string, includeChart = false) {
+async function formatStopLoadQuickFromOutput(output: string, includeChart = false) {
     const payload = parseToolPayload(output)
     const rows = Array.isArray(payload?.rows) ? payload.rows as Array<Record<string, unknown>> : []
 
@@ -1743,14 +1962,15 @@ function formatStopLoadQuickFromOutput(output: string, includeChart = false) {
     const lowQualityWindows = rows.reduce((sum, row) => (
         sum + Number(row.zero_sample_windows || 0) + Number(row.low_sample_windows || 0)
     ), 0)
-    const chart = includeChart
-        ? buildMarkdownBarChart({
+    const chartOutput = includeChart
+        ? await buildImageBarChart({
             title: "График средней загруженности остановок",
             x_values: topRows.map((row) => String(row.name || row.location_id || "остановка")),
             y_values: topRows.map((row) => Number(row.avg_people || 0)),
             unit: "чел.",
         })
         : ""
+    const chart = chartOutput ? formatKnownToolOutput("build_bar_chart", chartOutput) : ""
 
     return [
         `Коротко: самое напряженное направление сейчас — ${leader.name || leader.location_id}: средняя загрузка ${asNumber(leader.avg_people) ?? "-"}, пик ${asNumber(leader.peak_people) ?? "-"} человек. Последнее окно: ${formatDateTimeForUser(latestWindow)} по времени Сургута.`,
@@ -1822,6 +2042,39 @@ function formatStopLoadTrashRelationPayload(payload: Record<string, unknown>) {
     const correlationMax = asNumber(payload.correlation_max)
     const problemLocations = asNumber(payload.problem_locations) ?? 0
     const criticalLocations = asNumber(payload.critical_locations) ?? 0
+    const trashSource = typeof payload.trash_source === "string" ? payload.trash_source : "condition_windows"
+    const usesAlertEvents = trashSource === "alerts"
+    const totalTrashEvents = asNumber(payload.trash_events) ?? rows.reduce((sum, row) => sum + (asNumber(row.trash_events) ?? 0), 0)
+
+    if (usesAlertEvents) {
+        return [
+            `Коротко: по сопоставимым остановкам связь «средняя загруженность ↔ события переполненных урн» оценивается как ${payload.correlation_avg_label || describeCorrelation(correlationAvg)}${correlationAvg !== null ? ` (r=${USER_NUMBER_FORMAT.format(correlationAvg)})` : ""}.`,
+            `По пикам «пик людей ↔ события переполненных урн»: ${payload.correlation_max_label || describeCorrelation(correlationMax)}${correlationMax !== null ? ` (r=${USER_NUMBER_FORMAT.format(correlationMax)})` : ""}.`,
+            "",
+            "Факты по данным:",
+            `- период сопоставления: последние ${Math.round((asNumber(payload.period_hours) ?? 0) / 24)} дн.;`,
+            `- общих остановок для сравнения: ${commonLocations};`,
+            `- событий переполненных урн: ${totalTrashEvents};`,
+            `- остановок с событиями по урнам: ${problemLocations};`,
+            `- остановок с критичными фиксациями по severity: ${criticalLocations};`,
+            payload.latest_load_window ? `- последнее окно загруженности: ${formatDateTimeForUser(payload.latest_load_window)} по времени Сургута;` : "",
+            payload.latest_trash_window ? `- последнее событие по урнам: ${formatDateTimeForUser(payload.latest_trash_window)} по времени Сургута.` : "",
+            "",
+            "Приоритетные точки, где одновременно есть нагрузка и события по урнам:",
+            ...topRows.map((row, index) => (
+                `${index + 1}. ${row.name || row.location_id}: средняя загрузка ${asNumber(row.avg_people) ?? "-"} чел., пик ${asNumber(row.peak_people) ?? "-"} чел.; событий переполненных урн ${asNumber(row.trash_events) ?? 0}, критичных ${asNumber(row.critical_windows) ?? 0}.`
+            )),
+            "",
+            "Интерпретация: это не доказательство причины, но хороший операционный сигнал. Если на одной остановке одновременно высокий пассажиропоток и повторяются события переполненных урн, точку стоит ставить выше в очереди проверки и уборки.",
+            "",
+            "Что сделать:",
+            "- проверить первые точки из списка по камерам и фактическому состоянию урн;",
+            "- сверить время пиков загрузки с временем фиксаций переполнения;",
+            "- если совпадение повторяется несколько дней, скорректировать график уборки или ёмкость урн на этих остановках.",
+            "",
+            "Ограничение данных: для урн использованы подтвержденные события переполнения из live-алертов, а не непрерывный процент заполнения. Поэтому вывод подходит для приоритизации, но не для доказательства причинности.",
+        ].filter(Boolean).join("\n")
+    }
 
     return [
         `Коротко: по сопоставимым остановкам связь «средняя загруженность ↔ средняя заполненность урн» оценивается как ${payload.correlation_avg_label || describeCorrelation(correlationAvg)}${correlationAvg !== null ? ` (r=${USER_NUMBER_FORMAT.format(correlationAvg)})` : ""}.`,
@@ -2074,6 +2327,49 @@ async function formatStopLoadQuickAnswer(includeChart = false) {
     }
 }
 
+async function formatStopLoadTrashRelationQuickAnswer(includeCharts = true) {
+    try {
+        const output = await fetchDirectStopLoadTrashRelation()
+        const payload = parseToolPayload(output)
+        const text = payload
+            ? formatStopLoadTrashRelationPayload(payload)
+            : "Коротко: не удалось разобрать данные для сопоставления загруженности остановок и переполненных урн."
+        const rows = Array.isArray(payload?.rows) ? payload.rows as Array<Record<string, unknown>> : []
+        const usesAlertEvents = payload?.trash_source === "alerts"
+
+        if (!includeCharts || rows.length === 0 || payload?.ok === false) {
+            return text
+        }
+
+        const topRows = rows.slice(0, 8)
+        const loadChart = await buildFormattedBarChart({
+            title: "Связь с урнами: средняя загруженность",
+            x_values: topRows.map((row) => String(row.name || row.location_id || "остановка")),
+            y_values: topRows.map((row) => Number(row.avg_people || 0)),
+            unit: "чел.",
+        })
+        const trashChart = await buildFormattedBarChart({
+            title: usesAlertEvents
+                ? "Связь с загрузкой: события переполненных урн"
+                : "Связь с загрузкой: максимум заполнения урн",
+            x_values: topRows.map((row) => String(row.name || row.location_id || "остановка")),
+            y_values: topRows.map((row) => Number(usesAlertEvents ? row.trash_events : row.max_trash_fill || 0)),
+            unit: usesAlertEvents ? "событ." : "%",
+        })
+
+        return [
+            text,
+            "",
+            loadChart,
+            "",
+            trashChart,
+        ].filter(Boolean).join("\n")
+    } catch (error) {
+        console.warn("Quick stop load/trash relation answer failed.", error)
+        return formatStopSourceUnavailable("связь загруженности остановок и переполненных урн")
+    }
+}
+
 async function formatStopLyingQuickAnswer() {
     try {
         const output = await callDirectSupabaseStopTool("get_stop_lying_person_events")
@@ -2112,15 +2408,76 @@ async function formatStopAttentionQuickAnswer() {
 }
 
 async function formatStopExecutiveQuickAnswer() {
-    const attention = await formatStopAttentionQuickAnswer()
+    const [loadOutput, safetyOutput] = await Promise.all([
+        callDirectSupabaseStopTool("get_stop_current_load_summary").catch((error) => {
+            console.warn("Executive stop load fetch failed.", error)
+            return null
+        }),
+        callDirectSupabaseStopTool("get_stop_safety_events").catch((error) => {
+            console.warn("Executive stop safety fetch failed.", error)
+            return null
+        }),
+    ])
+    const loadPayload = loadOutput ? parseToolPayload(loadOutput) : null
+    const safetyPayload = safetyOutput ? parseToolPayload(safetyOutput) : null
+    const loadRows = Array.isArray(loadPayload?.rows) ? loadPayload.rows as Array<Record<string, unknown>> : []
+    const safetySummary = Array.isArray(safetyPayload?.summary) ? safetyPayload.summary as Array<Record<string, unknown>> : []
+    const safetyRows = Array.isArray(safetyPayload?.rows) ? safetyPayload.rows as Array<Record<string, unknown>> : []
+    const leader = loadRows[0]
+    const topEvents = safetySummary.slice(0, 4)
+    const totalEvents = safetySummary.reduce((sum, row) => sum + Number(row.events_count || 0), 0)
+    const activeLocations = new Set(safetyRows.map((row) => {
+        const locationId = getStopLocationIdFromAlert({
+            metadata: (row.metadata as Record<string, unknown> | null) || null,
+            camera_index: asNumber(row.camera_index),
+        })
+        return locationId || ""
+    }).filter(Boolean)).size
+    const loadChart = loadRows.length > 0
+        ? await buildFormattedBarChart({
+            title: "Executive: самые нагруженные остановки",
+            x_values: loadRows.slice(0, 8).map((row) => String(row.name || row.location_id || "остановка")),
+            y_values: loadRows.slice(0, 8).map((row) => Number(row.avg_people || 0)),
+            unit: "чел.",
+        })
+        : ""
+    const safetyChart = topEvents.length > 0
+        ? await buildFormattedBarChart({
+            title: "Executive: события безопасности за 24 часа",
+            x_values: topEvents.map((row) => String(row.label || row.alert_type || "событие")),
+            y_values: topEvents.map((row) => Number(row.events_count || 0)),
+            unit: "событ.",
+        })
+        : ""
 
     return [
         "Краткая сводка для руководителя:",
         "",
-        attention,
+        leader
+            ? `Главный вывод: максимальное внимание сейчас на направлении «${leader.name || leader.location_id}» — средняя загрузка ${asNumber(leader.avg_people) ?? "-"} чел., пик ${asNumber(leader.peak_people) ?? "-"} чел. Последнее live-окно: ${formatDateTimeForUser(String(loadPayload?.latest_window || leader.latest_window || ""))} по времени Сургута.`
+            : "Главный вывод: live-данные по загруженности сейчас не вернули строк, поэтому рейтинг напряженных остановок подтвердить нельзя.",
+        totalEvents > 0
+            ? `По безопасности за последние сутки зафиксировано ${totalEvents} событий на ${activeLocations || "-"} локациях. Последнее событие: ${formatDateTimeForUser(String(safetyPayload?.latest_event || ""))} по времени Сургута.`
+            : "По событиям безопасности за проверенный период активных строк не найдено.",
         "",
-        "Управленческий фокус: сначала проверяются точки с высоким пиком людей и свежими событиями безопасности, затем эксплуатационные проблемы вроде переполненных урн и повторяемых обращений.",
-    ].join("\n")
+        loadChart,
+        "",
+        safetyChart,
+        "",
+        "Приоритеты на смену:",
+        ...loadRows.slice(0, 5).map((row, index) => `${index + 1}. ${row.name || row.location_id}: средняя ${asNumber(row.avg_people) ?? "-"} чел., пик ${asNumber(row.peak_people) ?? "-"} чел., окон наблюдения ${asNumber(row.windows) ?? "-"}.`),
+        topEvents.length > 0 ? "" : "",
+        ...(
+            topEvents.length > 0
+                ? [
+                    "События, которые стоит держать в фокусе:",
+                    ...topEvents.map((row, index) => `${index + 1}. ${row.label || row.alert_type}: ${asNumber(row.events_count) ?? 0} событий, локаций ${asNumber(row.affected_locations) ?? "-"}, последнее ${formatDateTimeForUser(String(row.latest_event || ""))}.`),
+                ]
+                : []
+        ),
+        "",
+        "Управленческий фокус: сначала проверяются остановки с высоким пиком людей и свежими событиями безопасности, затем эксплуатационные проблемы вроде переполненных урн и повторяемых обращений. Для презентации это можно показывать как live-срез: где сейчас нагрузка, где риск и какие точки требуют решения диспетчера.",
+    ].filter(Boolean).join("\n")
 }
 
 function isCapabilityQuestion(text: string) {
@@ -2158,6 +2515,10 @@ const STOP_QUICK_QUESTIONS = {
     ]),
     executive: new Set([
         normalizeQuickText("Сформируй краткую сводку для руководителя по модулю остановок."),
+    ]),
+    loadTrashRelation: new Set([
+        normalizeQuickText("есть ли связь между нагруженностью остановок и переполненными урнами"),
+        normalizeQuickText("Есть ли связь между нагруженностью остановок и переполненными урнами?"),
     ]),
 }
 
@@ -2248,6 +2609,10 @@ async function buildHardcodedQuickAnswer(messages: UIMessage[], mode: AssistantM
             return formatStopExecutiveQuickAnswer()
         }
 
+        if (STOP_QUICK_QUESTIONS.loadTrashRelation.has(text)) {
+            return formatStopLoadTrashRelationQuickAnswer(true)
+        }
+
         return null
     }
 
@@ -2303,9 +2668,11 @@ async function buildStopsPlotAnswer(
             if (directOutput) {
                 const answer = await synthesizeToolAnswer(messages, "stops", sourceTool, directOutput)
                 const payload = parseToolPayload(directOutput)
-                const rows = Array.isArray(payload?.rows) ? payload.rows as Array<Record<string, unknown>> : []
-                const chart = rows.length > 0
-                    ? buildMarkdownBarChart({
+                const rows = sourceTool === "get_stop_safety_events"
+                    ? (Array.isArray(payload?.summary) ? payload.summary as Array<Record<string, unknown>> : [])
+                    : (Array.isArray(payload?.rows) ? payload.rows as Array<Record<string, unknown>> : [])
+                const chartOutput = rows.length > 0
+                    ? await buildImageBarChart({
                         title: sourceTool === "get_stop_safety_events"
                             ? "График событий безопасности остановок"
                             : "График средней загруженности остановок",
@@ -2314,6 +2681,7 @@ async function buildStopsPlotAnswer(
                         unit: sourceTool === "get_stop_safety_events" ? "событ." : "чел.",
                     })
                     : ""
+                const chart = chartOutput ? formatKnownToolOutput("build_bar_chart", chartOutput) : ""
 
                 return [answer, chart].filter(Boolean).join("\n\n")
             }
@@ -2386,11 +2754,7 @@ async function buildStopLoadTrashRelationAnswer(messages: UIMessage[]) {
         return null
     }
 
-    const output = await fetchDirectStopLoadTrashRelation()
-    return synthesizeToolAnswer(messages, "stops", "query_stop_supabase_readonly", output, {
-        analysis: "stop_load_trash_relation",
-        period_hours: 336,
-    })
+    return formatStopLoadTrashRelationQuickAnswer(true)
 }
 
 async function buildTablesAnswer(

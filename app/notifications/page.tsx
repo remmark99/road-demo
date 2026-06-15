@@ -106,6 +106,16 @@ const alertIcons: Record<string, LucideIcon> = {
   park_fight: ShieldAlert,
   park_fire: Flame,
   park_trash_overflow: Trash2,
+  trash_overflow: Trash2,
+  trash_bin_overflow: Trash2,
+  bin_overflow: Trash2,
+  bin_full: Trash2,
+  garbage_overflow: Trash2,
+  stop_trash_overflow: Trash2,
+  stop_bin_overflow: Trash2,
+  overflowing_trash: Trash2,
+  overflowing_bin: Trash2,
+  trash_full: Trash2,
   park_camera_obstruction: CameraOff,
   park_light_off: LightbulbOff,
   park_vehicle_detect: Car,
@@ -275,6 +285,34 @@ function isDemoAlert(alert: Alert) {
   return alert.id.startsWith("demo-")
 }
 
+type QueryReader = {
+  get(name: string): string | null
+  getAll(name: string): string[]
+}
+
+function getQueryValues(searchParams: QueryReader, names: string[]) {
+  return names
+    .flatMap((name) => {
+      const repeatedValues = searchParams.getAll(name)
+      const fallbackValue = searchParams.get(name)
+
+      return repeatedValues.length > 0 ? repeatedValues : fallbackValue ? [fallbackValue] : []
+    })
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean)
+}
+
+function getQueryNumberValues(searchParams: QueryReader, names: string[]) {
+  return Array.from(
+    new Set(
+      getQueryValues(searchParams, names)
+        .map((value) => Number.parseInt(value, 10))
+        .filter((value) => Number.isFinite(value))
+    )
+  )
+}
+
 // ── Pagination component ────────────────────────────────────────────────
 function Pagination({
   page,
@@ -367,7 +405,14 @@ function ResultsHeader({
 // ═══════════════════════════════════════════════════════════════════════
 function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const searchParams = useSearchParams()
-  const initialCamera = searchParams.get("camera")
+  const querySelectedTypes = useMemo(
+    () => getQueryValues(searchParams, ["type", "types"]),
+    [searchParams]
+  )
+  const querySelectedCameras = useMemo(
+    () => getQueryNumberValues(searchParams, ["camera", "cameras"]),
+    [searchParams]
+  )
   const { hasModule } = useModuleAccess()
   const hasRoads = hasModule("roads")
   const hasShore = hasModule("shore")
@@ -375,11 +420,9 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const hasTransport = hasModule("transport")
   const hasStops = hasModule("stops")
 
-  const [selectedTypes, setSelectedTypes] = useState<string[]>([])
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(querySelectedTypes)
   const [repairShortcutSelected, setRepairShortcutSelected] = useState(false)
-  const [selectedCameras, setSelectedCameras] = useState<number[]>(
-    initialCamera ? [parseInt(initialCamera)] : []
-  )
+  const [selectedCameras, setSelectedCameras] = useState<number[]>(querySelectedCameras)
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)

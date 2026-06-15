@@ -32,8 +32,16 @@ export interface FetchBusynessWindowsResult {
     limit: number
 }
 
-const DEFAULT_LIMIT = 50000
-const PAGE_SIZE = 1000
+interface BusStopsFeatureCollection {
+    features?: Array<{
+        properties?: BusynessStopInfo
+    }>
+}
+
+const DEFAULT_LIMIT = 20000
+const PAGE_SIZE = 5000
+
+let busStopsFeatureCollectionPromise: Promise<BusStopsFeatureCollection> | null = null
 
 export function getBusStopIdFromLocationId(locationId: string): number | null {
     const [rawId] = locationId.split("-")
@@ -75,11 +83,11 @@ export async function fetchBusynessWindows({
         }
 
         const page = (data ?? []) as BusynessWindowRow[]
-        rows.push(...page)
-
-        if (page.length < pageLimit) {
+        if (page.length === 0) {
             break
         }
+
+        rows.push(...page)
     }
 
     return {
@@ -117,17 +125,7 @@ export async function fetchBusStopsForLocations(locationIds: string[]): Promise<
         return {}
     }
 
-    const response = await fetch("/api/bus-stops")
-
-    if (!response.ok) {
-        throw new Error(`Failed to fetch bus stops: ${response.status}`)
-    }
-
-    const data = await response.json() as {
-        features?: Array<{
-            properties?: BusynessStopInfo
-        }>
-    }
+    const data = await fetchBusStopsFeatureCollection()
     const wantedIds = new Set(stopIds)
 
     return (data.features ?? []).reduce<BusynessStopLookup>((lookup, feature) => {
@@ -139,4 +137,23 @@ export async function fetchBusStopsForLocations(locationIds: string[]): Promise<
 
         return lookup
     }, {})
+}
+
+function fetchBusStopsFeatureCollection(): Promise<BusStopsFeatureCollection> {
+    if (!busStopsFeatureCollectionPromise) {
+        busStopsFeatureCollectionPromise = fetch("/api/bus-stops")
+            .then(async (response) => {
+                if (!response.ok) {
+                    throw new Error(`Failed to fetch bus stops: ${response.status}`)
+                }
+
+                return response.json() as Promise<BusStopsFeatureCollection>
+            })
+            .catch((error: unknown) => {
+                busStopsFeatureCollectionPromise = null
+                throw error
+            })
+    }
+
+    return busStopsFeatureCollectionPromise
 }
