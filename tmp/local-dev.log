@@ -1,0 +1,30 @@
+▲ Next.js 16.1.4 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+- Environments: .env
+
+✓ Starting...
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+✓ Ready in 901ms
+ GET /landing 200 in 918ms (compile: 443ms, proxy.ts: 91ms, render: 384ms)
+ POST /api/chat 200 in 2.1s (compile: 679ms, proxy.ts: 20ms, render: 1354ms)
+ GET /landing 200 in 753ms (compile: 45ms, proxy.ts: 38ms, render: 669ms)
+ GET /landing 200 in 297ms (compile: 16ms, proxy.ts: 13ms, render: 268ms)
+ GET /landing 200 in 950ms (compile: 97ms, proxy.ts: 26ms, render: 827ms)
+ GET /landing 200 in 1054ms (compile: 664ms, proxy.ts: 16ms, render: 375ms)
+ GET /landing 200 in 1090ms (compile: 470ms, proxy.ts: 19ms, render: 602ms)
+ GET /dashboard 200 in 4.3s (compile: 1153ms, proxy.ts: 2.2s, render: 985ms)
+ GET /notifications 200 in 1020ms (compile: 400ms, proxy.ts: 498ms, render: 122ms)
+ GET /notifications 200 in 715ms (compile: 7ms, proxy.ts: 566ms, render: 142ms)
+ GET /notifications 200 in 612ms (compile: 7ms, proxy.ts: 498ms, render: 107ms)
+ GET / 200 in 825ms (compile: 301ms, proxy.ts: 440ms, render: 83ms)
+[API] Fetching anchors, found 10 active anchors
+[API] First anchor radius: 200
+ GET /api/anchors?refresh=true&t=1781098577901 200 in 684ms (compile: 153ms, proxy.ts: 307ms, render: 224ms)
+[API] Fetching anchors, found 10 active anchors
+[API] First anchor radius: 200
+ GET /api/anchors?refresh=true&t=1781098577677 200 in 1184ms (compile: 15ms, proxy.ts: 939ms, render: 229ms)
+ GET /api/roads 200 in 4.3s (compile: 218ms, proxy.ts: 190ms, render: 3.9s)
+ POST /api/chat 200 in 10.1s (compile: 759ms, proxy.ts: 65ms, render: 9.3s)
+ POST /api/chat 200 in 1051ms (compile: 10ms, proxy.ts: 24ms, render: 1017ms)
+[?25h

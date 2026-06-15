@@ -11,7 +11,7 @@ import remarkGfm from "remark-gfm"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Bot, Send, User, Loader2, RefreshCw, Database, Search, BarChart, FileText, Download, Maximize2, Plus, MessageSquare, Trash2, FileDown, ChevronDown, ChevronUp } from "lucide-react"
+import { Bot, Send, User, Loader2, RefreshCw, Database, Search, BarChart, FileText, Download, Maximize2, Plus, MessageSquare, Trash2, FileDown, ChevronDown, ChevronUp, BusFront, Layers } from "lucide-react"
 import { chatStorage, type ChatSession } from "@/lib/chat-storage"
 import { cn } from "@/lib/utils"
 
@@ -21,8 +21,10 @@ type SuggestedQuestionOption = {
     tool?: string
 }
 
+export type AssistantMode = "platform" | "stops"
+
 // Стартовые вопросы по платформе. Часть из них явно привязана к MCP-инструментам.
-const SUGGESTED_QUESTION_OPTIONS: SuggestedQuestionOption[] = [
+const PLATFORM_SUGGESTED_QUESTION_OPTIONS: SuggestedQuestionOption[] = [
     {
         category: "Дороги",
         question: "У каких подрядчиков и по каким типам инцидентов зафиксированы наиболее длительные задержки реакции за год?",
@@ -59,19 +61,69 @@ const SUGGESTED_QUESTION_OPTIONS: SuggestedQuestionOption[] = [
     }
 ];
 
-const INITIAL_SUGGESTED_QUESTION_TEXTS = [
+const STOPS_SUGGESTED_QUESTION_OPTIONS: SuggestedQuestionOption[] = [
+    {
+        category: "Текущие",
+        question: "Покажи текущую загруженность остановок и выдели самые напряжённые направления.",
+        tool: "get_stop_current_load_summary"
+    },
+    {
+        category: "Текущие",
+        question: "Есть ли свежие события «лежачий человек» по остановкам и где они зафиксированы?",
+        tool: "get_stop_lying_person_events"
+    },
+    {
+        category: "Остановки",
+        question: "Какие live-данные по остановкам доступны сейчас и чем они отличаются от плановых панелей?",
+        tool: "list_assistant_data_modes"
+    },
+    {
+        category: "План",
+        question: "Как правильно интерпретировать плановые панели по остановкам?"
+    },
+    {
+        category: "Текущие",
+        question: "Какие остановки требуют внимания диспетчера по текущим наблюдениям?"
+    },
+    {
+        category: "Остановки",
+        question: "Сформируй краткую сводку для руководителя по модулю остановок."
+    },
+];
+
+const PLATFORM_INITIAL_SUGGESTED_QUESTION_TEXTS = [
     "Какие модули аналитики есть на платформе и за что отвечает каждый?",
     "У каких подрядчиков и по каким типам инцидентов зафиксированы наиболее длительные задержки реакции за год?",
     "Как погодные условия влияли на долю нарушений регламента подрядными организациями в течение года?",
 ];
 
-const INITIAL_SUGGESTED_QUESTIONS = INITIAL_SUGGESTED_QUESTION_TEXTS
-    .map((question) => SUGGESTED_QUESTION_OPTIONS.find((item) => item.question === question))
-    .filter((item): item is SuggestedQuestionOption => Boolean(item));
+const STOPS_INITIAL_SUGGESTED_QUESTION_TEXTS = [
+    "Покажи текущую загруженность остановок и выдели самые напряжённые направления.",
+    "Есть ли свежие события «лежачий человек» по остановкам и где они зафиксированы?",
+    "Какие live-данные по остановкам доступны сейчас и чем они отличаются от плановых панелей?",
+];
 
-const REFRESHABLE_SUGGESTED_QUESTIONS = SUGGESTED_QUESTION_OPTIONS.filter(
-    (item) => !INITIAL_SUGGESTED_QUESTION_TEXTS.includes(item.question)
-);
+const getModeQuestions = (mode: AssistantMode) =>
+    mode === "stops" ? STOPS_SUGGESTED_QUESTION_OPTIONS : PLATFORM_SUGGESTED_QUESTION_OPTIONS;
+
+const getModeInitialQuestionTexts = (mode: AssistantMode) =>
+    mode === "stops" ? STOPS_INITIAL_SUGGESTED_QUESTION_TEXTS : PLATFORM_INITIAL_SUGGESTED_QUESTION_TEXTS;
+
+const getInitialSuggestedQuestions = (mode: AssistantMode) => {
+    const options = getModeQuestions(mode);
+    const initialTexts = getModeInitialQuestionTexts(mode);
+
+    return initialTexts
+        .map((question) => options.find((item) => item.question === question))
+        .filter((item): item is SuggestedQuestionOption => Boolean(item));
+};
+
+const getRefreshableSuggestedQuestions = (mode: AssistantMode) => {
+    const options = getModeQuestions(mode);
+    const initialTexts = getModeInitialQuestionTexts(mode);
+
+    return options.filter((item) => !initialTexts.includes(item.question));
+};
 
 const STATUS_STEPS = [
     { icon: Search, text: "Анализирую запрос..." },
@@ -142,21 +194,31 @@ const WELCOME_MESSAGE: RenderableChatMessage = {
     content: "Привет! Я ИИ-Ассистент платформы городского мониторинга. Могу помочь по дорогам, остановкам, берегу, паркам, транспорту и объяснить, какие показатели есть в аналитике каждого модуля.",
 };
 
+const getWelcomeMessage = (mode: AssistantMode): RenderableChatMessage => ({
+    id: `welcome-${mode}`,
+    role: "assistant",
+    content: mode === "stops"
+        ? "Привет! Я работаю в режиме «Остановки»: разбираю текущую загруженность, события безопасности и границу между live-данными и плановыми панелями."
+        : WELCOME_MESSAGE.content,
+});
+
 interface AIChatbotProps {
     fullHeight?: boolean;
     pageScrollable?: boolean;
     initialQuestionsCollapsed?: boolean;
+    assistantMode?: AssistantMode;
 }
 
 export function AIChatbot({
     fullHeight = false,
     pageScrollable = false,
     initialQuestionsCollapsed,
+    assistantMode = "platform",
 }: AIChatbotProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null)
     const chatRef = useRef<HTMLDivElement>(null)
     const [inputValue, setInputValue] = useState("")
-    const [suggestedQuestions, setSuggestedQuestions] = useState<SuggestedQuestionOption[]>(INITIAL_SUGGESTED_QUESTIONS)
+    const [suggestedQuestions, setSuggestedQuestions] = useState<SuggestedQuestionOption[]>(() => getInitialSuggestedQuestions(assistantMode))
     const [statusIndex, setStatusIndex] = useState(0)
     const [sessions, setSessions] = useState<ChatSession[]>([])
     const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
@@ -171,9 +233,14 @@ export function AIChatbot({
     // Используем currentSessionId если есть (загрузка существующей сессии), иначе новый sessionId
     const activeSessionId = currentSessionId || sessionId;
 
+    const transport = useMemo(
+        () => new DefaultChatTransport({ api: "/api/chat", body: { mode: assistantMode } }),
+        [assistantMode]
+    );
+
     const { messages, sendMessage, status, error, setMessages } = useChat({
         id: activeSessionId,
-        transport: new DefaultChatTransport({ api: "/api/chat" }),
+        transport,
     })
 
     // Load sessions on mount
@@ -186,6 +253,12 @@ export function AIChatbot({
             setCurrentSessionId(sessionId);
         }
     }, [currentSessionId, sessionId]);
+
+    useEffect(() => {
+        setSuggestedQuestions(getInitialSuggestedQuestions(assistantMode));
+        setMessages([]);
+        setCurrentSessionId(`${assistantMode}-${Date.now()}`);
+    }, [assistantMode, setMessages]);
 
     // Загружаем сообщения при смене сессии
     useEffect(() => {
@@ -527,12 +600,12 @@ export function AIChatbot({
     }, [status]);
 
     const refreshQuestions = useCallback(() => {
-        const pool = REFRESHABLE_SUGGESTED_QUESTIONS.length > 0
-            ? REFRESHABLE_SUGGESTED_QUESTIONS
-            : SUGGESTED_QUESTION_OPTIONS;
+        const refreshableQuestions = getRefreshableSuggestedQuestions(assistantMode);
+        const allQuestions = getModeQuestions(assistantMode);
+        const pool = refreshableQuestions.length > 0 ? refreshableQuestions : allQuestions;
         const shuffled = [...pool].sort(() => 0.5 - Math.random());
         setSuggestedQuestions(shuffled.slice(0, 3));
-    }, []);
+    }, [assistantMode]);
 
     const renderContentWithImages = (text: string) => {
         // Очищаем текст от служебных тегов перед рендерингом
@@ -595,9 +668,14 @@ export function AIChatbot({
     };
 
     // Combine welcome message with chat messages
-    const allMessages = useMemo<RenderableChatMessage[]>(() => [WELCOME_MESSAGE, ...messages], [messages])
+    const allMessages = useMemo<RenderableChatMessage[]>(() => [getWelcomeMessage(assistantMode), ...messages], [assistantMode, messages])
 
     const isLoading = status === "streaming" || status === "submitted"
+    const ModeIcon = assistantMode === "stops" ? BusFront : Layers;
+    const modeLabel = assistantMode === "stops" ? "Остановки" : "Платформа";
+    const modeDescription = assistantMode === "stops"
+        ? "Только live-данные и аналитика остановочных пунктов."
+        : "Все модули платформы и общий аналитический контекст.";
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -637,7 +715,7 @@ export function AIChatbot({
         }
 
         // Находим соответствующий инструмент для этого вопроса, если он задан
-        const questionOption = SUGGESTED_QUESTION_OPTIONS.find((item) => item.question === question);
+        const questionOption = getModeQuestions(assistantMode).find((item) => item.question === question);
 
         // Формируем сообщение с явной инструкцией, только если вопрос привязан к инструменту
         const messageText = questionOption?.tool
@@ -766,23 +844,35 @@ export function AIChatbot({
             {/* Main Chat Area */}
             <Card className="flex min-h-0 flex-1 flex-col overflow-hidden border-border/60 shadow-sm gap-0 py-0">
                 {isCompactLayout ? (
-                    historyActions ? (
-                        <div className="shrink-0 border-b bg-background/95 px-3 py-2.5">
-                            <div className="flex items-center justify-end gap-2">
-                                {historyActions}
+                    <div className="shrink-0 border-b bg-background/95 px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex min-w-0 items-center gap-2">
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                    <ModeIcon className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium">{modeLabel}</p>
+                                    <p className="truncate text-xs text-muted-foreground">{modeDescription}</p>
+                                </div>
                             </div>
+                            {historyActions && (
+                                <div className="flex items-center gap-2">
+                                    {historyActions}
+                                </div>
+                            )}
                         </div>
-                    ) : null
+                    </div>
                 ) : (
                     <CardHeader className="shrink-0 gap-4 border-b px-4 py-4">
                         <div className="flex items-center justify-between gap-3">
                             <div className="min-w-0">
                                 <div className="flex items-center gap-3">
                                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                                        <Bot className="h-5 w-5" />
+                                        <ModeIcon className="h-5 w-5" />
                                     </div>
                                     <div className="min-w-0">
-                                        <CardTitle className="text-lg">ИИ-Ассистент</CardTitle>
+                                        <CardTitle className="text-lg">ИИ-Ассистент: {modeLabel}</CardTitle>
+                                        <p className="mt-1 text-sm text-muted-foreground">{modeDescription}</p>
                                     </div>
                                 </div>
                             </div>

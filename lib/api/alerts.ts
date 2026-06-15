@@ -1,5 +1,6 @@
 import { supabase } from '../supabase'
 import type { Alert } from '../types'
+import { STOP_SAFETY_ALERT_TYPES, type StopSafetyAlertType } from "@/lib/stop-analytics-config"
 
 export interface FetchAlertsOptions {
     types?: string[]        // filter by alert_type
@@ -13,6 +14,38 @@ export interface AlertsResult {
     total: number
     hasMore: boolean
 }
+
+export interface StopSafetyAlertMetadata {
+    image_url?: string
+    location_id?: string
+    local_path?: string
+    person_bbox?: number[]
+    lying_duration_seconds?: number
+    pose_info?: {
+        torso_angle?: number
+        leg_angle?: number
+        torso_length?: number
+        shoulder_width?: number
+        [key: string]: unknown
+    }
+    [key: string]: unknown
+}
+
+export interface StopSafetyAlert {
+    id: string
+    module_name: string
+    alert_type: StopSafetyAlertType
+    severity: number | null
+    message: string
+    metadata: StopSafetyAlertMetadata | null
+    timestamp: string
+    source_video: string | null
+    clip_path: string | null
+    camera_index: number | null
+}
+
+export type LyingPersonAlertMetadata = StopSafetyAlertMetadata
+export type LyingPersonAlert = StopSafetyAlert
 
 export async function fetchAlerts(options: FetchAlertsOptions = {}): Promise<AlertsResult> {
     const { types, cameraIndexes, limit = 25, offset = 0 } = options
@@ -80,6 +113,28 @@ export async function fetchAlertTypes(): Promise<string[]> {
     // Get unique types
     const types = new Set(data?.map(a => a.alert_type) || [])
     return Array.from(types)
+}
+
+export async function fetchStopSafetyAlerts(limit: number = 2000): Promise<StopSafetyAlert[]> {
+    const { data, error } = await supabase
+        .from('alerts')
+        .select('id,module_name,alert_type,severity,message,metadata,timestamp,source_video,clip_path,camera_index')
+        .eq('module_name', 'stops')
+        .in('alert_type', [...STOP_SAFETY_ALERT_TYPES])
+        .order('timestamp', { ascending: false })
+        .limit(limit)
+
+    if (error) {
+        console.error('Error fetching stop safety alerts:', error)
+        return []
+    }
+
+    return (data || []) as StopSafetyAlert[]
+}
+
+export async function fetchLyingPersonAlerts(limit: number = 2000): Promise<LyingPersonAlert[]> {
+    const alerts = await fetchStopSafetyAlerts(limit)
+    return alerts.filter((alert) => alert.alert_type === "lying_person")
 }
 
 // Категории типов инцидентов
@@ -393,5 +448,6 @@ export const MODULE_MAP: Record<string, string> = {
     safe_park: 'Безопасный парк',
     transport_monitoring: 'Контроль транспорта',
     transport_control: 'Контроль транспорта',
-    bus_stop_monitoring: 'Остановочные пункты'
+    bus_stop_monitoring: 'Остановочные пункты',
+    stops: 'Остановочные пункты'
 }

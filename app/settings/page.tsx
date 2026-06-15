@@ -4,6 +4,8 @@ import { useState, useEffect } from "react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { type DateRange } from "react-day-picker"
+import jsPDF from "jspdf"
+import * as htmlToImage from "html-to-image"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,7 +14,7 @@ import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Send, Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon } from "lucide-react"
+import { Send, Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon, FileDown } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
 
 const STORAGE_KEY = "road-demo-user-settings"
@@ -21,6 +23,36 @@ const STANDARD_REPORT_MIN_DATE = new Date(2025, 0, 1)
 interface UserSettings {
   email: string
   telegram: string
+}
+
+type AiReportMetric = {
+  label: string
+  value: string
+  tone?: "good" | "warning" | "critical" | "neutral"
+}
+
+type AiReportSection = {
+  heading: string
+  body: string
+  bullets?: string[]
+}
+
+type AiReportResponse = {
+  ok?: boolean
+  error?: string
+  source?: "gigachat" | "template-fallback"
+  title?: string
+  subtitle?: string
+  generatedAt?: string
+  prompt?: string
+  period?: {
+    from?: string
+    to?: string
+  }
+  metrics?: AiReportMetric[]
+  sections?: AiReportSection[]
+  recommendations?: string[]
+  sourceNote?: string
 }
 
 const timeOptions = [
@@ -47,6 +79,178 @@ const MODULE_INFO: Record<string, { name: string; description: string }> = {
   transport: { name: 'Контроль транспорта', description: 'Отслеживание транспортных средств' },
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
+function getReportToneColor(tone: AiReportMetric["tone"]) {
+  if (tone === "good") {
+    return "#16703a"
+  }
+  if (tone === "warning") {
+    return "#9a5b00"
+  }
+  if (tone === "critical") {
+    return "#a02424"
+  }
+  return "#475569"
+}
+
+function getReportPeriodLabel(report: AiReportResponse) {
+  if (report.period?.from && report.period?.to) {
+    return `${report.period.from} - ${report.period.to}`
+  }
+  if (report.period?.from) {
+    return `с ${report.period.from}`
+  }
+  if (report.period?.to) {
+    return `до ${report.period.to}`
+  }
+  return "период не задан"
+}
+
+function buildReportHtml(report: AiReportResponse) {
+  const metrics = report.metrics || []
+  const sections = report.sections || []
+  const recommendations = report.recommendations || []
+  const generatedAt = report.generatedAt
+    ? format(new Date(report.generatedAt), "dd.MM.yyyy HH:mm", { locale: ru })
+    : format(new Date(), "dd.MM.yyyy HH:mm", { locale: ru })
+  const sourceLabel = report.source === "gigachat" ? "GigaChat + шаблон" : "Демо-шаблон"
+
+  return `
+    <div style="box-sizing:border-box;width:794px;background:#fff;color:#111827;font-family:Arial,Helvetica,sans-serif;padding:36px;">
+      <div style="border-bottom:2px solid #111827;padding-bottom:18px;margin-bottom:24px;">
+        <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#64748b;margin-bottom:10px;">Вектор Города</div>
+        <h1 style="font-size:30px;line-height:1.18;margin:0 0 10px;font-weight:700;">${escapeHtml(report.title || "ИИ-отчет")}</h1>
+        <p style="font-size:15px;line-height:1.5;color:#475569;margin:0;">${escapeHtml(report.subtitle || "Сводный отчет по пользовательскому запросу")}</p>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:22px;">
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+          <div style="font-size:11px;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Период</div>
+          <div style="font-size:14px;font-weight:700;">${escapeHtml(getReportPeriodLabel(report))}</div>
+        </div>
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+          <div style="font-size:11px;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Источник</div>
+          <div style="font-size:14px;font-weight:700;">${escapeHtml(sourceLabel)}</div>
+        </div>
+      </div>
+
+      <div style="border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:22px;background:#f8fafc;">
+        <div style="font-size:11px;text-transform:uppercase;color:#64748b;margin-bottom:6px;">Запрос пользователя</div>
+        <div style="font-size:14px;line-height:1.55;">${escapeHtml(report.prompt || "")}</div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:26px;">
+        ${metrics.map((metric) => `
+          <div style="border:1px solid #e2e8f0;border-left:4px solid ${getReportToneColor(metric.tone)};border-radius:8px;padding:12px;min-height:82px;">
+            <div style="font-size:11px;text-transform:uppercase;color:#64748b;margin-bottom:8px;">${escapeHtml(metric.label)}</div>
+            <div style="font-size:17px;line-height:1.25;font-weight:700;color:${getReportToneColor(metric.tone)};">${escapeHtml(metric.value)}</div>
+          </div>
+        `).join("")}
+      </div>
+
+      ${sections.map((section) => `
+        <section style="margin-bottom:24px;break-inside:avoid;">
+          <h2 style="font-size:20px;line-height:1.25;margin:0 0 8px;font-weight:700;">${escapeHtml(section.heading)}</h2>
+          <p style="font-size:14px;line-height:1.6;margin:0 0 10px;color:#334155;">${escapeHtml(section.body)}</p>
+          ${(section.bullets || []).length > 0 ? `
+            <ul style="margin:0;padding-left:20px;color:#334155;font-size:14px;line-height:1.55;">
+              ${(section.bullets || []).map((item) => `<li style="margin-bottom:5px;">${escapeHtml(item)}</li>`).join("")}
+            </ul>
+          ` : ""}
+        </section>
+      `).join("")}
+
+      <section style="border-top:1px solid #e2e8f0;padding-top:18px;margin-top:8px;break-inside:avoid;">
+        <h2 style="font-size:20px;line-height:1.25;margin:0 0 10px;font-weight:700;">Рекомендации</h2>
+        <ol style="margin:0;padding-left:22px;color:#334155;font-size:14px;line-height:1.6;">
+          ${recommendations.map((item) => `<li style="margin-bottom:6px;">${escapeHtml(item)}</li>`).join("")}
+        </ol>
+      </section>
+
+      <div style="margin-top:28px;padding-top:14px;border-top:1px solid #e2e8f0;color:#64748b;font-size:11px;line-height:1.5;">
+        <div>Сформировано: ${escapeHtml(generatedAt)}</div>
+        <div>${escapeHtml(report.sourceNote || "Отчет сформирован автоматически.")}</div>
+      </div>
+    </div>
+  `
+}
+
+async function downloadReportPdf(report: AiReportResponse) {
+  const container = document.createElement("div")
+  container.style.position = "fixed"
+  container.style.left = "-10000px"
+  container.style.top = "0"
+  container.style.width = "794px"
+  container.style.background = "#ffffff"
+  container.innerHTML = buildReportHtml(report)
+  document.body.appendChild(container)
+
+  try {
+    const canvas = await htmlToImage.toCanvas(container, {
+      backgroundColor: "#ffffff",
+      pixelRatio: 2,
+      cacheBust: true,
+    })
+    const pdf = new jsPDF("p", "mm", "a4")
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    const margin = 8
+    const imageWidth = pageWidth - margin * 2
+    const pageContentHeight = pageHeight - margin * 2
+    const fullImageHeight = (canvas.height * imageWidth) / canvas.width
+    const pageSliceHeightPx = Math.floor((pageContentHeight / fullImageHeight) * canvas.height)
+
+    let sourceY = 0
+    let pageIndex = 0
+
+    while (sourceY < canvas.height) {
+      const sliceHeight = Math.min(pageSliceHeightPx, canvas.height - sourceY)
+      const sliceCanvas = document.createElement("canvas")
+      sliceCanvas.width = canvas.width
+      sliceCanvas.height = sliceHeight
+      const context = sliceCanvas.getContext("2d")
+
+      if (!context) {
+        throw new Error("Не удалось подготовить PDF-страницу.")
+      }
+
+      context.drawImage(
+        canvas,
+        0,
+        sourceY,
+        canvas.width,
+        sliceHeight,
+        0,
+        0,
+        canvas.width,
+        sliceHeight,
+      )
+
+      if (pageIndex > 0) {
+        pdf.addPage()
+      }
+
+      const sliceImageHeight = (sliceHeight * imageWidth) / canvas.width
+      pdf.addImage(sliceCanvas.toDataURL("image/jpeg", 0.92), "JPEG", margin, margin, imageWidth, sliceImageHeight)
+      sourceY += sliceHeight
+      pageIndex += 1
+    }
+
+    const date = format(new Date(), "yyyy-MM-dd")
+    pdf.save(`vector-city-ai-report-${date}.pdf`)
+  } finally {
+    document.body.removeChild(container)
+  }
+}
+
 export default function SettingsPage() {
   const { allModules, modules: activeModules, toggleModule } = useModuleAccess()
   const today = new Date()
@@ -69,6 +273,9 @@ export default function SettingsPage() {
   const [emailEnabled, setEmailEnabled] = useState(true)
   const [isReportSaving, setIsReportSaving] = useState(false)
   const [isReportSaved, setIsReportSaved] = useState(false)
+  const [isReportGenerating, setIsReportGenerating] = useState(false)
+  const [reportError, setReportError] = useState("")
+  const [reportStatus, setReportStatus] = useState("")
 
   // Load settings from localStorage
   useEffect(() => {
@@ -150,6 +357,55 @@ export default function SettingsPage() {
     }, 500)
   }
 
+  const handleGenerateReport = async () => {
+    const prompt = reportPrompt.trim()
+    setReportError("")
+    setReportStatus("")
+
+    if (!prompt) {
+      setReportError("Введите запрос для отчёта.")
+      return
+    }
+
+    if (!standardReportRange?.from || !standardReportRange?.to) {
+      setReportError("Выберите период отчёта.")
+      return
+    }
+
+    setIsReportGenerating(true)
+
+    try {
+      const response = await fetch("/api/reports/ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          period: {
+            from: format(standardReportRange.from, "yyyy-MM-dd"),
+            to: format(standardReportRange.to, "yyyy-MM-dd"),
+          },
+        }),
+      })
+      const report = await response.json() as AiReportResponse
+
+      if (!response.ok || !report.ok) {
+        throw new Error(report.error || "Не удалось сформировать отчёт.")
+      }
+
+      await downloadReportPdf(report)
+      setReportStatus(
+        report.source === "gigachat"
+          ? "PDF-отчёт сформирован и скачан."
+          : "PDF-отчёт скачан по демо-шаблону: GigaChat сейчас недоступен или отвечает слишком долго."
+      )
+      setTimeout(() => setReportStatus(""), 5000)
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Не удалось сформировать отчёт.")
+    } finally {
+      setIsReportGenerating(false)
+    }
+  }
+
   const hasChanges = email.trim() !== savedEmail || telegram.trim() !== savedTelegram
 
   return (
@@ -229,10 +485,16 @@ export default function SettingsPage() {
               <p className="text-muted-foreground">Опишите, что должен содержать сводный отчёт. ИИ сформирует его на основе вашего запроса.</p>
             </div>
             <textarea
+              id="report-prompt"
+              aria-label="Запрос для отчёта"
               className="w-full min-h-[150px] p-4 rounded-lg border border-input bg-background text-sm resize-y focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
               placeholder="Например: Сформируй отчёт о состоянии дорог за последнюю неделю. Включи статистику по загрязнённым участкам, динамику изменений, проблемные районы и рекомендации по улучшению ситуации..."
               value={reportPrompt}
-              onChange={(e) => setReportPrompt(e.target.value)}
+              onChange={(e) => {
+                setReportPrompt(e.target.value)
+                setReportError("")
+                setReportStatus("")
+              }}
             />
           </div>
 
@@ -284,7 +546,33 @@ export default function SettingsPage() {
                   </PopoverContent>
                 </Popover>
               </div>
-              <Button type="button">Сформировать отчёт</Button>
+              <div className="flex flex-col items-stretch gap-2 md:items-end">
+                <Button
+                  type="button"
+                  className="gap-2"
+                  disabled={isReportGenerating}
+                  aria-busy={isReportGenerating}
+                  onClick={handleGenerateReport}
+                >
+                  {isReportGenerating ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Формируем...
+                    </>
+                  ) : (
+                    <>
+                      <FileDown className="h-4 w-4" />
+                      Сформировать отчёт
+                    </>
+                  )}
+                </Button>
+                {reportError && (
+                  <p className="max-w-[320px] text-sm text-destructive md:text-right">{reportError}</p>
+                )}
+                {reportStatus && (
+                  <p className="max-w-[360px] text-sm text-muted-foreground md:text-right">{reportStatus}</p>
+                )}
+              </div>
             </div>
           </div>
 

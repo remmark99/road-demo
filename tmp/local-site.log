@@ -1,0 +1,44 @@
+
+> road-demo@0.1.0 start /home/dabdi/adm_chance/road-demo
+> next start --hostname 0.0.0.0 --port 3000
+
+▲ Next.js 16.1.4
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+
+✓ Starting...
+✓ Ready in 645ms
+
+> road-demo@0.1.0 start /home/dabdi/adm_chance/road-demo
+> next start --hostname 0.0.0.0 --port 3000
+
+▲ Next.js 16.1.4
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+
+✓ Starting...
+✓ Ready in 692ms
+Error: fetch failed
+    at context.fetch (/home/dabdi/adm_chance/road-demo/node_modules/.pnpm/next@16.1.4_@babel+core@7.28.6_@opentelemetry+api@1.9.0_react-dom@19.2.3_react@19.2.3__react@19.2.3/node_modules/next/dist/server/web/sandbox/context.js:321:60)
+    at /home/dabdi/adm_chance/road-demo/.next/server/edge/chunks/[root-of-the-server]__0da86e1d._.js:36:38257
+    at nW (/home/dabdi/adm_chance/road-demo/.next/server/edge/chunks/[root-of-the-server]__0da86e1d._.js:36:43197)
+    at nM (/home/dabdi/adm_chance/road-demo/.next/server/edge/chunks/[root-of-the-server]__0da86e1d._.js:36:42725)
+    at r (/home/dabdi/adm_chance/road-demo/.next/server/edge/chunks/[root-of-the-server]__0da86e1d._.js:49:22393)
+    at /home/dabdi/adm_chance/road-demo/.next/server/edge/chunks/[root-of-the-server]__0da86e1d._.js:49:22656
+    at /home/dabdi/adm_chance/road-demo/.next/server/edge/chunks/[root-of-the-server]__0da86e1d._.js:49:22733
+    at new Promise (<anonymous>)
+    at sp._refreshAccessToken (/home/dabdi/adm_chance/road-demo/.next/server/edge/chunks/[root-of-the-server]__0da86e1d._.js:49:22587)
+    at sp._callRefreshToken (/home/dabdi/adm_chance/road-demo/.next/server/edge/chunks/[root-of-the-server]__0da86e1d._.js:49:25280) {
+  
+}
+ ELIFECYCLE  Command failed.
+
+> road-demo@0.1.0 start /home/dabdi/adm_chance/road-demo
+> next start --hostname 0.0.0.0 --port 3000
+
+▲ Next.js 16.1.4
+- Local:         http://localhost:3000
+- Network:       http://0.0.0.0:3000
+
+✓ Starting...
+✓ Ready in 1281ms

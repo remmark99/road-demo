@@ -1,89 +1,96 @@
 "use client"
 
+import { useState } from "react"
 import { Navigation } from "@/components/navigation"
-import { AIChatbot } from "@/components/dashboard/ai-chatbot"
-import { Badge } from "@/components/ui/badge"
-import { Card, CardContent } from "@/components/ui/card"
-import { BarChart3, Bot, Route, ShieldCheck } from "lucide-react"
+import { AIChatbot, type AssistantMode } from "@/components/dashboard/ai-chatbot"
+import { Button } from "@/components/ui/button"
+import { Bot, BusFront, Layers, type LucideIcon } from "lucide-react"
+import { cn } from "@/lib/utils"
 
-const MODULE_BADGES = ["Дороги", "Остановки", "Берег", "Парк", "Транспорт"]
-
-const VALUE_CARDS = [
+const MODE_OPTIONS: Array<{
+  id: AssistantMode
+  title: string
+  description: string
+  icon: LucideIcon
+}> = [
   {
-    title: "5 модулей",
-    description: "Единый вход в платформенную аналитику и пояснения по метрикам.",
-    icon: BarChart3,
+    id: "platform",
+    title: "Платформа",
+    description: "Все модули и общий аналитический контекст",
+    icon: Layers,
   },
   {
-    title: "Честный режим",
-    description: "Без выдуманных значений, если пользователь не прислал данные.",
-    icon: ShieldCheck,
-  },
-  {
-    title: "Инструменты и разбор",
-    description: "Для фактических дорожных запросов и осмысленных пояснений по модулям.",
-    icon: Route,
+    id: "stops",
+    title: "Остановки",
+    description: "Live-данные, события и плановые панели",
+    icon: BusFront,
   },
 ]
 
 export default function AIAssistantPage() {
+  const [assistantMode, setAssistantMode] = useState<AssistantMode>("platform")
+  const activeMode = MODE_OPTIONS.find((mode) => mode.id === assistantMode) ?? MODE_OPTIONS[0]
+
   return (
     <main className="min-h-screen w-full bg-background">
       <Navigation />
 
       <div className="pt-14">
-        <div className="w-full px-4 py-4 md:px-8 md:py-5">
-          <Card className="mb-3 flex-none overflow-hidden border-border/60 bg-gradient-to-br from-background via-background to-muted/40 shadow-sm">
-            <CardContent className="p-4 md:p-5">
-              <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.95fr)] xl:items-stretch">
-                <div>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm">
-                    <Bot className="h-3.5 w-3.5 text-primary" />
-                    Ассистент платформы
-                  </div>
-                  <h1 className="mt-3 text-2xl font-semibold tracking-tight md:text-[2rem]">
-                    ИИ-Ассистент
-                  </h1>
-                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground md:text-[15px]">
-                    Интеллектуальный анализ модулей платформы и показателей аналитики. Помогает
-                    разобраться в дорожных данных, остановках, береговых и парковых модулях, а также
-                    в транспортных отклонениях без лишней технической терминологии.
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {MODULE_BADGES.map((label) => (
-                      <Badge
-                        key={label}
-                        variant="outline"
-                        className="rounded-full border-border/60 bg-background/80 px-3 py-1 text-xs font-medium"
-                      >
-                        {label}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {VALUE_CARDS.map(({ title, description, icon: Icon }) => (
-                    <div
-                      key={title}
-                      className="flex min-h-[136px] flex-col rounded-2xl border border-border/60 bg-background/85 p-4 shadow-sm backdrop-blur"
-                    >
-                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <div className="mt-4 flex flex-1 flex-col justify-between gap-3">
-                        <p className="text-sm font-semibold leading-5">{title}</p>
-                        <p className="text-sm leading-6 text-muted-foreground">{description}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+        <div className="flex h-[calc(100dvh-3.5rem)] min-h-[720px] w-full flex-col px-4 py-3 md:px-6">
+          <div className="mb-3 flex flex-none flex-col gap-3 rounded-lg border border-border/70 bg-card/70 px-4 py-3 shadow-sm md:flex-row md:items-center md:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Bot className="h-4 w-4" />
               </div>
-            </CardContent>
-          </Card>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-xl font-semibold tracking-tight">ИИ-Ассистент</h1>
+                  <span className="rounded-full border border-border/70 bg-background px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    {activeMode.title}
+                  </span>
+                </div>
+                <p className="mt-1 max-w-3xl text-sm leading-5 text-muted-foreground">
+                  Чат для разбора аналитики платформы, показателей остановок, дорожных данных и событий без лишней технической витрины.
+                </p>
+              </div>
+            </div>
 
-          <div className="pb-6">
-            <AIChatbot pageScrollable initialQuestionsCollapsed={false} />
+            <div className="flex w-full shrink-0 rounded-lg border border-border/70 bg-muted/30 p-1 md:w-auto">
+              {MODE_OPTIONS.map(({ id, title, description, icon: Icon }) => {
+                const isActive = assistantMode === id
+
+                return (
+                  <Button
+                    key={id}
+                    type="button"
+                    variant={isActive ? "default" : "ghost"}
+                    className={cn(
+                      "h-auto flex-1 justify-start gap-2 px-3 py-2 text-left md:min-w-44 md:flex-none",
+                      !isActive && "text-muted-foreground hover:text-foreground",
+                    )}
+                    onClick={() => setAssistantMode(id)}
+                    aria-pressed={isActive}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium leading-4">{title}</span>
+                      <span className="mt-0.5 hidden text-xs font-normal leading-4 opacity-80 sm:block">
+                        {description}
+                      </span>
+                    </span>
+                  </Button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1">
+            <AIChatbot
+              key={activeMode.id}
+              fullHeight
+              initialQuestionsCollapsed
+              assistantMode={activeMode.id}
+            />
           </div>
         </div>
       </div>
