@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="310" viewBox="0 0 980 310" role="img" aria-label="Executive: события безопасности за 24 часа">
+    <style>
+        .bg { fill: #ffffff; }
+        .title { font: 700 24px Arial, sans-serif; fill: #111827; }
+        .subtitle { font: 400 13px Arial, sans-serif; fill: #6b7280; }
+        .label { font: 500 14px Arial, sans-serif; fill: #111827; }
+        .value { font: 700 13px Arial, sans-serif; fill: #111827; }
+        .tick { font: 400 12px Arial, sans-serif; fill: #6b7280; }
+        .grid { stroke: #e5e7eb; stroke-width: 1; stroke-dasharray: 4 6; }
+        .axis { stroke: #9ca3af; stroke-width: 1.2; }
+        .track { fill: #f3f4f6; }
+    </style>
+    <rect width="980" height="310" rx="18" class="bg" />
+    <text x="36" y="44" class="title">Executive: события безопасности за 24 часа</text>
+    <text x="36" y="68" class="subtitle">Топ 3 по подтвержденным данным. Значения показаны в событ..</text>
+    <line x1="286" y1="78" x2="286" y2="262" class="grid" /><text x="286" y="288" text-anchor="middle" class="tick">0</text><line x1="438.5" y1="78" x2="438.5" y2="262" class="grid" /><text x="438.5" y="288" text-anchor="middle" class="tick">5,5</text><line x1="591" y1="78" x2="591" y2="262" class="grid" /><text x="591" y="288" text-anchor="middle" class="tick">11</text><line x1="743.5" y1="78" x2="743.5" y2="262" class="grid" /><text x="743.5" y="288" text-anchor="middle" class="tick">16,5</text><line x1="896" y1="78" x2="896" y2="262" class="grid" /><text x="896" y="288" text-anchor="middle" class="tick">22</text>
+    <line x1="286" y1="78" x2="286" y2="262" class="axis" />
+    <text x="36" y="112" class="label">Переполненная урна</text><rect x="286" y="94" width="610" height="22" rx="6" class="track" /><rect x="286" y="94" width="610" height="22" rx="6" fill="#2563eb" /><text x="844" y="110" class="value">22 событ.</text><text x="36" y="158" class="label">Курение</text><rect x="286" y="140" width="610" height="22" rx="6" class="track" /><rect x="286" y="140" width="27.727272727272727" height="22" rx="6" fill="#16a34a" /><text x="323.72727272727275" y="156" class="value">1 событ.</text><text x="36" y="204" class="label">Бездомные собаки</text><rect x="286" y="186" width="610" height="22" rx="6" class="track" /><rect x="286" y="186" width="194.0909090909091" height="22" rx="6" fill="#f59e0b" /><text x="490.0909090909091" y="202" class="value">7 событ.</text>
+    
+</svg>
