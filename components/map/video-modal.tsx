@@ -290,7 +290,7 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
         <Separator />
 
         {/* Recent Alerts Section */}
-        <div>
+        <div className="min-w-0">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-medium flex items-center gap-2">
               <Bell className="h-4 w-4 text-muted-foreground" />
@@ -313,19 +313,19 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
               Нет событий с этой камеры
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 overflow-hidden">
               {recentAlerts.map(alert => {
                 const config = ALERT_TYPE_CONFIG[alert.alert_type] || ALERT_TYPE_CONFIG.canny
                 const Icon = alertIcons[alert.alert_type] || Snowflake
                 return (
                   <div
                     key={alert.id}
-                    className="flex items-center gap-3 p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors"
+                    className="flex items-center gap-3 p-2 rounded-lg bg-secondary/50 hover:bg-secondary transition-colors overflow-hidden"
                   >
-                    <div className={`p-1.5 rounded ${config.color}`}>
+                    <div className={`p-1.5 rounded shrink-0 ${config.color}`}>
                       <Icon className="h-3.5 w-3.5" />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 overflow-hidden">
                       <div className="text-sm font-medium truncate">{config.label}</div>
                       <div className="text-xs text-muted-foreground truncate">{alert.message}</div>
                     </div>
