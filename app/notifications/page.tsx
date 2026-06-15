@@ -368,6 +368,7 @@ function ResultsHeader({
 function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const searchParams = useSearchParams()
   const initialCamera = searchParams.get("camera")
+  const initialAlertId = searchParams.get("alertId")
   const { hasModule } = useModuleAccess()
   const hasRoads = hasModule("roads")
   const hasShore = hasModule("shore")
@@ -385,7 +386,19 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(25)
-  const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(initialAlertId)
+
+  useEffect(() => {
+    if (initialAlertId && !loading) {
+      const timer = setTimeout(() => {
+        const element = document.getElementById(`alert-${initialAlertId}`)
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "center" })
+        }
+      }, 150)
+      return () => clearTimeout(timer)
+    }
+  }, [initialAlertId, loading])
 
   const allowedTypes = useMemo(() => {
     const types: string[] = []
@@ -928,13 +941,19 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
             const Icon = alertIcons[alert.alert_type] || Snowflake
             const demoAlert = isDemoAlert(alert)
             const isExpanded = expandedId === alert.id
+            const isHighlighted = alert.id === initialAlertId
 
             return (
               <Card
+                id={`alert-${alert.id}`}
                 key={alert.id}
-                className={`transition-colors hover:border-primary/50 ${
+                className={`transition-all duration-300 hover:border-primary/50 ${
                   demoAlert ? "cursor-default" : "cursor-pointer"
-                } ${isExpanded ? "border-primary" : ""}`}
+                } ${isExpanded ? "border-primary" : ""} ${
+                  isHighlighted
+                    ? "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-[0_0_15px_rgba(59,130,246,0.35)] dark:shadow-[0_0_15px_rgba(255,255,255,0.15)] border-primary"
+                    : ""
+                }`}
                 onClick={() =>
                   demoAlert ? undefined : setExpandedId(isExpanded ? null : alert.id)
                 }
