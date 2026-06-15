@@ -38,8 +38,8 @@ interface BusStopsFeatureCollection {
     }>
 }
 
-const DEFAULT_LIMIT = 20000
-const PAGE_SIZE = 5000
+const DEFAULT_LIMIT = 1000
+const PAGE_SIZE = 1000
 
 let busStopsFeatureCollectionPromise: Promise<BusStopsFeatureCollection> | null = null
 
@@ -88,6 +88,10 @@ export async function fetchBusynessWindows({
         }
 
         rows.push(...page)
+
+        if (page.length < pageLimit) {
+            break
+        }
     }
 
     return {

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="522" viewBox="0 0 980 522" role="img" aria-label="Executive: самые нагруженные остановки">
+    <style>
+        .bg { fill: #ffffff; }
+        .title { font: 700 24px Arial, sans-serif; fill: #111827; }
+        .subtitle { font: 400 13px Arial, sans-serif; fill: #6b7280; }
+        .label { font: 500 14px Arial, sans-serif; fill: #111827; }
+        .value { font: 700 13px Arial, sans-serif; fill: #111827; }
+        .tick { font: 400 12px Arial, sans-serif; fill: #6b7280; }
+        .grid { stroke: #e5e7eb; stroke-width: 1; stroke-dasharray: 4 6; }
+        .axis { stroke: #9ca3af; stroke-width: 1.2; }
+        .track { fill: #f3f4f6; }
+    </style>
+    <rect width="980" height="522" rx="18" class="bg" />
+    <text x="36" y="44" class="title">Executive: самые нагруженные остановки</text>
+    <text x="36" y="68" class="subtitle">Топ 8 по подтвержденным данным. Значения показаны в чел..</text>
+    <line x1="286" y1="78" x2="286" y2="474" class="grid" /><text x="286" y="500" text-anchor="middle" class="tick">0</text><line x1="438.5" y1="78" x2="438.5" y2="474" class="grid" /><text x="438.5" y="500" text-anchor="middle" class="tick">0,6</text><line x1="591" y1="78" x2="591" y2="474" class="grid" /><text x="591" y="500" text-anchor="middle" class="tick">1,2</text><line x1="743.5" y1="78" x2="743.5" y2="474" class="grid" /><text x="743.5" y="500" text-anchor="middle" class="tick">1,7</text><line x1="896" y1="78" x2="896" y2="474" class="grid" /><text x="896" y="500" text-anchor="middle" class="tick">2,3</text>
+    <line x1="286" y1="78" x2="286" y2="474" class="axis" />
+    <text x="36" y="112" class="label">20А микрорайон</text><rect x="286" y="94" width="610" height="22" rx="6" class="track" /><rect x="286" y="94" width="610" height="22" rx="6" fill="#2563eb" /><text x="844" y="110" class="value">2,3 чел.</text><text x="36" y="158" class="label">24 микрорайон</text><rect x="286" y="140" width="610" height="22" rx="6" class="track" /><rect x="286" y="140" width="159.1304347826087" height="22" rx="6" fill="#16a34a" /><text x="455.1304347826087" y="156" class="value">0,6 чел.</text><text x="36" y="204" class="label">ул. Гагарина</text><rect x="286" y="186" width="610" height="22" rx="6" class="track" /><rect x="286" y="186" width="106.08695652173914" height="22" rx="6" fill="#f59e0b" /><text x="402.0869565217391" y="202" class="value">0,4 чел.</text><text x="36" y="250" class="label">Старый Сургут</text><rect x="286" y="232" width="610" height="22" rx="6" class="track" /><rect x="286" y="232" width="79.56521739130434" height="22" rx="6" fill="#dc2626" /><text x="375.5652173913044" y="248" class="value">0,3 чел.</text><text x="36" y="296" class="label">Никольский</text><rect x="286" y="278" width="610" height="22" rx="6" class="track" /><rect x="286" y="278" width="53.04347826086957" height="22" rx="6" fill="#7c3aed" /><text x="349.04347826086956" y="294" class="value">0,2 чел.</text><text x="36" y="342" class="label">Парк За Саймой</text><rect x="286" y="324" width="610" height="22" rx="6" class="track" /><rect x="286" y="324" width="53.04347826086957" height="22" rx="6" fill="#0891b2" /><text x="349.04347826086956" y="340" class="value">0,2 чел.</text><text x="36" y="388" class="label">Дом Купца Клепикова</text><rect x="286" y="370" width="610" height="22" rx="6" class="track" /><rect x="286" y="370" width="26.521739130434785" height="22" rx="6" fill="#2563eb" /><text x="322.5217391304348" y="386" class="value">0,1 чел.</text><text x="36" y="434" class="label">10 Микрорайон</text><rect x="286" y="416" width="610" height="22" rx="6" class="track" /><rect x="286" y="416" width="26.521739130434785" height="22" rx="6" fill="#16a34a" /><text x="322.5217391304348" y="432" class="value">0,1 чел.</text>
+    
+</svg>
