@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import {
@@ -12,10 +13,12 @@ import {
 } from "recharts"
 import {
     AlertCircle,
-    BarChart3,
-    Map,
+    Bell,
+    ExternalLink,
+    Map as MapIcon,
     MapPin,
     ShieldAlert,
+    Trash2,
     Users2,
 } from "lucide-react"
 
@@ -38,6 +41,12 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
+import { getBusStopIdFromLocationId } from "@/lib/api/busyness-windows"
+import {
+    fetchStopTrashOverflowAlerts,
+    STOP_TRASH_OVERFLOW_ALERT_TYPES,
+    type StopTrashOverflowAlertRow,
+} from "@/lib/api/stop-condition-windows"
 import {
     buildStopDistrictSummaries,
     fetchStopCurrentAnalyticsData,
@@ -48,6 +57,8 @@ import {
 import {
     STOP_SAFETY_ALERT_LABELS,
     STOP_SAFETY_ALERT_TYPES,
+    getStopComplexByCameraIndex,
+    getStopComplexByLocationId,
     type StopSafetyAlertType,
 } from "@/lib/stop-analytics-config"
 import { cn } from "@/lib/utils"
@@ -59,20 +70,29 @@ type DistrictEventRow = StopDistrictSummary & {
     selectedSafetyEvents: number
 }
 
-const districtStopsConfig = {
-    stops: { label: "Подключено", color: "hsl(217, 91%, 60%)" },
-} satisfies ChartConfig
-
-const districtLoadConfig = {
-    averagePeople: { label: "Средняя загрузка", color: "hsl(199, 89%, 48%)" },
-} satisfies ChartConfig
-
 const districtEventsConfig = {
     selectedSafetyEvents: { label: "События", color: "hsl(0, 84%, 60%)" },
 } satisfies ChartConfig
 
+const districtTrashConfig = {
+    trashEvents: { label: "Загрязнения", color: "hsl(32, 95%, 53%)" },
+} satisfies ChartConfig
+
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
 const numberFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
+const TRASH_EVENT_LIMIT = 5000
+
+function buildNotificationsHref(types: readonly string[]) {
+    const params = new URLSearchParams()
+    const uniqueTypes = Array.from(new Set(types.filter(Boolean)))
+
+    if (uniqueTypes.length > 0) {
+        params.set("types", uniqueTypes.join(","))
+    }
+
+    const query = params.toString()
+    return query ? `/notifications?${query}` : "/notifications"
+}
 
 function startOfLocalDay(date: Date) {
     const result = new Date(date)
@@ -156,6 +176,24 @@ function getKpiTone(value: number): KpiTone {
     return "normal"
 }
 
+function getTrashAlertLocationId(alert: StopTrashOverflowAlertRow) {
+    return typeof alert.metadata?.location_id === "string" ? alert.metadata.location_id : null
+}
+
+function getTrashAlertDistrictName(alert: StopTrashOverflowAlertRow, data: StopCurrentAnalyticsData) {
+    const cameraComplex = getStopComplexByCameraIndex(alert.camera_index)
+    if (cameraComplex) return cameraComplex.districtName
+
+    const locationId = getTrashAlertLocationId(alert)
+    const locationComplex = getStopComplexByLocationId(locationId)
+    if (locationComplex) return locationComplex.districtName
+
+    const stopId = locationId ? getBusStopIdFromLocationId(locationId) : null
+    const stop = stopId !== null ? data.stopsById.get(stopId) : undefined
+
+    return stop?.districtName ?? "Район не определен"
+}
+
 function KpiCard({
     title,
     value,
@@ -168,7 +206,7 @@ function KpiCard({
     value: string
     caption: string
     detail: string
-    icon: typeof Map
+    icon: typeof MapIcon
     tone?: KpiTone
 }) {
     return (
@@ -227,6 +265,7 @@ export function StopDistrictCurrentAnalytics() {
     const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
     const [alertFilter, setAlertFilter] = useState<AlertFilter>("all")
     const [data, setData] = useState<StopCurrentAnalyticsData | null>(null)
+    const [trashAlerts, setTrashAlerts] = useState<StopTrashOverflowAlertRow[]>([])
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
@@ -235,14 +274,23 @@ export function StopDistrictCurrentAnalytics() {
     useEffect(() => {
         let cancelled = false
 
-        fetchStopCurrentAnalyticsData(range)
-            .then((result) => {
+        Promise.all([
+            fetchStopCurrentAnalyticsData(range),
+            fetchStopTrashOverflowAlerts({
+                from: range.from,
+                to: range.to,
+                limit: TRASH_EVENT_LIMIT,
+            }),
+        ])
+            .then(([result, trashResult]) => {
                 if (cancelled) return
                 setData(result)
+                setTrashAlerts(trashResult)
             })
             .catch((fetchError: unknown) => {
                 if (cancelled) return
                 setData(null)
+                setTrashAlerts([])
                 setError(fetchError instanceof Error ? fetchError.message : "Не удалось загрузить районную аналитику")
             })
             .finally(() => {
@@ -284,19 +332,38 @@ export function StopDistrictCurrentAnalytics() {
     const liveDirections = districtSummaries.reduce((sum, district) => sum + district.liveDirections, 0)
     const selectedSafetyEvents = districtEventRows.reduce((sum, district) => sum + district.selectedSafetyEvents, 0)
     const alertFilterLabel = alertFilter === "all" ? "Все события" : STOP_SAFETY_ALERT_LABELS[alertFilter]
+    const districtNotificationsHref = buildNotificationsHref(
+        alertFilter === "all" ? STOP_SAFETY_ALERT_TYPES : [alertFilter]
+    )
+    const trashNotificationsHref = buildNotificationsHref(STOP_TRASH_OVERFLOW_ALERT_TYPES)
     const latestAt = districtSummaries
         .map((district) => district.latestAt)
         .filter((value): value is string => Boolean(value))
         .sort((a, b) => b.localeCompare(a))[0] ?? null
-    const stopChartRows = districtSummaries
-        .slice()
-        .sort((a, b) => b.stops - a.stops || a.districtName.localeCompare(b.districtName, "ru"))
-        .slice(0, 8)
-    const loadChartRows = districtSummaries
-        .slice()
-        .sort((a, b) => b.averagePeople - a.averagePeople || b.liveDirections - a.liveDirections || a.districtName.localeCompare(b.districtName, "ru"))
-        .slice(0, 8)
     const eventChartRows = districtEventRows.slice(0, 8)
+    const trashChartRows = useMemo(() => {
+        if (!data) return []
+
+        const rows = new Map<string, number>()
+
+        for (const district of districtSummaries) {
+            rows.set(district.districtName, 0)
+        }
+
+        for (const alert of trashAlerts) {
+            const districtName = getTrashAlertDistrictName(alert, data)
+            rows.set(districtName, (rows.get(districtName) ?? 0) + 1)
+        }
+
+        return Array.from(rows.entries())
+            .map(([districtName, trashEvents]) => ({
+                districtName,
+                trashEvents,
+            }))
+            .filter((row) => row.trashEvents > 0)
+            .sort((a, b) => b.trashEvents - a.trashEvents || a.districtName.localeCompare(b.districtName, "ru"))
+            .slice(0, 8)
+    }, [data, districtSummaries, trashAlerts])
 
     const handleTimeRangeChange = (nextRange: TimeRangeResult) => {
         setTimeRange(nextRange)
@@ -311,7 +378,7 @@ export function StopDistrictCurrentAnalytics() {
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">Районы</h2>
                         <Badge variant="outline" className="gap-1">
-                            <Map className="h-3 w-3" />
+                            <MapIcon className="h-3 w-3" />
                             районная сводка
                         </Badge>
                     </div>
@@ -350,7 +417,7 @@ export function StopDistrictCurrentAnalytics() {
                         value={integerFormat.format(districtSummaries.length)}
                         caption="по сопоставлению остановок"
                         detail={`${integerFormat.format(activeDistricts.length)} с онлайн-данными или событиями`}
-                        icon={Map}
+                        icon={MapIcon}
                     />
                     <KpiCard
                         title="Подключено в районах"
@@ -393,88 +460,27 @@ export function StopDistrictCurrentAnalytics() {
 
             {data && (
                 <>
-                    <div className="grid gap-6 xl:grid-cols-12">
-                        <Card className="xl:col-span-4">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-base">
-                                    <MapPin className="h-5 w-5 text-blue-500" />
-                                    Остановки по районам
-                                </CardTitle>
-                                <CardDescription>
-                                    Количество остановок с видеонаблюдением
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <ChartContainer config={districtStopsConfig} className="h-[300px] w-full">
-                                    <BarChart
-                                        data={stopChartRows}
-                                        layout="vertical"
-                                        margin={{ left: 0, right: 16, top: 8, bottom: 0 }}
-                                    >
-                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                        <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
-                                        <YAxis
-                                            type="category"
-                                            dataKey="districtName"
-                                            width={118}
-                                            tickLine={false}
-                                            axisLine={false}
-                                            tickMargin={8}
-                                            interval={0}
-                                        />
-                                        <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Bar dataKey="stops" fill="var(--color-stops)" radius={[0, 5, 5, 0]} />
-                                    </BarChart>
-                                </ChartContainer>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="xl:col-span-4">
-                            <CardHeader>
-                                <CardTitle className="flex items-center gap-2 text-base">
-                                    <BarChart3 className="h-5 w-5 text-sky-500" />
-                                    Средняя загрузка
-                                </CardTitle>
-                                <CardDescription>
-                                    Среднее наблюдаемое количество людей по районам
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <ChartContainer config={districtLoadConfig} className="h-[300px] w-full">
-                                    <BarChart
-                                        data={loadChartRows}
-                                        layout="vertical"
-                                        margin={{ left: 0, right: 16, top: 8, bottom: 0 }}
-                                    >
-                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                        <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} />
-                                        <YAxis
-                                            type="category"
-                                            dataKey="districtName"
-                                            width={118}
-                                            tickLine={false}
-                                            axisLine={false}
-                                            tickMargin={8}
-                                            interval={0}
-                                        />
-                                        <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Bar dataKey="averagePeople" fill="var(--color-averagePeople)" radius={[0, 5, 5, 0]} />
-                                    </BarChart>
-                                </ChartContainer>
-                            </CardContent>
-                        </Card>
-
-                        <Card className="xl:col-span-4">
+                    <div className="grid gap-6 xl:grid-cols-2">
+                        <Card>
                             <CardHeader>
                                 <div className="space-y-3">
-                                    <div>
-                                        <CardTitle className="flex items-center gap-2 text-base">
-                                            <ShieldAlert className="h-5 w-5 text-red-500" />
-                                            События по районам
-                                        </CardTitle>
-                                        <CardDescription>
-                                            Гистограмма по выбранному типу события
-                                        </CardDescription>
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                        <div className="space-y-1.5">
+                                            <CardTitle className="flex items-center gap-2 text-base">
+                                                <ShieldAlert className="h-5 w-5 text-red-500" />
+                                                События по районам
+                                            </CardTitle>
+                                            <CardDescription>
+                                                Гистограмма по выбранному типу события
+                                            </CardDescription>
+                                        </div>
+                                        <Button asChild variant="outline" size="sm" className="shrink-0">
+                                            <Link href={districtNotificationsHref}>
+                                                <Bell className="h-4 w-4" />
+                                                Уведомления
+                                                <ExternalLink className="h-3.5 w-3.5" />
+                                            </Link>
+                                        </Button>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
                                         <Button
@@ -519,6 +525,52 @@ export function StopDistrictCurrentAnalytics() {
                                         />
                                         <ChartTooltip content={<ChartTooltipContent />} />
                                         <Bar dataKey="selectedSafetyEvents" fill="var(--color-selectedSafetyEvents)" radius={[0, 5, 5, 0]} />
+                                    </BarChart>
+                                </ChartContainer>
+                            </CardContent>
+                        </Card>
+
+                        <Card>
+                            <CardHeader>
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                    <div className="space-y-1.5">
+                                        <CardTitle className="flex items-center gap-2 text-base">
+                                            <Trash2 className="h-5 w-5 text-amber-500" />
+                                            Загрязнения
+                                        </CardTitle>
+                                        <CardDescription>
+                                            В каких районах больше всего неубранных урн
+                                        </CardDescription>
+                                    </div>
+                                    <Button asChild variant="outline" size="sm" className="shrink-0">
+                                        <Link href={trashNotificationsHref}>
+                                            <Bell className="h-4 w-4" />
+                                            Уведомления
+                                            <ExternalLink className="h-3.5 w-3.5" />
+                                        </Link>
+                                    </Button>
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <ChartContainer config={districtTrashConfig} className="h-[300px] w-full">
+                                    <BarChart
+                                        data={trashChartRows}
+                                        layout="vertical"
+                                        margin={{ left: 0, right: 16, top: 8, bottom: 0 }}
+                                    >
+                                        <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                        <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
+                                        <YAxis
+                                            type="category"
+                                            dataKey="districtName"
+                                            width={118}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            tickMargin={8}
+                                            interval={0}
+                                        />
+                                        <ChartTooltip content={<ChartTooltipContent />} />
+                                        <Bar dataKey="trashEvents" fill="var(--color-trashEvents)" radius={[0, 5, 5, 0]} />
                                     </BarChart>
                                 </ChartContainer>
                             </CardContent>

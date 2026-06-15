@@ -48,13 +48,11 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import {
-    fetchBusStopsForLocations,
-    fetchBusynessWindows,
-    fetchLatestBusynessWindow,
-    getBusStopIdFromLocationId,
-    type BusynessStopLookup,
-    type BusynessWindowRow,
-} from "@/lib/api/busyness-windows"
+    fetchStopLoadAnalytics,
+    type StopLoadAnalyticsData,
+    type StopLoadLocationHourRow,
+    type StopLoadLocationSummary,
+} from "@/lib/api/stop-load-analytics"
 import { STOP_EQUIPPED_COUNT } from "@/lib/stop-analytics-config"
 import { cn } from "@/lib/utils"
 
@@ -65,11 +63,6 @@ interface RangeBounds {
     to: Date
 }
 
-interface HourMinuteLoad {
-    avgTotal: number
-    maxTotal: number
-}
-
 interface HourlyLoadRow {
     hourKey: string
     hourLabel: string
@@ -78,17 +71,6 @@ interface HourlyLoadRow {
     loadPct: number
     activeLocations: number
     windows: number
-}
-
-interface LocationSummary {
-    locationId: string
-    label: string
-    detail: string
-    currentPeople: number
-    averagePeople: number
-    peakPeople: number
-    windows: number
-    latestAt: string | null
 }
 
 interface HeatmapRow {
@@ -144,24 +126,8 @@ const HEATMAP_HOUR_COLUMNS: HeatmapHourColumn[] = Array.from({ length: 24 }, (_,
 const numberFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
 
-function toFiniteNumber(value: number | null | undefined) {
-    return Number.isFinite(value) ? Number(value) : 0
-}
-
 function compareLocationId(a: string, b: string) {
     return a.localeCompare(b, "ru", { numeric: true })
-}
-
-function buildStopDisplay(locationId: string, stopLookup: BusynessStopLookup) {
-    const stopId = getBusStopIdFromLocationId(locationId)
-    const stop = stopId !== null ? stopLookup[stopId] : undefined
-    const label = stop?.short_name?.trim() || stop?.name?.trim()
-    const direction = stop?.description?.trim()
-
-    return {
-        label: label || (stopId !== null ? `Остановка ${stopId}` : `Остановочное направление ${locationId}`),
-        detail: direction ? `${direction} · № ${locationId}` : `№ ${locationId}`,
-    }
 }
 
 function startOfLocalDay(date: Date) {
@@ -222,18 +188,6 @@ function getRangeBounds(result: TimeRangeResult): RangeBounds {
     }
 }
 
-function floorToMinute(iso: string) {
-    const date = new Date(iso)
-    date.setSeconds(0, 0)
-    return date.toISOString()
-}
-
-function floorToHour(iso: string) {
-    const date = new Date(iso)
-    date.setMinutes(0, 0, 0)
-    return date.toISOString()
-}
-
 function formatHourLabel(hourKey: string, showDate: boolean) {
     const date = new Date(hourKey)
     return format(date, showDate ? "dd.MM HH:mm" : "HH:mm", { locale: ru })
@@ -257,55 +211,45 @@ function formatFreshness(iso: string | null) {
     return `${Math.round(diffHours / 24)} дн назад`
 }
 
-function getAllLocationIds(rows: BusynessWindowRow[]) {
-    return Array.from(new Set(rows.map((row) => row.location_id))).sort(compareLocationId)
+function getAllLocationIds(locations: StopLoadLocationSummary[]) {
+    return locations.map((location) => location.locationId).sort(compareLocationId)
 }
 
-function buildHourlyRows(rows: BusynessWindowRow[], range: RangeBounds) {
+function buildHourlyRows(locationHours: StopLoadLocationHourRow[], range: RangeBounds) {
     const showDate = range.to.getTime() - range.from.getTime() > 36 * 60 * 60 * 1000
     const hourMap = new Map<
         string,
         {
-            minutes: Map<string, HourMinuteLoad>
             locations: Set<string>
+            avgPeople: number
+            peakPeople: number
             windows: number
         }
     >()
 
-    for (const row of rows) {
-        const hourKey = floorToHour(row.window_start)
-        const minuteKey = floorToMinute(row.window_start)
-        const hour = hourMap.get(hourKey) ?? {
-            minutes: new Map<string, HourMinuteLoad>(),
+    for (const row of locationHours) {
+        const hour = hourMap.get(row.hourKey) ?? {
             locations: new Set<string>(),
+            avgPeople: 0,
+            peakPeople: 0,
             windows: 0,
         }
-        const minute = hour.minutes.get(minuteKey) ?? { avgTotal: 0, maxTotal: 0 }
 
-        minute.avgTotal += toFiniteNumber(row.person_count_avg)
-        minute.maxTotal += toFiniteNumber(row.person_count_max)
-        hour.minutes.set(minuteKey, minute)
-        hour.locations.add(row.location_id)
-        hour.windows += 1
-        hourMap.set(hourKey, hour)
+        hour.avgPeople += row.avgPeople
+        hour.peakPeople += row.peakPeople
+        hour.locations.add(row.locationId)
+        hour.windows += row.windows
+        hourMap.set(row.hourKey, hour)
     }
 
     const rawRows = Array.from(hourMap.entries())
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([hourKey, hour]) => {
-            const minuteValues = Array.from(hour.minutes.values())
-            const avgPeople = minuteValues.length
-                ? minuteValues.reduce((sum, minute) => sum + minute.avgTotal, 0) / minuteValues.length
-                : 0
-            const peakPeople = minuteValues.length
-                ? Math.max(...minuteValues.map((minute) => minute.maxTotal))
-                : 0
-
             return {
                 hourKey,
                 hourLabel: formatHourLabel(hourKey, showDate),
-                avgPeople: Number(avgPeople.toFixed(1)),
-                peakPeople: Number(peakPeople.toFixed(1)),
+                avgPeople: Number(hour.avgPeople.toFixed(1)),
+                peakPeople: Number(hour.peakPeople.toFixed(1)),
                 activeLocations: hour.locations.size,
                 windows: hour.windows,
             }
@@ -319,94 +263,37 @@ function buildHourlyRows(rows: BusynessWindowRow[], range: RangeBounds) {
     }))
 }
 
-function buildLocationSummaries(
-    rows: BusynessWindowRow[],
-    stopLookup: BusynessStopLookup,
-): LocationSummary[] {
-    const locationMap = new Map<
-        string,
-        {
-            latestRow: BusynessWindowRow | null
-            weightedSum: number
-            weight: number
-            peakPeople: number
-            windows: number
-        }
-    >()
-
-    for (const row of rows) {
-        const current = locationMap.get(row.location_id) ?? {
-            latestRow: null,
-            weightedSum: 0,
-            weight: 0,
-            peakPeople: 0,
-            windows: 0,
-        }
-        const sampleWeight = Math.max(1, toFiniteNumber(row.sample_count))
-
-        current.weightedSum += toFiniteNumber(row.person_count_avg) * sampleWeight
-        current.weight += sampleWeight
-        current.peakPeople = Math.max(current.peakPeople, toFiniteNumber(row.person_count_max))
-        current.windows += 1
-
-        if (!current.latestRow || row.window_start > current.latestRow.window_start) {
-            current.latestRow = row
-        }
-
-        locationMap.set(row.location_id, current)
-    }
-
-    return Array.from(locationMap.entries())
-        .map(([locationId, value]) => {
-            const display = buildStopDisplay(locationId, stopLookup)
-
-            return {
-                locationId,
-                label: display.label,
-                detail: display.detail,
-                currentPeople: Math.round(toFiniteNumber(value.latestRow?.person_count_avg)),
-                averagePeople: value.weight > 0 ? Number((value.weightedSum / value.weight).toFixed(1)) : 0,
-                peakPeople: Math.round(value.peakPeople),
-                windows: value.windows,
-                latestAt: value.latestRow?.window_start ?? null,
-            }
-        })
-        .sort((a, b) => b.currentPeople - a.currentPeople || compareLocationId(a.locationId, b.locationId))
-}
-
 function buildHeatmapRows(
-    rows: BusynessWindowRow[],
+    locationHours: StopLoadLocationHourRow[],
     hours: HeatmapHourColumn[],
-    locationIds: string[],
-    stopLookup: BusynessStopLookup,
+    locations: StopLoadLocationSummary[],
 ): HeatmapRow[] {
     const hourSet = new Set(hours.map((hour) => hour.hourKey))
     const cellMap = new Map<string, Map<string, { sum: number; count: number }>>()
 
-    for (const row of rows) {
-        const hourOfDay = new Date(row.window_start).getHours()
+    for (const row of locationHours) {
+        const hourOfDay = new Date(row.hourKey).getHours()
         const hour = HEATMAP_HOUR_COLUMNS[hourOfDay]
         if (!hour) continue
 
         const hourKey = hour.hourKey
         if (!hourSet.has(hourKey)) continue
 
-        const locationCells = cellMap.get(row.location_id) ?? new Map<string, { sum: number; count: number }>()
+        const locationCells = cellMap.get(row.locationId) ?? new Map<string, { sum: number; count: number }>()
         const cell = locationCells.get(hourKey) ?? { sum: 0, count: 0 }
-        cell.sum += toFiniteNumber(row.person_count_avg)
-        cell.count += 1
+        cell.sum += row.avgPeople * Math.max(1, row.windows)
+        cell.count += Math.max(1, row.windows)
         locationCells.set(hourKey, cell)
-        cellMap.set(row.location_id, locationCells)
+        cellMap.set(row.locationId, locationCells)
     }
 
-    return locationIds.map((locationId) => {
-        const locationCells = cellMap.get(locationId)
-        const display = buildStopDisplay(locationId, stopLookup)
+    return locations.map((location) => {
+        const locationCells = cellMap.get(location.locationId)
 
         return {
-            locationId,
-            label: display.label,
-            detail: display.detail,
+            locationId: location.locationId,
+            label: location.label,
+            detail: location.detail,
             cells: hours.map((hour) => {
                 const cell = locationCells?.get(hour.hourKey)
                 return {
@@ -421,9 +308,8 @@ function buildHeatmapRows(
 }
 
 function buildSummary(
-    rows: BusynessWindowRow[],
     hourlyRows: HourlyLoadRow[],
-    locationSummaries: LocationSummary[],
+    locationSummaries: StopLoadLocationSummary[],
     range: RangeBounds,
     selectedLocationCount: number,
 ): LoadSummary {
@@ -440,7 +326,8 @@ function buildSummary(
         ? hourlyRows.reduce((sum, row) => sum + row.avgPeople, 0) / hourlyRows.length
         : 0
     const expectedWindows = selectedLocationCount * Math.max(1, Math.ceil((range.to.getTime() - range.from.getTime()) / 60000))
-    const coveragePct = expectedWindows > 0 ? Math.min(100, Math.round((rows.length / expectedWindows) * 100)) : 0
+    const observedWindows = locationSummaries.reduce((sum, location) => sum + location.windows, 0)
+    const coveragePct = expectedWindows > 0 ? Math.min(100, Math.round((observedWindows / expectedWindows) * 100)) : 0
 
     return {
         currentPeople,
@@ -543,59 +430,25 @@ function LoadingGrid() {
 
 export function StopCurrentLoadAnalytics() {
     const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
-    const [rows, setRows] = useState<BusynessWindowRow[]>([])
-    const [stopLookup, setStopLookup] = useState<BusynessStopLookup>({})
-    const [fallbackRange, setFallbackRange] = useState<RangeBounds | null>(null)
+    const [data, setData] = useState<StopLoadAnalyticsData | null>(null)
     const [selectedLocations, setSelectedLocations] = useState<string[] | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-    const [truncated, setTruncated] = useState(false)
-    const [limit, setLimit] = useState(0)
 
     const range = useMemo(() => getRangeBounds(timeRange), [timeRange])
 
     useEffect(() => {
         let cancelled = false
 
-        fetchBusynessWindows({ from: range.from, to: range.to })
-            .then(async (result) => {
-                let nextResult = result
-                let nextFallbackRange: RangeBounds | null = null
-
-                if (result.rows.length === 0) {
-                    const latestWindow = await fetchLatestBusynessWindow()
-
-                    if (latestWindow) {
-                        const latestDate = new Date(latestWindow.window_start)
-                        nextFallbackRange = {
-                            from: startOfLocalDay(latestDate),
-                            to: endOfLocalDay(latestDate),
-                        }
-                        nextResult = await fetchBusynessWindows({
-                            from: nextFallbackRange.from,
-                            to: nextFallbackRange.to,
-                        })
-                    }
-                }
-
-                const locationIds = getAllLocationIds(nextResult.rows)
-                const nextStopLookup = await fetchBusStopsForLocations(locationIds)
-
+        fetchStopLoadAnalytics(range)
+            .then((result) => {
                 if (cancelled) return
-                setRows(nextResult.rows)
-                setStopLookup(nextStopLookup)
-                setFallbackRange(nextFallbackRange)
-                setTruncated(nextResult.truncated)
-                setLimit(nextResult.limit)
+                setData(result)
             })
             .catch((fetchError: unknown) => {
                 if (cancelled) return
-                setRows([])
-                setStopLookup({})
-                setFallbackRange(null)
+                setData(null)
                 setError(fetchError instanceof Error ? fetchError.message : "Не удалось загрузить данные загруженности")
-                setTruncated(false)
-                setLimit(0)
             })
             .finally(() => {
                 if (!cancelled) {
@@ -608,8 +461,13 @@ export function StopCurrentLoadAnalytics() {
         }
     }, [range])
 
-    const displayedRange = fallbackRange ?? range
-    const allLocationIds = useMemo(() => getAllLocationIds(rows), [rows])
+    const displayedRange = data?.displayedRange ?? range
+    const fallbackRange = data?.fallbackRange ?? null
+    const allLocationIds = useMemo(() => getAllLocationIds(data?.locations ?? []), [data])
+    const locationsById = useMemo(
+        () => new Map((data?.locations ?? []).map((location) => [location.locationId, location])),
+        [data],
+    )
     const allLocationIdSet = useMemo(() => new Set(allLocationIds), [allLocationIds])
     const normalizedSelectedLocations = useMemo(
         () => selectedLocations?.filter((locationId) => allLocationIdSet.has(locationId)) ?? null,
@@ -617,33 +475,35 @@ export function StopCurrentLoadAnalytics() {
     )
     const effectiveSelectedLocations = normalizedSelectedLocations ?? allLocationIds
     const selectedLocationSet = useMemo(() => new Set(effectiveSelectedLocations), [effectiveSelectedLocations])
-    const selectedRows = useMemo(
-        () => rows.filter((row) => selectedLocationSet.has(row.location_id)),
-        [rows, selectedLocationSet],
+    const selectedLocationSummaries = useMemo(
+        () => (data?.locations ?? []).filter((location) => selectedLocationSet.has(location.locationId)),
+        [data, selectedLocationSet],
     )
-    const hourlyRows = useMemo(() => buildHourlyRows(selectedRows, displayedRange), [selectedRows, displayedRange])
-    const locationSummaries = useMemo(
-        () => buildLocationSummaries(selectedRows, stopLookup),
-        [selectedRows, stopLookup],
+    const selectedLocationHours = useMemo(
+        () => (data?.locationHours ?? []).filter((row) => selectedLocationSet.has(row.locationId)),
+        [data, selectedLocationSet],
+    )
+    const hourlyRows = useMemo(
+        () => buildHourlyRows(selectedLocationHours, displayedRange),
+        [selectedLocationHours, displayedRange],
     )
     const expectedLocationCount = normalizedSelectedLocations
         ? effectiveSelectedLocations.length
         : STOP_EQUIPPED_COUNT
     const summary = useMemo(
-        () => buildSummary(selectedRows, hourlyRows, locationSummaries, displayedRange, expectedLocationCount),
-        [selectedRows, hourlyRows, locationSummaries, displayedRange, expectedLocationCount],
+        () => buildSummary(hourlyRows, selectedLocationSummaries, displayedRange, expectedLocationCount),
+        [hourlyRows, selectedLocationSummaries, displayedRange, expectedLocationCount],
     )
-    const heatmapLocationIds = useMemo(
-        () => locationSummaries
+    const heatmapLocations = useMemo(
+        () => selectedLocationSummaries
             .slice()
             .sort((a, b) => b.averagePeople - a.averagePeople || b.peakPeople - a.peakPeople || compareLocationId(a.locationId, b.locationId))
-            .slice(0, 10)
-            .map((location) => location.locationId),
-        [locationSummaries],
+            .slice(0, 10),
+        [selectedLocationSummaries],
     )
     const heatmapRows = useMemo(
-        () => buildHeatmapRows(selectedRows, HEATMAP_HOUR_COLUMNS, heatmapLocationIds, stopLookup),
-        [selectedRows, heatmapLocationIds, stopLookup],
+        () => buildHeatmapRows(selectedLocationHours, HEATMAP_HOUR_COLUMNS, heatmapLocations),
+        [selectedLocationHours, heatmapLocations],
     )
     const heatmapMax = Math.max(...heatmapRows.flatMap((row) => row.cells.map((cell) => cell.value)), 0)
     const chartUsesDateLabels = displayedRange.to.getTime() - displayedRange.from.getTime() > 36 * 60 * 60 * 1000
@@ -653,7 +513,6 @@ export function StopCurrentLoadAnalytics() {
     const chartXAxisHeight = chartAxisIsCompact ? 58 : 30
     const chartXAxisAngle = chartAxisIsCompact ? -35 : 0
     const chartXAxisTextAnchor = chartAxisIsCompact ? "end" : "middle"
-
     const allLocationsSelected = effectiveSelectedLocations.length === allLocationIds.length
     const selectedLabel =
         allLocationIds.length === 0
@@ -663,7 +522,6 @@ export function StopCurrentLoadAnalytics() {
                 : effectiveSelectedLocations.length === 0
                     ? "Не выбрано"
                     : `${effectiveSelectedLocations.length} из ${allLocationIds.length}`
-
     const toggleAllLocations = () => {
         setSelectedLocations(allLocationsSelected ? [] : null)
     }
@@ -679,14 +537,13 @@ export function StopCurrentLoadAnalytics() {
         })
     }
 
-    const topLocations = locationSummaries.slice(0, 12)
-    const selectedEmpty = !loading && rows.length > 0 && selectedRows.length === 0
-    const noRows = !loading && rows.length === 0 && !error
+    const topLocations = selectedLocationSummaries.slice(0, 12)
+    const selectedEmpty = !loading && Boolean(data) && allLocationIds.length > 0 && selectedLocationSummaries.length === 0
+    const noRows = !loading && Boolean(data) && allLocationIds.length === 0 && !error
 
     const handleTimeRangeChange = (nextRange: TimeRangeResult) => {
         setTimeRange(nextRange)
         setLoading(true)
-        setFallbackRange(null)
         setError(null)
     }
 
@@ -736,7 +593,7 @@ export function StopCurrentLoadAnalytics() {
                                 <div className="space-y-2 pr-3">
                                     {allLocationIds.map((locationId) => {
                                         const inputId = `load-location-${locationId.replace(/[^a-zA-Z0-9_-]/g, "_")}`
-                                        const display = buildStopDisplay(locationId, stopLookup)
+                                        const display = locationsById.get(locationId)
 
                                         return (
                                             <div key={locationId} className="flex items-center space-x-2">
@@ -747,9 +604,9 @@ export function StopCurrentLoadAnalytics() {
                                                 />
                                                 <Label htmlFor={inputId} className="text-sm">
                                                     <span className="flex flex-col">
-                                                        <span>{display.label}</span>
+                                                        <span>{display?.label ?? `Остановочное направление ${locationId}`}</span>
                                                         <span className="text-xs font-normal text-muted-foreground">
-                                                            {display.detail}
+                                                            {display?.detail ?? `№ ${locationId}`}
                                                         </span>
                                                     </span>
                                                 </Label>
@@ -777,7 +634,7 @@ export function StopCurrentLoadAnalytics() {
                 </Card>
             )}
 
-            {loading && rows.length === 0 ? (
+            {loading && !data ? (
                 <LoadingGrid />
             ) : !error ? (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -827,14 +684,14 @@ export function StopCurrentLoadAnalytics() {
                 </Card>
             )}
 
-            {truncated && (
+            {data?.truncated && (
                 <Card className="border-amber-500/30 bg-amber-500/[0.05]">
                     <CardContent className="flex items-start gap-3 p-4">
                         <AlertCircle className="mt-0.5 h-5 w-5 text-amber-500" />
                         <div>
-                            <p className="font-medium text-amber-700 dark:text-amber-300">Период слишком большой для полной выборки</p>
+                            <p className="font-medium text-amber-700 dark:text-amber-300">Период слишком большой для полной агрегации</p>
                             <p className="text-sm text-muted-foreground">
-                                Загружено первые {integerFormat.format(limit)} окон. Для точной картины выберите более короткий период.
+                                Агрегация построена по {integerFormat.format(data.sourceRows)} из {integerFormat.format(data.totalRows ?? data.sourceRows)} окон. Для точной картины выберите более короткий период.
                             </p>
                         </div>
                     </CardContent>
@@ -861,7 +718,7 @@ export function StopCurrentLoadAnalytics() {
                 </Card>
             )}
 
-            {selectedRows.length > 0 && (
+            {selectedLocationSummaries.length > 0 && (
                 <>
                     <div className="grid gap-6 xl:grid-cols-12">
                         <Card className="xl:col-span-7">

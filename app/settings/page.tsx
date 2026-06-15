@@ -18,6 +18,7 @@ import { useModuleAccess } from "@/components/providers/module-context"
 
 const STORAGE_KEY = "road-demo-user-settings"
 const STANDARD_REPORT_MIN_DATE = new Date(2025, 0, 1)
+const USER_NUMBER_FORMAT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
 
 interface UserSettings {
   email: string
@@ -36,6 +37,16 @@ type AiReportSection = {
   bullets?: string[]
 }
 
+type AiReportChart = {
+  type: "bar"
+  title: string
+  subtitle?: string
+  labels: string[]
+  values: number[]
+  unit?: string
+  tone?: "load" | "peak" | "neutral"
+}
+
 type AiReportResponse = {
   ok?: boolean
   error?: string
@@ -49,6 +60,7 @@ type AiReportResponse = {
     to?: string
   }
   metrics?: AiReportMetric[]
+  charts?: AiReportChart[]
   sections?: AiReportSection[]
   recommendations?: string[]
   sourceNote?: string
@@ -100,6 +112,16 @@ function getReportToneColors(tone: AiReportMetric["tone"]) {
   if (tone === "warning") return { accent: "#b45309", bg: "#fff7ed", text: "#7c2d12" }
   if (tone === "critical") return { accent: "#b91c1c", bg: "#fef2f2", text: "#7f1d1d" }
   return { accent: "#475569", bg: "#f8fafc", text: "#334155" }
+}
+
+function getReportChartColor(tone: AiReportChart["tone"], index: number) {
+  const palettes = {
+    load: ["#2563eb", "#0891b2", "#16a34a"],
+    peak: ["#f97316", "#dc2626", "#7c3aed"],
+    neutral: ["#334155", "#64748b", "#0f766e"],
+  }
+  const colors = palettes[tone || "neutral"]
+  return colors[index % colors.length]
 }
 
 function drawRoundRect(
@@ -221,6 +243,111 @@ function renderReportPages(report: AiReportResponse) {
     })
   }
 
+  const drawReportChart = (chart: AiReportChart) => {
+    const labels = Array.isArray(chart.labels) ? chart.labels : []
+    const values = Array.isArray(chart.values) ? chart.values : []
+    const points = labels
+      .map((label, index) => ({
+        label,
+        value: Number.isFinite(values[index]) ? values[index] : 0,
+      }))
+      .filter((point) => point.label)
+      .slice(0, labels.length > 12 ? 24 : 8)
+
+    if (points.length === 0) {
+      return
+    }
+
+    const chartWidth = REPORT_CANVAS_WIDTH - REPORT_MARGIN * 2
+    const isCompactTimeline = points.length > 12
+    const chartHeight = isCompactTimeline ? 360 : 148 + points.length * 42
+
+    ensureSpace(chartHeight + 24)
+    drawRoundRect(context, REPORT_MARGIN, y, chartWidth, chartHeight, 18)
+    context.fillStyle = "#ffffff"
+    context.fill()
+    context.strokeStyle = "#dbe4ef"
+    context.lineWidth = 2
+    context.stroke()
+
+    context.font = "bold 28px Arial, sans-serif"
+    context.fillStyle = "#111827"
+    context.fillText(chart.title, REPORT_MARGIN + 28, y + 42)
+    if (chart.subtitle) {
+      context.font = "18px Arial, sans-serif"
+      context.fillStyle = "#64748b"
+      context.fillText(chart.subtitle, REPORT_MARGIN + 28, y + 72)
+    }
+
+    const maxValue = Math.max(...points.map((point) => point.value), 1)
+
+    if (isCompactTimeline) {
+      const plotX = REPORT_MARGIN + 42
+      const plotY = y + 104
+      const plotWidth = chartWidth - 84
+      const plotHeight = chartHeight - 166
+      const gap = 6
+      const barWidth = Math.max(10, (plotWidth - gap * (points.length - 1)) / points.length)
+
+      context.strokeStyle = "#e2e8f0"
+      context.lineWidth = 1
+      for (let i = 0; i <= 4; i += 1) {
+        const lineY = plotY + plotHeight - (plotHeight * i) / 4
+        context.beginPath()
+        context.moveTo(plotX, lineY)
+        context.lineTo(plotX + plotWidth, lineY)
+        context.stroke()
+      }
+
+      points.forEach((point, index) => {
+        const barHeight = Math.max(4, (point.value / maxValue) * plotHeight)
+        const x = plotX + index * (barWidth + gap)
+        const barY = plotY + plotHeight - barHeight
+        context.fillStyle = getReportChartColor(chart.tone, index)
+        context.fillRect(x, barY, barWidth, barHeight)
+
+        if (index % 3 === 0 || index === points.length - 1) {
+          context.font = "14px Arial, sans-serif"
+          context.fillStyle = "#64748b"
+          context.fillText(point.label.replace(":00", ""), x - 2, plotY + plotHeight + 28)
+        }
+      })
+
+      context.font = "bold 18px Arial, sans-serif"
+      context.fillStyle = "#111827"
+      context.fillText(`Максимум: ${USER_NUMBER_FORMAT.format(maxValue)}${chart.unit ? ` ${chart.unit}` : ""}`, plotX, y + chartHeight - 28)
+      y += chartHeight + 24
+      return
+    }
+
+    const labelX = REPORT_MARGIN + 28
+    const barX = REPORT_MARGIN + 360
+    const barWidth = chartWidth - 470
+    let rowY = y + 108
+
+    points.forEach((point, index) => {
+      const valueWidth = Math.max(6, (point.value / maxValue) * barWidth)
+      context.font = "20px Arial, sans-serif"
+      context.fillStyle = "#111827"
+      const cleanLabel = point.label.length > 28 ? `${point.label.slice(0, 25)}...` : point.label
+      context.fillText(cleanLabel, labelX, rowY + 18)
+
+      drawRoundRect(context, barX, rowY, barWidth, 24, 8)
+      context.fillStyle = "#eef2f7"
+      context.fill()
+      drawRoundRect(context, barX, rowY, valueWidth, 24, 8)
+      context.fillStyle = getReportChartColor(chart.tone, index)
+      context.fill()
+
+      context.font = "bold 18px Arial, sans-serif"
+      context.fillStyle = "#111827"
+      context.fillText(`${USER_NUMBER_FORMAT.format(point.value)}${chart.unit ? ` ${chart.unit}` : ""}`, barX + barWidth + 18, rowY + 19)
+      rowY += 42
+    })
+
+    y += chartHeight + 24
+  }
+
   createPage()
 
   context.fillStyle = "#111827"
@@ -241,7 +368,11 @@ function renderReportPages(report: AiReportResponse) {
   )
   y += 28
 
-  const sourceLabel = report.source === "gigachat" ? "GigaChat + шаблон" : "Демо-шаблон"
+  const sourceLabel = report.source === "gigachat"
+    ? "GigaChat + шаблон"
+    : report.sourceNote?.toLowerCase().includes("live")
+      ? "Live-данные + шаблон"
+      : "Демо-шаблон"
   drawMetaCard("Период", getReportPeriodLabel(report), REPORT_MARGIN, y, 520)
   drawMetaCard("Источник", sourceLabel, REPORT_MARGIN + 548, y, 520)
   y += 124
@@ -290,6 +421,10 @@ function renderReportPages(report: AiReportResponse) {
       })
     })
     y += metrics.length > 3 ? 276 : 144
+  }
+
+  for (const chart of report.charts || []) {
+    drawReportChart(chart)
   }
 
   for (const section of report.sections || []) {
@@ -504,8 +639,11 @@ export default function SettingsPage() {
       }
 
       await downloadReportPdf(report)
+      const isLiveReport = report.sourceNote?.toLowerCase().includes("live")
       setReportStatus(
-        report.source === "gigachat"
+        isLiveReport
+          ? "PDF-отчёт по live-данным сформирован и скачан."
+          : report.source === "gigachat"
           ? "PDF-отчёт сформирован и скачан."
           : "PDF-отчёт скачан по демо-шаблону: GigaChat сейчас недоступен или отвечает слишком долго."
       )

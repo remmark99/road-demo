@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import {
@@ -12,9 +13,11 @@ import {
 } from "recharts"
 import {
     AlertCircle,
+    Bell,
     BusFront,
     Camera,
     CheckCircle2,
+    ExternalLink,
     MapPin,
     Target,
     Video,
@@ -22,6 +25,7 @@ import {
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
     ChartContainer,
@@ -46,11 +50,13 @@ import {
     type StopCurrentAnalyticsData,
 } from "@/lib/api/stop-current-analytics"
 import {
+    getStopComplexByLocationId,
     STOP_CITY_TOTAL,
     STOP_EQUIPPED_COUNT,
     STOP_EQUIPMENT_PLAN_TARGET,
     STOP_LIVE_CAMERA_COUNT,
     STOP_OPERATIONAL_COUNT,
+    STOP_SAFETY_ALERT_TYPES,
 } from "@/lib/stop-analytics-config"
 import { cn } from "@/lib/utils"
 
@@ -61,6 +67,39 @@ const districtCoverageConfig = {
 } satisfies ChartConfig
 
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
+
+function buildNotificationsHref({
+    types,
+    cameraIndexes = [],
+}: {
+    types: readonly string[]
+    cameraIndexes?: readonly number[]
+}) {
+    const params = new URLSearchParams()
+    const uniqueTypes = Array.from(new Set(types.filter(Boolean)))
+    const uniqueCameraIndexes = Array.from(new Set(cameraIndexes.filter(Number.isFinite)))
+
+    if (uniqueTypes.length > 0) {
+        params.set("types", uniqueTypes.join(","))
+    }
+
+    if (uniqueCameraIndexes.length > 0) {
+        params.set("cameras", uniqueCameraIndexes.join(","))
+    }
+
+    const query = params.toString()
+    return query ? `/notifications?${query}` : "/notifications"
+}
+
+function getCameraIndexesForLocation(locationId: string) {
+    const complex = getStopComplexByLocationId(locationId)
+    if (!complex) return []
+
+    return Array.from(
+        { length: complex.cameraTo - complex.cameraFrom + 1 },
+        (_, index) => complex.cameraFrom + index
+    )
+}
 
 function startOfLocalDay(date: Date) {
     const result = new Date(date)
@@ -297,6 +336,9 @@ export function StopKpiCurrentAnalytics() {
         .slice()
         .sort((a, b) => b.coveragePct - a.coveragePct)
         .slice(0, 8)
+    const safetyNotificationsHref = buildNotificationsHref({
+        types: STOP_SAFETY_ALERT_TYPES,
+    })
 
     const handleTimeRangeChange = (nextRange: TimeRangeResult) => {
         setTimeRange(nextRange)
@@ -486,10 +528,21 @@ export function StopKpiCurrentAnalytics() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Готовность остановок</CardTitle>
-                            <CardDescription>
-                                Операционная таблица по направлениям с онлайн-наблюдениями и событиями безопасности
-                            </CardDescription>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="space-y-1.5">
+                                    <CardTitle className="text-base">Готовность остановок</CardTitle>
+                                    <CardDescription>
+                                        Операционная таблица по направлениям с онлайн-наблюдениями и событиями безопасности
+                                    </CardDescription>
+                                </div>
+                                <Button asChild variant="outline" size="sm" className="shrink-0">
+                                    <Link href={safetyNotificationsHref}>
+                                        <Bell className="h-4 w-4" />
+                                        Уведомления
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                    </Link>
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <Table>
@@ -501,29 +554,45 @@ export function StopKpiCurrentAnalytics() {
                                         <TableHead className="text-right">Пик</TableHead>
                                         <TableHead className="text-right">События</TableHead>
                                         <TableHead>Последние данные</TableHead>
+                                        <TableHead className="text-right">Уведомления</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {locationSummaries.slice(0, 12).map((location) => (
-                                        <TableRow key={location.locationId}>
-                                            <TableCell>
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium">{location.label}</span>
-                                                    <span className="text-xs text-muted-foreground">{location.detail}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>{location.districtName}</TableCell>
-                                            <TableCell className="text-right tabular-nums">{integerFormat.format(location.currentPeople)}</TableCell>
-                                            <TableCell className="text-right tabular-nums">{integerFormat.format(location.peakPeople)}</TableCell>
-                                            <TableCell className="text-right tabular-nums">{integerFormat.format(location.safetyEvents)}</TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col">
-                                                    <span>{formatFreshness(location.latestAt)}</span>
-                                                    <span className="text-xs text-muted-foreground">{formatDateTime(location.latestAt)}</span>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
+                                    {locationSummaries.slice(0, 12).map((location) => {
+                                        const locationNotificationsHref = buildNotificationsHref({
+                                            types: STOP_SAFETY_ALERT_TYPES,
+                                            cameraIndexes: getCameraIndexesForLocation(location.locationId),
+                                        })
+
+                                        return (
+                                            <TableRow key={location.locationId}>
+                                                <TableCell>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium">{location.label}</span>
+                                                        <span className="text-xs text-muted-foreground">{location.detail}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>{location.districtName}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{integerFormat.format(location.currentPeople)}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{integerFormat.format(location.peakPeople)}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{integerFormat.format(location.safetyEvents)}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-col">
+                                                        <span>{formatFreshness(location.latestAt)}</span>
+                                                        <span className="text-xs text-muted-foreground">{formatDateTime(location.latestAt)}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button asChild variant="ghost" size="sm" className="h-8">
+                                                        <Link href={locationNotificationsHref}>
+                                                            Открыть
+                                                            <ExternalLink className="h-3.5 w-3.5" />
+                                                        </Link>
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
                                 </TableBody>
                             </Table>
                         </CardContent>

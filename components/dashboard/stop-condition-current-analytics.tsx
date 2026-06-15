@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import {
@@ -12,14 +13,17 @@ import {
 } from "recharts"
 import {
     AlertCircle,
+    Bell,
     CheckCircle2,
     Clock3,
+    ExternalLink,
     TimerReset,
     Trash2,
 } from "lucide-react"
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
     ChartContainer,
@@ -40,6 +44,7 @@ import { getBusStopIdFromLocationId } from "@/lib/api/busyness-windows"
 import {
     fetchLatestStopTrashOverflowAlert,
     fetchStopTrashOverflowAlerts,
+    STOP_TRASH_OVERFLOW_ALERT_TYPES,
     type StopTrashOverflowAlertRow,
 } from "@/lib/api/stop-condition-windows"
 import {
@@ -65,6 +70,7 @@ interface TrashOverflowEvent {
     id: string
     locationId: string
     timestamp: string
+    cameraIndex: number | null
 }
 
 interface TrashOverflowEpisode {
@@ -74,6 +80,7 @@ interface TrashOverflowEpisode {
     endAt: string
     durationMs: number
     confirmations: number
+    cameraIndexes: number[]
 }
 
 interface StopTrashSummary {
@@ -121,6 +128,34 @@ const stopConfig = {
 const OVERFLOW_EPISODE_GAP_MS = 2 * 60 * 60 * 1000
 const TRASH_EVENT_LIMIT = 5000
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
+const TRASH_NOTIFICATION_TYPES = [...STOP_TRASH_OVERFLOW_ALERT_TYPES]
+
+function buildNotificationsHref({
+    types,
+    cameraIndexes = [],
+}: {
+    types: readonly string[]
+    cameraIndexes?: readonly number[]
+}) {
+    const params = new URLSearchParams()
+    const uniqueTypes = Array.from(new Set(types.filter(Boolean)))
+    const uniqueCameraIndexes = Array.from(new Set(cameraIndexes.filter(Number.isFinite)))
+
+    if (uniqueTypes.length > 0) {
+        params.set("types", uniqueTypes.join(","))
+    }
+
+    if (uniqueCameraIndexes.length > 0) {
+        params.set("cameras", uniqueCameraIndexes.join(","))
+    }
+
+    const query = params.toString()
+    return query ? `/notifications?${query}` : "/notifications"
+}
+
+function getEventCameraIndexes(event: TrashOverflowEvent) {
+    return typeof event.cameraIndex === "number" ? [event.cameraIndex] : []
+}
 
 function startOfLocalDay(date: Date) {
     const result = new Date(date)
@@ -222,6 +257,7 @@ function buildEventsFromTrashAlerts(alerts: StopTrashOverflowAlertRow[]): TrashO
             id: alert.id,
             locationId: getAlertLocationId(alert),
             timestamp: alert.timestamp,
+            cameraIndex: alert.camera_index,
         }))
         .filter((event) => getTimestampMs(event.timestamp) !== null)
         .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
@@ -384,6 +420,7 @@ function buildTrashOverflowEpisodes(events: TrashOverflowEvent[]): TrashOverflow
                     endAt: event.timestamp,
                     durationMs: 0,
                     confirmations: 1,
+                    cameraIndexes: getEventCameraIndexes(event),
                 }
                 continue
             }
@@ -400,6 +437,11 @@ function buildTrashOverflowEpisodes(events: TrashOverflowEvent[]): TrashOverflow
                 current.endAt = event.timestamp
                 current.durationMs = Math.max(0, eventMs - currentStartMs)
                 current.confirmations += 1
+                for (const cameraIndex of getEventCameraIndexes(event)) {
+                    if (!current.cameraIndexes.includes(cameraIndex)) {
+                        current.cameraIndexes.push(cameraIndex)
+                    }
+                }
             } else {
                 episodes.push(current)
                 current = {
@@ -409,6 +451,7 @@ function buildTrashOverflowEpisodes(events: TrashOverflowEvent[]): TrashOverflow
                     endAt: event.timestamp,
                     durationMs: 0,
                     confirmations: 1,
+                    cameraIndexes: getEventCameraIndexes(event),
                 }
             }
         }
@@ -663,6 +706,9 @@ export function StopConditionCurrentAnalytics() {
     const totalConfirmations = data?.events.length ?? 0
     const longestEpisode = episodes[0] ?? null
     const repeatedEpisodes = episodes.filter((episode) => episode.confirmations > 1).length
+    const trashNotificationsHref = buildNotificationsHref({
+        types: TRASH_NOTIFICATION_TYPES,
+    })
 
     const handleTimeRangeChange = (nextRange: TimeRangeResult) => {
         setTimeRange(nextRange)
@@ -847,10 +893,21 @@ export function StopConditionCurrentAnalytics() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Эпизоды переполнения</CardTitle>
-                            <CardDescription>
-                                Один эпизод объединяет подтверждения по одной остановке, пока между ними нет длительного перерыва
-                            </CardDescription>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="space-y-1.5">
+                                    <CardTitle className="text-base">Эпизоды переполнения</CardTitle>
+                                    <CardDescription>
+                                        Один эпизод объединяет подтверждения по одной остановке, пока между ними нет длительного перерыва
+                                    </CardDescription>
+                                </div>
+                                <Button asChild variant="outline" size="sm" className="shrink-0">
+                                    <Link href={trashNotificationsHref}>
+                                        <Bell className="h-4 w-4" />
+                                        Уведомления
+                                        <ExternalLink className="h-3.5 w-3.5" />
+                                    </Link>
+                                </Button>
+                            </div>
                         </CardHeader>
                         <CardContent>
                             <Table>
@@ -862,29 +919,45 @@ export function StopConditionCurrentAnalytics() {
                                         <TableHead className="text-right">Подтверждения</TableHead>
                                         <TableHead>Интервал</TableHead>
                                         <TableHead>Последнее подтверждение</TableHead>
+                                        <TableHead className="text-right">Уведомления</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {episodeRows.map((episode) => (
-                                        <TableRow key={episode.id}>
-                                            <TableCell>
-                                                <div className="flex flex-col">
-                                                    <span className="font-medium">{episode.label}</span>
-                                                    <span className="text-xs text-muted-foreground">{episode.detail}</span>
-                                                </div>
-                                            </TableCell>
-                                            <TableCell>{episode.districtName}</TableCell>
-                                            <TableCell className="text-right font-medium tabular-nums">{formatDuration(episode.durationMs)}</TableCell>
-                                            <TableCell className="text-right tabular-nums">{integerFormat.format(episode.confirmations)}</TableCell>
-                                            <TableCell>{formatInterval(episode.startAt, episode.endAt)}</TableCell>
-                                            <TableCell>
-                                                <div className="flex flex-col">
-                                                    <span>{formatFreshness(episode.endAt)}</span>
-                                                    <span className="text-xs text-muted-foreground">{formatDateTime(episode.endAt)}</span>
-                                                </div>
-                                            </TableCell>
-                                        </TableRow>
-                                    ))}
+                                    {episodeRows.map((episode) => {
+                                        const episodeNotificationsHref = buildNotificationsHref({
+                                            types: TRASH_NOTIFICATION_TYPES,
+                                            cameraIndexes: episode.cameraIndexes,
+                                        })
+
+                                        return (
+                                            <TableRow key={episode.id}>
+                                                <TableCell>
+                                                    <div className="flex flex-col">
+                                                        <span className="font-medium">{episode.label}</span>
+                                                        <span className="text-xs text-muted-foreground">{episode.detail}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell>{episode.districtName}</TableCell>
+                                                <TableCell className="text-right font-medium tabular-nums">{formatDuration(episode.durationMs)}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{integerFormat.format(episode.confirmations)}</TableCell>
+                                                <TableCell>{formatInterval(episode.startAt, episode.endAt)}</TableCell>
+                                                <TableCell>
+                                                    <div className="flex flex-col">
+                                                        <span>{formatFreshness(episode.endAt)}</span>
+                                                        <span className="text-xs text-muted-foreground">{formatDateTime(episode.endAt)}</span>
+                                                    </div>
+                                                </TableCell>
+                                                <TableCell className="text-right">
+                                                    <Button asChild variant="ghost" size="sm" className="h-8">
+                                                        <Link href={episodeNotificationsHref}>
+                                                            Открыть
+                                                            <ExternalLink className="h-3.5 w-3.5" />
+                                                        </Link>
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )
+                                    })}
                                 </TableBody>
                             </Table>
                         </CardContent>

@@ -89,6 +89,10 @@ const STOPS_SUGGESTED_QUESTION_OPTIONS: SuggestedQuestionOption[] = [
         category: "Остановки",
         question: "Сформируй краткую сводку для руководителя по модулю остановок."
     },
+    {
+        category: "Остановки",
+        question: "Есть ли связь между нагруженностью остановок и переполненными урнами?"
+    },
 ];
 
 const PLATFORM_INITIAL_SUGGESTED_QUESTION_TEXTS = [
@@ -100,7 +104,7 @@ const PLATFORM_INITIAL_SUGGESTED_QUESTION_TEXTS = [
 const STOPS_INITIAL_SUGGESTED_QUESTION_TEXTS = [
     "Покажи текущую загруженность остановок и выдели самые напряжённые направления.",
     "Есть ли свежие события «лежачий человек» по остановкам и где они зафиксированы?",
-    "Какие live-данные по остановкам доступны сейчас и чем они отличаются от плановых панелей?",
+    "Сформируй краткую сводку для руководителя по модулю остановок.",
 ];
 
 const getModeQuestions = (mode: AssistantMode) =>

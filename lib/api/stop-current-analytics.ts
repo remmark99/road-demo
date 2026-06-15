@@ -104,6 +104,8 @@ interface BusStopsFeatureCollection {
     }>
 }
 
+let currentStopsPromise: Promise<CurrentStopInfo[]> | null = null
+
 function startOfLocalDay(date: Date) {
     const result = new Date(date)
     result.setHours(0, 0, 0, 0)
@@ -184,7 +186,7 @@ export function getAllBusynessLocationIds(rows: BusynessWindowRow[]) {
     return Array.from(new Set(rows.map((row) => row.location_id))).sort(compareLocationId)
 }
 
-export async function fetchCurrentStops(): Promise<CurrentStopInfo[]> {
+async function loadCurrentStops(): Promise<CurrentStopInfo[]> {
     const response = await fetch("/api/bus-stops")
 
     if (!response.ok) {
@@ -215,6 +217,17 @@ export async function fetchCurrentStops(): Promise<CurrentStopInfo[]> {
         .sort((a, b) => a.id - b.id)
 }
 
+export async function fetchCurrentStops(): Promise<CurrentStopInfo[]> {
+    if (!currentStopsPromise) {
+        currentStopsPromise = loadCurrentStops().catch((error: unknown) => {
+            currentStopsPromise = null
+            throw error
+        })
+    }
+
+    return currentStopsPromise
+}
+
 export async function fetchStopCameras(): Promise<StopCameraRow[]> {
     const supabase = createClient()
     const { data, error } = await supabase
@@ -230,13 +243,14 @@ export async function fetchStopCameras(): Promise<StopCameraRow[]> {
 }
 
 export async function fetchStopCurrentAnalyticsData(range: RangeBounds): Promise<StopCurrentAnalyticsData> {
-    const [stops, initialBusynessResult, allAlerts, cameras] = await Promise.all([
+    const [stops, initialBusynessResult, initialAlerts, cameras] = await Promise.all([
         fetchCurrentStops(),
         fetchBusynessWindows({ from: range.from, to: range.to }),
-        fetchStopSafetyAlerts(),
+        fetchStopSafetyAlerts({ from: range.from, to: range.to }),
         fetchStopCameras(),
     ])
     let busynessResult: FetchBusynessWindowsResult = initialBusynessResult
+    let alerts = initialAlerts
     let displayedRange = range
     let fallbackRange: RangeBounds | null = null
 
@@ -254,6 +268,10 @@ export async function fetchStopCurrentAnalyticsData(range: RangeBounds): Promise
                 from: fallbackRange.from,
                 to: fallbackRange.to,
             })
+            alerts = await fetchStopSafetyAlerts({
+                from: fallbackRange.from,
+                to: fallbackRange.to,
+            })
         }
     }
 
@@ -263,7 +281,7 @@ export async function fetchStopCurrentAnalyticsData(range: RangeBounds): Promise
         stops,
         stopsById,
         busynessRows: busynessResult.rows,
-        alerts: filterAlertsByRange(allAlerts, displayedRange),
+        alerts: filterAlertsByRange(alerts, displayedRange),
         cameras,
         displayedRange,
         fallbackRange,

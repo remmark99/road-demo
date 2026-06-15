@@ -13,6 +13,13 @@ export interface FetchAlertsOptions {
     offset?: number         // for pagination
 }
 
+export interface FetchStopSafetyAlertsOptions {
+    from?: Date
+    to?: Date
+    types?: readonly StopSafetyAlertType[]
+    limit?: number
+}
+
 export interface AlertsResult {
     alerts: Alert[]
     total: number
@@ -120,14 +127,38 @@ export async function fetchAlertTypes(): Promise<string[]> {
     return Array.from(types)
 }
 
-export async function fetchStopSafetyAlerts(limit: number = 2000): Promise<StopSafetyAlert[]> {
-    const { data, error } = await supabase
+export async function fetchStopSafetyAlerts(options: FetchStopSafetyAlertsOptions | number = {}): Promise<StopSafetyAlert[]> {
+    const resolvedOptions: FetchStopSafetyAlertsOptions = typeof options === "number"
+        ? { limit: options }
+        : options
+    const {
+        from,
+        to,
+        types = STOP_SAFETY_ALERT_TYPES,
+        limit = 2000,
+    } = resolvedOptions
+
+    if (types.length === 0) {
+        return []
+    }
+
+    let query = supabase
         .from('alerts')
         .select('id,module_name,alert_type,severity,message,metadata,timestamp,source_video,clip_path,camera_index')
         .eq('module_name', 'stops')
-        .in('alert_type', [...STOP_SAFETY_ALERT_TYPES])
+        .in('alert_type', [...types])
         .order('timestamp', { ascending: false })
         .limit(limit)
+
+    if (from) {
+        query = query.gte('timestamp', from.toISOString())
+    }
+
+    if (to) {
+        query = query.lte('timestamp', to.toISOString())
+    }
+
+    const { data, error } = await query
 
     if (error) {
         console.error('Error fetching stop safety alerts:', error)
@@ -140,8 +171,10 @@ export async function fetchStopSafetyAlerts(limit: number = 2000): Promise<StopS
 }
 
 export async function fetchLyingPersonAlerts(limit: number = 2000): Promise<LyingPersonAlert[]> {
-    const alerts = await fetchStopSafetyAlerts(limit)
-    return alerts.filter((alert) => alert.alert_type === "lying_person")
+    return fetchStopSafetyAlerts({
+        limit,
+        types: ["lying_person"],
+    })
 }
 
 // Категории типов инцидентов
