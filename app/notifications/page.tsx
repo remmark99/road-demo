@@ -832,17 +832,23 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
 
           {/* Camera filter */}
           <div>
-            <div className="text-sm text-muted-foreground mb-2">Камеры</div>
-            <div className="flex flex-wrap gap-2">
-              {onlineCameras.slice(0, 10).map((camera) => {
+            <div className="text-sm text-muted-foreground mb-2">
+              Камеры
+              <span className="ml-2 text-xs opacity-60">
+                ({cameras.length})
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
+              {cameras.map((camera) => {
                 const isSelected = selectedCameras.includes(camera.cameraIndex)
+                const isOffline = camera.status !== "online"
                 return (
                   <Tooltip key={camera.cameraIndex}>
                     <TooltipTrigger asChild>
                       <Button
                         variant={isSelected ? "default" : "outline"}
                         size="sm"
-                        className="gap-1.5"
+                        className={`gap-1.5 ${isOffline && !isSelected ? "opacity-50" : ""}`}
                         onClick={() => toggleCamera(camera.cameraIndex)}
                       >
                         <CameraIcon className="h-3 w-3" />
@@ -857,15 +863,13 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                       ) : (
                         <p className="text-xs opacity-80">Без описания</p>
                       )}
+                      {isOffline && (
+                        <p className="text-xs text-destructive">Оффлайн</p>
+                      )}
                     </TooltipContent>
                   </Tooltip>
                 )
               })}
-              {onlineCameras.length > 10 && (
-                <span className="text-xs text-muted-foreground self-center ml-2">
-                  +{onlineCameras.length - 10} камер
-                </span>
-              )}
             </div>
             {selectedCameras.length > 0 && (
               <div className="mt-2 text-xs text-muted-foreground">
