@@ -22,7 +22,8 @@ export interface BusStopHeatmapResult {
  * 3. Aggregate by bus_stop_id
  */
 export async function fetchBusStopHeatmapData(
-    hoursBack: number = 24
+    hoursBack: number = 24,
+    alertTypes?: string[]
 ): Promise<BusStopHeatmapResult> {
     // 1. Get camera -> busStopId mapping
     const { data: cameraRows, error: camError } = await supabase
@@ -44,7 +45,9 @@ export async function fetchBusStopHeatmapData(
     }
 
     // 2. Get alert types for bus stop monitoring
-    const busStopAlertTypes = ALERT_CATEGORIES.bus_stop_monitoring.types
+    const busStopAlertTypes = (alertTypes && alertTypes.length > 0) 
+        ? alertTypes 
+        : ALERT_CATEGORIES.bus_stop_monitoring.types
 
     // 3. Fetch alerts from those cameras within the time window
     const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString()

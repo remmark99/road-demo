@@ -188,7 +188,7 @@ export function Legend() {
               {/* Heatmap gradient legend */}
               <div className="mt-3 pt-2 border-t border-border/50">
                 <div className="text-xs font-medium mb-1.5 flex items-center gap-1.5">
-                  🔥 Тепловая карта
+                  Тепловая карта
                 </div>
                 <div
                   className="h-2 rounded-full w-full"

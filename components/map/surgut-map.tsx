@@ -20,6 +20,9 @@ import { useModuleAccess } from "@/components/providers/module-context"
 import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Settings2 } from "lucide-react"
+import { STOP_SAFETY_ALERT_TYPES, STOP_SAFETY_ALERT_LABELS, type StopSafetyAlertType } from "@/lib/stop-analytics-config"
 
 const statusColors: Record<RoadStatus, string> = {
   clean: "#4ade80",
@@ -212,6 +215,10 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [busStopFilters, setBusStopFilters] = useState({ online: true, offline: false, incidents: true, unequipped: true })
   const [showClusters, setShowClusters] = useState(true)
   const [showHeatmap, setShowHeatmap] = useState(false)
+  
+  // Heatmap advanced filters
+  const [heatmapTimeWindow, setHeatmapTimeWindow] = useState<number>(24)
+  const [heatmapAlertTypes, setHeatmapAlertTypes] = useState<StopSafetyAlertType[]>([...STOP_SAFETY_ALERT_TYPES])
 
   const [selectedContractor, setSelectedContractor] = useState<string>("all")
 
@@ -1227,7 +1234,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
     if (hasModule('stops')) {
       fetchBusStopsGeoJSON().then(setBusStopsData)
-      fetchBusStopHeatmapData(24).then(setHeatmapData)
+      // fetchBusStopHeatmapData is called in a separate effect below
     } else {
       setBusStopsData({ type: "FeatureCollection", features: [] })
       setHeatmapData(null)
@@ -1694,14 +1701,20 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     }
   }, [heatmapData, busStopsData, mapLoaded, showHeatmap, addBusStopHeatmap])
 
+  // Fetch heatmap data when dependencies change
+  useEffect(() => {
+    if (!hasModule('stops')) return
+    fetchBusStopHeatmapData(heatmapTimeWindow, heatmapAlertTypes).then(setHeatmapData)
+  }, [hasModule, heatmapTimeWindow, heatmapAlertTypes])
+
   // Auto-refresh heatmap data every 5 minutes
   useEffect(() => {
     if (!hasModule('stops') || !showHeatmap) return
     const interval = setInterval(() => {
-      fetchBusStopHeatmapData(24).then(setHeatmapData)
+      fetchBusStopHeatmapData(heatmapTimeWindow, heatmapAlertTypes).then(setHeatmapData)
     }, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [hasModule, showHeatmap])
+  }, [hasModule, showHeatmap, heatmapTimeWindow, heatmapAlertTypes])
 
   // Update bus stops visibility independently of full re-add
   useEffect(() => {
@@ -1891,13 +1904,67 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                   <Checkbox id="bus-unequipped" checked={busStopFilters.unequipped} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, unequipped: !!checked }))} />
                   <Label htmlFor="bus-unequipped" className="text-sm cursor-pointer">Без оборудования</Label>
                 </div>
-                <div className="flex items-center space-x-2 pt-1 border-t border-border/50">
-                  <Checkbox id="bus-heatmap" checked={showHeatmap} onCheckedChange={(checked) => setShowHeatmap(!!checked)} />
-                  <Label htmlFor="bus-heatmap" className="text-sm cursor-pointer font-medium">🔥 Тепловая карта</Label>
+                <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                  <div className="flex items-center space-x-2">
+                    <Checkbox id="bus-heatmap" checked={showHeatmap} onCheckedChange={(checked) => setShowHeatmap(!!checked)} />
+                    <Label htmlFor="bus-heatmap" className="text-sm cursor-pointer font-medium">Тепловая карта</Label>
+                  </div>
+                  
+                  {/* Heatmap Settings Popover */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <button className="text-muted-foreground hover:text-foreground transition-colors p-1">
+                        <Settings2 className="h-4 w-4" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent side="right" className="w-64 p-4 space-y-4">
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Период данных</h4>
+                        <Select value={heatmapTimeWindow.toString()} onValueChange={(v) => setHeatmapTimeWindow(Number(v))}>
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue placeholder="Выберите период" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="24">За последние 24 часа</SelectItem>
+                            <SelectItem value="48">За последние 48 часов</SelectItem>
+                            <SelectItem value="168">За последнюю неделю</SelectItem>
+                            <SelectItem value="336">За последние 2 недели</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <h4 className="font-medium text-sm">Типы событий</h4>
+                        <div className="space-y-1.5 max-h-[160px] overflow-y-auto pr-1">
+                          {STOP_SAFETY_ALERT_TYPES.map((type) => {
+                            const isChecked = heatmapAlertTypes.includes(type)
+                            return (
+                              <div key={type} className="flex items-center space-x-2">
+                                <Checkbox 
+                                  id={`heatmap-type-${type}`}
+                                  checked={isChecked}
+                                  onCheckedChange={(checked) => {
+                                    if (checked) {
+                                      setHeatmapAlertTypes(prev => [...prev, type])
+                                    } else {
+                                      setHeatmapAlertTypes(prev => prev.filter(t => t !== type))
+                                    }
+                                  }}
+                                />
+                                <Label htmlFor={`heatmap-type-${type}`} className="text-xs font-normal cursor-pointer leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                                  {STOP_SAFETY_ALERT_LABELS[type]}
+                                </Label>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
                 {showHeatmap && heatmapData && (
                   <div className="text-xs text-muted-foreground pl-6 -mt-1">
-                    {heatmapData.totalAlerts} событий за 24ч
+                    {heatmapData.totalAlerts} событий за выбранный период
                   </div>
                 )}
               </div>
