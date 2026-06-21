@@ -77,6 +77,10 @@ import {
   Dog,
   type LucideIcon,
 } from "lucide-react"
+import {
+  getStopComplexByCameraIndex,
+  getStopComplexByLocationId,
+} from "@/lib/stop-analytics-config"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
 const TRASH_OVERFLOW_FILTER_TYPES = [...STOP_TRASH_OVERFLOW_ALERT_TYPES]
@@ -130,6 +134,56 @@ const alertIcons: Record<string, LucideIcon> = {
   lying_person: PersonStanding,
   abandoned_object: PackageSearch,
   dogs_without_people: Dog,
+}
+
+const RUSSIAN_ALERT_MESSAGES: Record<string, string> = {
+  snowplow: "Зафиксирована спецтехника",
+  camera_obstruction: "Обзор камеры перекрыт или загрязнён",
+  snow_slush: "Обнаружена снежная каша на дороге",
+  canny: "Обнаружена заснеженность",
+  snow_windrow: "Обнаружен снежный вал",
+  snow_pile: "Обнаружена снежная куча",
+  puddle: "Обнаружено подтопление дороги",
+  dirt: "Обнаружена грязь на дороге",
+  open_manhole: "Обнаружен открытый люк",
+  tilted_sign: "Обнаружен покосившийся знак",
+  dirty_sign: "Обнаружен загрязнённый знак",
+  broken_light: "Зафиксировано неработающее освещение",
+  worn_marking: "Обнаружена стёртая разметка",
+  pothole: "Обнаружены ямы на дороге",
+  line_cross: "Зафиксировано пересечение контрольной линии",
+  person_detect: "Зафиксирован проход человека",
+  vehicle_detect: "Зафиксирован проезд автомобиля",
+  restricted_zone: "Обнаружен человек в запретной зоне",
+  unaccompanied_child: "Обнаружен ребёнок без сопровождения",
+  water_fall: "Зафиксировано падение в воду",
+  fire_detect: "Обнаружено возгорание",
+  park_left_item: "Обнаружен оставленный предмет",
+  park_person_down: "Зафиксирован лежачий человек",
+  park_fight: "Зафиксирована драка",
+  park_fire: "Обнаружено возгорание",
+  park_trash_overflow: "Зафиксирована переполненная урна",
+  park_camera_obstruction: "Обзор камеры перекрыт",
+  park_light_off: "Зафиксировано неработающее освещение",
+  park_vehicle_detect: "Зафиксирован проезд автомобиля",
+  park_dirty_road: "Требуется уборка покрытия",
+  transport_route_deviation: "Автобус отклонился от маршрута",
+  transport_wait_overrun: "Автобус превысил допустимое ожидание",
+  transport_doors_not_opened: "Автобус не открыл двери на остановке",
+  smoking: "Зафиксировано курение",
+  lying_person: "Зафиксирован лежачий человек",
+  abandoned_object: "Обнаружен оставленный предмет",
+  dogs_without_people: "Обнаружены собаки без людей",
+  bin_full: "Зафиксирована переполненная урна",
+  trash_overflow: "Зафиксирована переполненная урна",
+  trash_bin_overflow: "Зафиксирована переполненная урна",
+  bin_overflow: "Зафиксирована переполненная урна",
+  garbage_overflow: "Зафиксирована переполненная урна",
+  stop_trash_overflow: "Зафиксирована переполненная урна",
+  stop_bin_overflow: "Зафиксирована переполненная урна",
+  overflowing_trash: "Зафиксирована переполненная урна",
+  overflowing_bin: "Зафиксирована переполненная урна",
+  trash_full: "Зафиксирована переполненная урна",
 }
 
 type AlertTypeFilterButton = {
@@ -330,11 +384,129 @@ function formatTimeAgo(dateStr: string) {
 
 function getModuleLabel(moduleName: string | null | undefined) {
   if (!moduleName) return "—"
-  return MODULE_MAP[moduleName] ?? moduleName
+  return MODULE_MAP[moduleName] ?? "Другой модуль"
 }
 
 function isDemoAlert(alert: Alert) {
   return alert.id.startsWith("demo-")
+}
+
+function hasCyrillic(value: string) {
+  return /[А-Яа-яЁё]/.test(value)
+}
+
+function hasLatin(value: string) {
+  return /[A-Za-z]/.test(value)
+}
+
+function getRussianAlertMessage(alert: Alert, fallbackLabel: string) {
+  const rawMessage = alert.message?.trim()
+  if (rawMessage && hasCyrillic(rawMessage) && !hasLatin(rawMessage)) {
+    return rawMessage
+  }
+
+  return (
+    RUSSIAN_ALERT_MESSAGES[alert.alert_type] ??
+    (fallbackLabel === "Неизвестное событие"
+      ? "Зафиксировано событие мониторинга"
+      : `Зафиксировано событие: ${fallbackLabel}`)
+  )
+}
+
+function getRussianControllerMessage(
+  message: string,
+  categoryLabel: string,
+  alarmLabel: string
+) {
+  const rawMessage = message.trim()
+  if (rawMessage && hasCyrillic(rawMessage) && !hasLatin(rawMessage)) {
+    return rawMessage
+  }
+
+  return `${categoryLabel}: ${alarmLabel.toLowerCase()}`
+}
+
+function getMetadataString(
+  metadata: Alert["metadata"],
+  keys: readonly string[]
+) {
+  if (!metadata) return null
+
+  for (const key of keys) {
+    const value = metadata[key]
+    if (typeof value === "string" && value.trim()) {
+      return value.trim()
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value)
+    }
+  }
+
+  return null
+}
+
+function getStopCameraIndexCandidates(cameraIndex: number | null) {
+  if (cameraIndex === null) return []
+
+  const candidates = [cameraIndex]
+  if (cameraIndex >= 10000) {
+    candidates.push(cameraIndex - 10000)
+  }
+
+  return candidates
+}
+
+function getCameraDetail(cameraIndex: number | null) {
+  if (cameraIndex === null) return "камера не указана"
+  const normalizedIndex = cameraIndex >= 10000 ? cameraIndex - 10000 : cameraIndex
+  return `камера ${normalizedIndex}`
+}
+
+function getAlertLocationId(alert: Alert) {
+  const metadataLocation = getMetadataString(alert.metadata, [
+    "location_id",
+    "locationId",
+    "stop_location_id",
+  ])
+  if (metadataLocation) return metadataLocation
+
+  for (const cameraIndex of getStopCameraIndexCandidates(alert.camera_index)) {
+    const complex = getStopComplexByCameraIndex(cameraIndex)
+    if (complex) {
+      return complex.locationId
+    }
+  }
+
+  return null
+}
+
+function getAlertStopDisplay(alert: Alert) {
+  const locationId = getAlertLocationId(alert)
+  const locationComplex = getStopComplexByLocationId(locationId)
+  const cameraComplex = getStopCameraIndexCandidates(alert.camera_index)
+    .map((cameraIndex) => getStopComplexByCameraIndex(cameraIndex))
+    .find(Boolean)
+  const complex = locationComplex ?? cameraComplex ?? null
+  const cameraDetail = getCameraDetail(alert.camera_index)
+
+  if (complex) {
+    return {
+      label: complex.stopName,
+      detail: `${complex.locationId} · ${cameraDetail}`,
+    }
+  }
+
+  if (locationId) {
+    return {
+      label: `Остановка ${locationId}`,
+      detail: cameraDetail,
+    }
+  }
+
+  return {
+    label: alert.camera_index === null ? "Остановка не указана" : "Остановка не определена",
+    detail: cameraDetail,
+  }
 }
 
 type QueryReader = {
@@ -465,7 +637,6 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
     () => getQueryNumberValues(searchParams, ["camera", "cameras"]),
     [searchParams]
   )
-  const initialCamera = searchParams.get("camera")
   const initialAlertId = searchParams.get("alertId")
   const { hasModule } = useModuleAccess()
   const hasRoads = hasModule("roads")
@@ -555,12 +726,6 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   }, [effectiveSelectedTypes, selectedCameras, page, pageSize, allowedTypes])
 
   const totalPages = Math.ceil(total / pageSize)
-
-  const getCameraName = (index: number | null) => {
-    if (index === null) return "—"
-    const cam = cameras.find((c) => c.cameraIndex === index)
-    return cam ? cam.name : `Камера #${index}`
-  }
 
   const toggleTypes = (types: readonly string[]) => {
     setLoading(true)
@@ -1029,7 +1194,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
           <div className="hidden md:grid md:grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
             <div className="col-span-2">Время</div>
             <div className="col-span-2">Тип</div>
-            <div className="col-span-2">Камера</div>
+            <div className="col-span-2">Остановка</div>
             <div className="col-span-4">Сообщение</div>
             <div className="col-span-1">Срочность</div>
             <div className="col-span-1"></div>
@@ -1037,13 +1202,15 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
 
           {visibleAlerts.map((alert) => {
             const config = ALERT_TYPE_CONFIG[alert.alert_type] || {
-              label: alert.alert_type,
+              label: "Неизвестное событие",
               color: "text-muted-foreground bg-muted",
             }
             const Icon = alertIcons[alert.alert_type] || Snowflake
             const demoAlert = isDemoAlert(alert)
             const isExpanded = expandedId === alert.id
             const isHighlighted = alert.id === initialAlertId
+            const stopDisplay = getAlertStopDisplay(alert)
+            const message = getRussianAlertMessage(alert, config.label)
 
             return (
               <Card
@@ -1078,15 +1245,21 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                       </Badge>
                     </div>
 
-                    <div className="md:col-span-2 min-w-0 text-sm truncate">
-                      <span className="text-muted-foreground md:hidden">
-                        Камера:{" "}
-                      </span>
-                      {getCameraName(alert.camera_index)}
+                    <div className="md:col-span-2 min-w-0 text-sm">
+                      <div className="flex items-center gap-1.5 text-muted-foreground md:hidden">
+                        <BusFront className="h-4 w-4" />
+                        <span>Остановка</span>
+                      </div>
+                      <div className="font-medium truncate">
+                        {stopDisplay.label}
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {stopDisplay.detail}
+                      </div>
                     </div>
 
                     <div className="md:col-span-4 text-sm truncate">
-                      {alert.message}
+                      {message}
                     </div>
 
                     <div className="md:col-span-1">
@@ -1155,6 +1328,17 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                         </div>
 
                         <div className="space-y-3 text-sm">
+                          <div>
+                            <div className="text-muted-foreground">
+                              Остановка
+                            </div>
+                            <div className="font-medium">
+                              {stopDisplay.label}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {stopDisplay.detail}
+                            </div>
+                          </div>
                           <div>
                             <div className="text-muted-foreground">
                               Время события
@@ -1439,15 +1623,20 @@ function ControllerAlertsTab() {
 
           {alerts.map((alert) => {
             const alarmCfg = ALARM_CONFIG[alert.alarm] || {
-              label: alert.alarm,
+              label: "Неизвестный статус",
               color: "text-muted-foreground bg-muted",
             }
             const prevAlarmCfg = alert.prev_alarm
               ? ALARM_CONFIG[alert.prev_alarm]
               : null
             const categoryLabel =
-              CATEGORY_LABELS[alert.category] || alert.category
+              CATEGORY_LABELS[alert.category] || "Другая категория"
             const unit = alert.category === "temperature" ? "°C" : alert.category === "humidity" ? "%" : alert.category === "digital input" ? "В" : ""
+            const message = getRussianControllerMessage(
+              alert.message,
+              categoryLabel,
+              alarmCfg.label
+            )
 
             return (
               <Card
@@ -1518,7 +1707,7 @@ function ControllerAlertsTab() {
 
                     {/* Message */}
                     <div className="min-w-0 text-sm text-muted-foreground truncate">
-                      {alert.message}
+                      {message}
                     </div>
                   </div>
                 </CardContent>
