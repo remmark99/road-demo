@@ -21,6 +21,14 @@ type SuggestedQuestionOption = {
     tool?: string
 }
 
+type PreloadedReportOption = {
+    id: string
+    title: string
+    description: string
+    question: string
+    response: string
+}
+
 export type AssistantMode = "platform" | "stops"
 
 // Стартовые вопросы по платформе. Часть из них явно привязана к MCP-инструментам.
@@ -94,6 +102,100 @@ const STOPS_SUGGESTED_QUESTION_OPTIONS: SuggestedQuestionOption[] = [
         question: "Есть ли связь между нагруженностью остановок и переполненными урнами?"
     },
 ];
+
+const PLATFORM_PRELOADED_REPORTS: PreloadedReportOption[] = [
+    {
+        id: "mayor-road-brief",
+        title: "Сводка для мэра",
+        description: "Короткий доклад по текущей дорожной обстановке.",
+        question: "Сформируй управленческую сводку по текущей дорожной обстановке для мэра.",
+        response: `## Управленческая сводка для мэра: дорожная обстановка
+
+### 1. Картина на сегодня
+
+| Показатель | Значение | Управленческий смысл |
+| --- | ---: | --- |
+| Подключено камер | 196 | Город видит ключевые дорожные точки без обращения к внешним BI-панелям |
+| Обслуживается перекрестков | 40 | Контур охватывает основные регулируемые пересечения |
+| Онлайн-доступность | 98% | Система пригодна для оперативного контроля и доклада в реальном времени |
+| Точка внимания | 1 камера | Перекресток Свободы - Ленина, камера 1 не работает |
+
+~~~text
+Доступность камер       98% | #################### |
+Исполнение подрядчиков  89% | ##################   |
+Погодная устойчивость   76% | ###############      |
+Ремонтный темп          94% | ###################  |
+~~~
+
+### 2. Что показывает аналитика
+
+Платформа закрывает три управленческих вопроса: видим ли мы город, кто исполняет регламент и где требуется вмешательство. Текущий контур камер показывает высокий уровень доступности, поэтому обсуждение можно переводить с темы "есть ли данные" на тему "какие решения принимаем по данным".
+
+По подрядчикам важно смотреть не одно число, а связку из четырех метрик: просрочки, среднее время реакции, среднее время устранения и выполнение SLA. Такой набор отделяет подрядчика с высокой нагрузкой от подрядчика с системной проблемой исполнения.
+
+### 3. Риски и решения
+
+| Риск | Сигнал в дашборде | Решение |
+| --- | --- | --- |
+| Потеря наблюдаемости | камера не онлайн на ключевом перекрестке | закрыть дефект связи и держать отдельный контроль восстановления |
+| Срыв регламента | рост просрочек у выбранного подрядчика | назначить разбор по сменам, технике и маршрутам реагирования |
+| Погодная нагрузка | рост инцидентов при умеренных и интенсивных осадках | заранее усиливать смены на месяцы и дни с высокой нагрузкой |
+| Ремонтные риски | объекты с высоким риском и открытыми дефектами | вести через штаб с конкретным следующим действием |
+
+### 4. Что показывать на презентации
+
+Сначала показать текущую обстановку: 196 камер, 40 перекрестков, 98% онлайн. Затем открыть матрицу эффективности и выбрать одного или нескольких подрядчиков, чтобы наглядно сравнить их нагрузку, километры дорог и фактическое исполнение. После этого перейти к влиянию осадков и ремонту дорог: там хорошо видно, где проблема вызвана погодой, а где требуется управленческое давление на исполнение.
+
+**Итог для доклада:** система уже дает не набор картинок, а рабочую модель контроля: наблюдаемость, регламент, погода, ремонт и конкретные точки вмешательства.`,
+    },
+    {
+        id: "road-department-action-plan",
+        title: "План для дорожного хозяйства",
+        description: "Приоритеты контроля подрядчиков и ремонта дорог.",
+        question: "Подготовь оперативный план контроля для главы дорожного хозяйства.",
+        response: `## Оперативный план для дорожного хозяйства
+
+### 1. Ежедневный контроль
+
+| Контур | Что смотреть | Нормальная реакция руководителя |
+| --- | --- | --- |
+| Камеры и перекрестки | онлайн-доступность, отказавшие камеры | дефект связи закрывается как инфраструктурная задача, не как статистика |
+| Подрядчики | просрочки, реакция, устранение, SLA | сравнивать всех, затем оставлять в фильтре проблемные компании |
+| Типы инцидентов | снежная каша, снежный навал, снежный вал, затопление дороги, грязь на дороге, ямы | назначать разные сценарии реагирования под сезон и тип работ |
+| Осадки | инциденты по категориям осадков и погодные просрочки | усиливать смены до накопления просрочек |
+| Ремонт | план/факт, качество, дефекты, высокий риск | вести объект через конкретный следующий шаг |
+
+~~~text
+Приоритет недели
+1. Камера Свободы - Ленина        | срочно закрыть отказ
+2. Подрядчики с просрочками       | разобрать смены и маршруты
+3. Погодные просрочки             | усилить дежурства в дни осадков
+4. Ремонтные объекты высокого риска | назначить ответственных по объектам
+~~~
+
+### 2. Как работать с фильтрами на дашборде
+
+Для общего штаба сначала оставляем "Все подрядчики", чтобы увидеть сравнительную картину. Затем выбираем одного подрядчика, если нужен индивидуальный разбор. Для точечного сравнения можно оставить, например, подрядчика 2 и подрядчика 5, а остальных скрыть. Этот сценарий особенно полезен на четырех графиках подрядчиков: просрочки, устранение, реакция и SLA сразу показывают, кто выбивается из регламента.
+
+### 3. Решения на 7 дней
+
+| День | Решение | Ожидаемый эффект |
+| --- | --- | --- |
+| 1 | восстановить камеру на Свободы - Ленина | убрать единственную публичную точку отказа в текущей обстановке |
+| 2 | выбрать подрядчиков с худшим временем реакции | сократить время назначения и выезда бригад |
+| 3 | отдельно разобрать летние типы: затопление, грязь, ямы | не смешивать сезонные проблемы в одну статистику |
+| 4 | сравнить погодные просрочки по месяцам | понять, где нужен резерв техники и смен |
+| 5 | пройти объекты ремонта высокого риска | снизить вероятность срыва сроков и повторных дефектов |
+| 6 | зафиксировать контрольные KPI на неделю | перевести обсуждение из эмоций в измеримые показатели |
+| 7 | показать динамику мэру и штабу | подтвердить, что решения дали эффект |
+
+### 4. Управленческая ценность
+
+Главная ценность этой витрины в том, что она позволяет быстро перейти от общего доклада к ответственному исполнителю. Если на графике виден рост просрочек, руководитель сразу выбирает нужных подрядчиков, смотрит тип инцидента, сезон и погодную нагрузку, после чего формулирует конкретное поручение: усилить смену, вывести технику, закрыть дефект, ускорить приемку или поменять маршрут реагирования.
+
+**Итоговый фокус:** меньше обсуждать среднюю температуру по городу и больше работать с конкретными отклонениями, подрядчиками, объектами и следующими действиями.`,
+    },
+]
 
 const PLATFORM_INITIAL_SUGGESTED_QUESTION_TEXTS = [
     "Какие модули аналитики есть на платформе и за что отвечает каждый?",
@@ -680,6 +782,7 @@ export function AIChatbot({
     const modeDescription = assistantMode === "stops"
         ? "Только live-данные и аналитика остановочных пунктов."
         : "Все модули платформы и общий аналитический контекст.";
+    const showPreloadedReports = assistantMode === "platform";
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -727,6 +830,31 @@ export function AIChatbot({
             : question;
 
         await sendMessage({ text: messageText });
+    };
+
+    const handlePreloadedReportClick = async (report: PreloadedReportOption) => {
+        if (isLoading) return;
+
+        if (!currentSessionId) {
+            const newId = Date.now().toString();
+            setCurrentSessionId(newId);
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
+
+        const timestamp = Date.now();
+        setMessages((currentMessages) => [
+            ...currentMessages,
+            {
+                id: `preloaded-user-${report.id}-${timestamp}`,
+                role: "user",
+                parts: [{ type: "text", text: report.question }],
+            },
+            {
+                id: `preloaded-assistant-${report.id}-${timestamp}`,
+                role: "assistant",
+                parts: [{ type: "text", text: report.response }],
+            },
+        ]);
     };
 
     const isCompactLayout = fullHeight || pageScrollable
@@ -1032,34 +1160,69 @@ export function AIChatbot({
                             </div>
                         </div>
                         {!isQuestionsCollapsed && (
-                            <div className={cn("grid gap-2 md:grid-cols-3", isCompactLayout ? "mt-2.5" : "mt-3")}>
-                                {suggestedQuestions.map((item, i) => (
-                                    <button
-                                        key={i}
-                                        onClick={() => handleQuestionClick(item.question)}
-                                        disabled={isLoading}
-                                        className={cn(
-                                            "rounded-xl border border-border/60 bg-background text-left transition-all hover:border-primary/25 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-50",
-                                            isCompactLayout ? "px-3 py-2.5" : "px-3 py-3"
-                                        )}
-                                    >
-                                        <div className="mb-2 flex items-center justify-between gap-2">
-                                            <Badge
-                                                variant="outline"
-                                                className="rounded-full border-border/60 bg-background px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                            <>
+                                {showPreloadedReports && (
+                                    <div className={cn("grid gap-2 md:grid-cols-2", isCompactLayout ? "mt-2.5" : "mt-3")}>
+                                        {PLATFORM_PRELOADED_REPORTS.map((report) => (
+                                            <button
+                                                key={report.id}
+                                                type="button"
+                                                onClick={() => handlePreloadedReportClick(report)}
+                                                disabled={isLoading}
+                                                className={cn(
+                                                    "rounded-xl border border-primary/20 bg-primary/[0.06] text-left transition-all hover:border-primary/35 hover:bg-primary/[0.09] disabled:cursor-not-allowed disabled:opacity-50",
+                                                    isCompactLayout ? "px-3 py-2.5" : "px-3 py-3"
+                                                )}
                                             >
-                                                {item.category}
-                                            </Badge>
-                                            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-                                                {item.tool ? "Инструмент" : "Пояснение"}
-                                            </span>
-                                        </div>
-                                        <div className="text-sm leading-5">
-                                            {item.question}
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
+                                                <div className="mb-2 flex items-center justify-between gap-2">
+                                                    <Badge
+                                                        variant="outline"
+                                                        className="rounded-full border-primary/25 bg-background px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-primary"
+                                                    >
+                                                        Отчет
+                                                    </Badge>
+                                                    <span className="text-[10px] font-medium uppercase tracking-wide text-primary/80">
+                                                        Мгновенно
+                                                    </span>
+                                                </div>
+                                                <div className="text-sm font-medium leading-5">{report.title}</div>
+                                                <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                                                    {report.description}
+                                                </div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className={cn("grid gap-2 md:grid-cols-3", showPreloadedReports ? "mt-2" : isCompactLayout ? "mt-2.5" : "mt-3")}>
+                                    {suggestedQuestions.map((item, i) => (
+                                        <button
+                                            key={i}
+                                            onClick={() => handleQuestionClick(item.question)}
+                                            disabled={isLoading}
+                                            className={cn(
+                                                "rounded-xl border border-border/60 bg-background text-left transition-all hover:border-primary/25 hover:bg-accent/40 disabled:cursor-not-allowed disabled:opacity-50",
+                                                isCompactLayout ? "px-3 py-2.5" : "px-3 py-3"
+                                            )}
+                                        >
+                                            <div className="mb-2 flex items-center justify-between gap-2">
+                                                <Badge
+                                                    variant="outline"
+                                                    className="rounded-full border-border/60 bg-background px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                                                >
+                                                    {item.category}
+                                                </Badge>
+                                                <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                                                    {item.tool ? "Инструмент" : "Пояснение"}
+                                                </span>
+                                            </div>
+                                            <div className="text-sm leading-5">
+                                                {item.question}
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </>
                         )}
                     </div>
 

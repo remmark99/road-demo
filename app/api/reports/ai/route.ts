@@ -64,6 +64,7 @@ type StopLoadWindowRow = {
 
 const MAX_PROMPT_LENGTH = 1600
 const REPORT_MODEL_TIMEOUT_MS = 12_000
+const REPORT_LIVE_QUERY_TIMEOUT_MS = 8_000
 const SURGUT_TIME_ZONE = "Asia/Yekaterinburg"
 const USER_NUMBER_FORMAT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
 const REPORT_SYSTEM_PROMPT = `Ты помогаешь оформить PDF-отчет платформы городского мониторинга «Вектор Города».
@@ -232,13 +233,31 @@ async function buildWeeklyStopLoadReport(prompt: string, period: ReportPeriod): 
     let queryError: { message: string } | null = null
 
     for (let attempt = 1; attempt <= 3; attempt += 1) {
-        const result = await supabase
-            .from("busyness_windows")
-            .select("location_id,window_start,person_count_avg,person_count_max,sample_count")
-            .gte("window_start", from.toISOString())
-            .lte("window_start", to.toISOString())
-            .order("window_start", { ascending: false })
-            .limit(6000)
+        let result: {
+            data: unknown[] | null
+            error: { message: string } | null
+        } | null = null
+
+        try {
+            result = await withTimeout(
+                supabase
+                    .from("busyness_windows")
+                    .select("location_id,window_start,person_count_avg,person_count_max,sample_count")
+                    .gte("window_start", from.toISOString())
+                    .lte("window_start", to.toISOString())
+                    .order("window_start", { ascending: false })
+                    .limit(6000),
+                REPORT_LIVE_QUERY_TIMEOUT_MS,
+                "Stop load live report query timeout",
+            )
+        } catch (error) {
+            queryError = { message: error instanceof Error ? error.message : "Live report query failed" }
+            if (attempt === 3) {
+                break
+            }
+            await wait(250 * attempt)
+            continue
+        }
 
         if (!result.error) {
             data = (result.data || []) as StopLoadWindowRow[]
