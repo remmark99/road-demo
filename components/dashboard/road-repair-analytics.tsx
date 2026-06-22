@@ -7,10 +7,16 @@ import {
     Bar,
     BarChart,
     CartesianGrid,
+    ComposedChart,
+    Line,
     XAxis,
     YAxis,
 } from "recharts"
+import { AlertTriangle, CheckCircle2, Gauge, Hammer, MapPinned, Users, Wrench } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
     ChartContainer,
     ChartLegend,
@@ -19,205 +25,92 @@ import {
     ChartTooltipContent,
     type ChartConfig,
 } from "@/components/ui/chart"
+import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
     TimeRangeFilter,
     filterByTimeRangeResult,
     type TimeRangeResult,
 } from "@/components/dashboard/time-range-filter"
 import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
-import { Badge } from "@/components/ui/badge"
-import { Building2, CheckCircle2, Hammer, MapPinned, Wrench } from "lucide-react"
-
-type ContractorId = "sever" | "gors" | "yugra" | "surgut"
-
-type RepairDailyRow = {
-    date: string
-    contractorId: ContractorId
-    plannedKm: number
-    completedKm: number
-    defectsClosed: number
-}
-
-type RepairProject = {
-    street: string
-    district: string
-    contractorId: ContractorId
-    stage: string
-    completionPct: number
-    openDefects: number
-    nextAction: string
-}
-
-type DistrictRepairStat = {
-    district: string
-    contractorId: ContractorId
-    completedSites: number
-    activeSites: number
-    confirmedDefects: number
-}
-
-const CONTRACTORS: { id: ContractorId; name: string }[] = [
-    { id: "sever", name: "СеверДорСтрой" },
-    { id: "gors", name: "Горсервис" },
-    { id: "yugra", name: "ЮграДор" },
-    { id: "surgut", name: "СургутРемДор" },
-]
-
-const PROJECTS: RepairProject[] = [
-    {
-        street: "пр. Ленина",
-        district: "Центральный",
-        contractorId: "sever",
-        stage: "Укладка покрытия",
-        completionPct: 82,
-        openDefects: 3,
-        nextAction: "Ночной слой и контрольная приёмка",
-    },
-    {
-        street: "ул. 30 лет Победы",
-        district: "Северный",
-        contractorId: "gors",
-        stage: "Фрезеровка",
-        completionPct: 58,
-        openDefects: 5,
-        nextAction: "Подготовка основания под следующий этап",
-    },
-    {
-        street: "ул. Мелик-Карамова",
-        district: "Восточный",
-        contractorId: "yugra",
-        stage: "Подготовка участка",
-        completionPct: 41,
-        openDefects: 6,
-        nextAction: "Вывод бригады и ограждение контура",
-    },
-    {
-        street: "Нефтеюганское шоссе",
-        district: "Промышленный",
-        contractorId: "surgut",
-        stage: "Приёмка",
-        completionPct: 93,
-        openDefects: 2,
-        nextAction: "Закрытие замечаний и сдача участка",
-    },
-    {
-        street: "ул. Университетская",
-        district: "Северный",
-        contractorId: "sever",
-        stage: "Локальный ремонт",
-        completionPct: 74,
-        openDefects: 4,
-        nextAction: "Закрытие карт ямочного ремонта",
-    },
-]
-
-const DISTRICT_STATS: DistrictRepairStat[] = [
-    { district: "Центральный", contractorId: "sever", completedSites: 4, activeSites: 2, confirmedDefects: 11 },
-    { district: "Северный", contractorId: "gors", completedSites: 3, activeSites: 2, confirmedDefects: 13 },
-    { district: "Восточный", contractorId: "yugra", completedSites: 2, activeSites: 1, confirmedDefects: 9 },
-    { district: "Промышленный", contractorId: "surgut", completedSites: 3, activeSites: 1, confirmedDefects: 7 },
-    { district: "Северный", contractorId: "sever", completedSites: 2, activeSites: 1, confirmedDefects: 8 },
-]
+    ROAD_CONTRACTORS,
+    getRoadContractorName,
+    roadRepairDailyRows,
+    roadRepairProjects,
+    type RoadContractorId,
+} from "@/lib/mock/road-analytics-mock-data"
+import { cn } from "@/lib/utils"
 
 const progressConfig = {
-    plannedKm: { label: "План, км", color: "hsl(214, 90%, 56%)" },
-    completedKm: { label: "Выполнено, км", color: "hsl(142, 71%, 45%)" },
+    plannedKm: { label: "План, км", color: "hsl(210, 89%, 54%)" },
+    completedKm: { label: "Выполнено, км", color: "hsl(160, 72%, 38%)" },
 } satisfies ChartConfig
 
-const defectsConfig = {
-    defectsClosed: { label: "Закрыто дефектов", color: "hsl(171, 73%, 35%)" },
+const qualityConfig = {
+    defectsClosed: { label: "Закрыто дефектов", color: "hsl(35, 92%, 52%)" },
+    qualityScore: { label: "Индекс качества", color: "hsl(262, 83%, 58%)" },
 } satisfies ChartConfig
 
-const districtConfig = {
-    completedSites: { label: "Завершено объектов", color: "hsl(142, 71%, 45%)" },
-    activeSites: { label: "Активные участки", color: "hsl(35, 92%, 58%)" },
+const stageConfig = {
+    count: { label: "Объекты", color: "hsl(190, 91%, 41%)" },
 } satisfies ChartConfig
 
-function toLocalDateString(date: Date) {
-    const year = date.getFullYear()
-    const month = String(date.getMonth() + 1).padStart(2, "0")
-    const day = String(date.getDate()).padStart(2, "0")
-    return `${year}-${month}-${day}`
+const riskTone: Record<string, string> = {
+    Низкий: "border-emerald-500/20 bg-emerald-500/[0.10] text-emerald-700 dark:text-emerald-300",
+    Средний: "border-amber-500/20 bg-amber-500/[0.10] text-amber-700 dark:text-amber-300",
+    Высокий: "border-red-500/20 bg-red-500/[0.10] text-red-700 dark:text-red-300",
 }
 
-function buildDailyRows(): RepairDailyRow[] {
-    const rows: RepairDailyRow[] = []
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+const REPAIR_CONTRACTORS = ROAD_CONTRACTORS.slice(0, 5)
 
-    for (let dayOffset = 29; dayOffset >= 0; dayOffset -= 1) {
-        const currentDate = new Date(today)
-        currentDate.setDate(today.getDate() - dayOffset)
-        const date = toLocalDateString(currentDate)
-
-        CONTRACTORS.forEach((contractor, contractorIndex) => {
-            const planBase = 0.8 + ((dayOffset + contractorIndex * 2) % 5) * 0.18
-            const plannedKm = Number((planBase + contractorIndex * 0.08).toFixed(1))
-            const varianceIndex = (dayOffset + contractorIndex) % 6
-            const completedKm = Number(
-                Math.max(
-                    0.5,
-                    plannedKm - (varianceIndex === 0 ? 0.2 : varianceIndex === 1 ? 0.1 : -0.1)
-                ).toFixed(1)
-            )
-
-            rows.push({
-                date,
-                contractorId: contractor.id,
-                plannedKm,
-                completedKm,
-                defectsClosed: 4 + ((dayOffset + contractorIndex * 3) % 6),
-            })
-        })
+function getSelectedContractorsLabel(selectedContractors: RoadContractorId[]) {
+    if (selectedContractors.length === REPAIR_CONTRACTORS.length) return "Все подрядчики"
+    if (selectedContractors.length === 0) return "Не выбрано"
+    if (selectedContractors.length === 1) {
+        return REPAIR_CONTRACTORS.find((contractor) => contractor.id === selectedContractors[0])?.shortName ?? "1 подрядчик"
     }
-
-    return rows
-}
-
-function getContractorLabel(contractorId: ContractorId) {
-    return CONTRACTORS.find((contractor) => contractor.id === contractorId)?.name ?? contractorId
+    return `${selectedContractors.length} из ${REPAIR_CONTRACTORS.length}`
 }
 
 export function RoadRepairAnalytics() {
     const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "month" })
-    const [selectedContractor, setSelectedContractor] = useState<"all" | ContractorId>("all")
-
-    const dailySource = useMemo(() => buildDailyRows(), [])
+    const [selectedContractors, setSelectedContractors] = useState<RoadContractorId[]>(
+        REPAIR_CONTRACTORS.map((contractor) => contractor.id)
+    )
 
     const filteredDaily = useMemo(() => {
-        const scoped =
-            selectedContractor === "all"
-                ? dailySource
-                : dailySource.filter((row) => row.contractorId === selectedContractor)
+        const contractorRows = roadRepairDailyRows.filter((row) => selectedContractors.includes(row.contractorId))
 
-        return filterByTimeRangeResult(scoped, timeRange)
-    }, [dailySource, selectedContractor, timeRange])
+        return filterByTimeRangeResult(contractorRows, timeRange)
+    }, [selectedContractors, timeRange])
 
     const dailyTrend = useMemo(() => {
         const grouped = new Map<
             string,
-            { date: string; dateLabel: string; plannedKm: number; completedKm: number; defectsClosed: number }
+            {
+                date: string
+                dateLabel: string
+                plannedKm: number
+                completedKm: number
+                defectsClosed: number
+                qualityScore: number
+                rows: number
+            }
         >()
 
         for (const row of filteredDaily) {
-            const dateLabel = new Date(`${row.date}T00:00:00`).toLocaleDateString("ru-RU", {
-                day: "2-digit",
-                month: "2-digit",
-            })
-
             if (!grouped.has(row.date)) {
                 grouped.set(row.date, {
                     date: row.date,
-                    dateLabel,
+                    dateLabel: new Date(`${row.date}T00:00:00`).toLocaleDateString("ru-RU", {
+                        day: "2-digit",
+                        month: "2-digit",
+                    }),
                     plannedKm: 0,
                     completedKm: 0,
                     defectsClosed: 0,
+                    qualityScore: 0,
+                    rows: 0,
                 })
             }
 
@@ -225,98 +118,138 @@ export function RoadRepairAnalytics() {
             entry.plannedKm += row.plannedKm
             entry.completedKm += row.completedKm
             entry.defectsClosed += row.defectsClosed
+            entry.qualityScore += row.qualityScore
+            entry.rows += 1
         }
 
-        return Array.from(grouped.values()).sort((left, right) => left.date.localeCompare(right.date))
+        return Array.from(grouped.values())
+            .map((row) => ({
+                ...row,
+                plannedKm: Number(row.plannedKm.toFixed(1)),
+                completedKm: Number(row.completedKm.toFixed(1)),
+                qualityScore: row.rows === 0 ? 0 : Math.round(row.qualityScore / row.rows),
+            }))
+            .sort((left, right) => left.date.localeCompare(right.date))
     }, [filteredDaily])
 
-    const districtSummary = useMemo(() => {
-        const scoped =
-            selectedContractor === "all"
-                ? DISTRICT_STATS
-                : DISTRICT_STATS.filter((row) => row.contractorId === selectedContractor)
+    const visibleProjects = useMemo(() => {
+        return roadRepairProjects.filter((project) => selectedContractors.includes(project.contractorId)).sort((left, right) => {
+            const riskWeight = { Высокий: 3, Средний: 2, Низкий: 1 }
+            return riskWeight[right.riskLevel] - riskWeight[left.riskLevel] || right.openDefects - left.openDefects
+        })
+    }, [selectedContractors])
 
-        const grouped = new Map<
-            string,
-            { district: string; completedSites: number; activeSites: number; confirmedDefects: number }
-        >()
+    const stageRows = useMemo(() => {
+        const grouped = new Map<string, number>()
 
-        for (const row of scoped) {
-            if (!grouped.has(row.district)) {
-                grouped.set(row.district, {
-                    district: row.district,
-                    completedSites: 0,
-                    activeSites: 0,
-                    confirmedDefects: 0,
-                })
-            }
-
-            const entry = grouped.get(row.district)!
-            entry.completedSites += row.completedSites
-            entry.activeSites += row.activeSites
-            entry.confirmedDefects += row.confirmedDefects
+        for (const project of visibleProjects) {
+            grouped.set(project.stage, (grouped.get(project.stage) ?? 0) + 1)
         }
 
-        return Array.from(grouped.values()).sort((left, right) => right.completedSites - left.completedSites)
-    }, [selectedContractor])
-
-    const visibleProjects = useMemo(() => {
-        return (selectedContractor === "all"
-            ? PROJECTS
-            : PROJECTS.filter((project) => project.contractorId === selectedContractor)
-        ).sort((left, right) => right.completionPct - left.completionPct)
-    }, [selectedContractor])
+        return Array.from(grouped.entries()).map(([stage, count]) => ({ stage, count }))
+    }, [visibleProjects])
 
     const totals = useMemo(() => {
         const totalPlanned = filteredDaily.reduce((sum, row) => sum + row.plannedKm, 0)
         const totalCompleted = filteredDaily.reduce((sum, row) => sum + row.completedKm, 0)
         const totalDefectsClosed = filteredDaily.reduce((sum, row) => sum + row.defectsClosed, 0)
-        const onScheduleRows = filteredDaily.filter((row) => row.completedKm >= row.plannedKm * 0.9).length
+        const avgQuality =
+            filteredDaily.length === 0
+                ? 0
+                : Math.round(filteredDaily.reduce((sum, row) => sum + row.qualityScore, 0) / filteredDaily.length)
+        const highRiskProjects = visibleProjects.filter((project) => project.riskLevel === "Высокий").length
+        const rawPlanFactPct = totalPlanned === 0 ? 0 : Math.round((totalCompleted / totalPlanned) * 100)
 
         return {
             activeProjects: visibleProjects.length,
             totalCompletedKm: Number(totalCompleted.toFixed(1)),
-            onSchedulePct: filteredDaily.length === 0 ? 0 : Math.round((onScheduleRows / filteredDaily.length) * 100),
-            totalDefectsClosed,
             totalPlannedKm: Number(totalPlanned.toFixed(1)),
+            planFactPct: Math.min(100, rawPlanFactPct),
+            planDeltaKm: Number((totalCompleted - totalPlanned).toFixed(1)),
+            totalDefectsClosed,
+            avgQuality,
+            highRiskProjects,
         }
     }, [filteredDaily, visibleProjects])
 
-    const selectedContractorLabel =
-        selectedContractor === "all" ? "Все подрядчики" : getContractorLabel(selectedContractor)
+    const toggleContractor = (contractorId: RoadContractorId) => {
+        setSelectedContractors((current) =>
+            current.includes(contractorId)
+                ? current.filter((item) => item !== contractorId)
+                : [...current, contractorId]
+        )
+    }
+
+    const toggleAllContractors = () => {
+        setSelectedContractors((current) =>
+            current.length === REPAIR_CONTRACTORS.length
+                ? []
+                : REPAIR_CONTRACTORS.map((contractor) => contractor.id)
+        )
+    }
+
+    const selectedContractorsLabel = getSelectedContractorsLabel(selectedContractors)
+    const scheduleStatus = totals.planFactPct >= 97
+        ? "Работы идут в графике: выполненный объем закрывает план периода, а перевыполнение не раздувает KPI выше 100%."
+        : totals.planFactPct >= 88
+            ? "Темп близок к плановому: нужен ежедневный контроль смен и поставки материалов по объектам со средним риском."
+            : "Темп ниже комфортного уровня: требуется усиление смен и пересборка недельного графика по критичным объектам."
+    const qualityStatus = totals.avgQuality >= 90
+        ? "Качество приемки устойчивое, дефекты закрываются без заметного снижения индекса."
+        : "Индекс качества требует внимания: закрытие дефектов нужно синхронизировать с повторной приемкой покрытия."
+    const riskStatus = totals.highRiskProjects === 0
+        ? "Высокорисковых объектов в выбранном разрезе нет; можно удерживать плановый контроль."
+        : `Высокорисковых объектов: ${totals.highRiskProjects}. Их стоит разобрать первыми на штабе и назначить ответственных за следующий шаг.`
 
     return (
         <div className="h-full overflow-auto p-6 space-y-6">
             <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
-                <Select
-                    value={selectedContractor}
-                    onValueChange={(value) => setSelectedContractor(value as "all" | ContractorId)}
-                >
-                    <SelectTrigger className="w-[220px]">
-                        <SelectValue placeholder="Подрядчик" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Все подрядчики</SelectItem>
-                        {CONTRACTORS.map((contractor) => (
-                            <SelectItem key={contractor.id} value={contractor.id}>
-                                {contractor.name}
-                            </SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button variant="outline" className="gap-2">
+                            <Users className="h-4 w-4" />
+                            {selectedContractorsLabel}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80" align="start">
+                        <div className="space-y-3">
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="repair-all-contractors"
+                                    checked={selectedContractors.length === REPAIR_CONTRACTORS.length}
+                                    onCheckedChange={toggleAllContractors}
+                                />
+                                <Label htmlFor="repair-all-contractors" className="font-medium">
+                                    Все подрядчики
+                                </Label>
+                            </div>
+                            <div className="border-t pt-2 space-y-2">
+                                {REPAIR_CONTRACTORS.map((contractor) => (
+                                    <div key={contractor.id} className="flex items-center space-x-2">
+                                        <Checkbox
+                                            id={`repair-contractor-${contractor.id}`}
+                                            checked={selectedContractors.includes(contractor.id)}
+                                            onCheckedChange={() => toggleContractor(contractor.id)}
+                                        />
+                                        <Label htmlFor={`repair-contractor-${contractor.id}`} className="text-sm">
+                                            {contractor.name}
+                                        </Label>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </PopoverContent>
+                </Popover>
             </TimeRangeFilter>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                 <Card>
                     <CardContent className="p-5">
                         <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                             <Hammer className="h-4 w-4 text-primary" />
-                            Участки в ремонте
+                            Объекты
                         </div>
                         <div className="mt-3 text-3xl font-semibold tabular-nums">{totals.activeProjects}</div>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                            Активные объекты по контуру «Состояние дорог» для выбранного подрядчика.
-                        </p>
                     </CardContent>
                 </Card>
 
@@ -324,11 +257,12 @@ export function RoadRepairAnalytics() {
                     <CardContent className="p-5">
                         <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                            Выполнено за период
+                            План/факт
                         </div>
-                        <div className="mt-3 text-3xl font-semibold tabular-nums">{totals.totalCompletedKm} км</div>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                            План периода: {totals.totalPlannedKm} км. Темп по работам остаётся ровным без провалов по сменам.
+                        <div className="mt-3 text-3xl font-semibold tabular-nums">{totals.planFactPct}%</div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            {totals.totalCompletedKm} из {totals.totalPlannedKm} км
+                            {totals.planDeltaKm > 0 ? `, опережение ${totals.planDeltaKm} км` : ""}
                         </p>
                     </CardContent>
                 </Card>
@@ -336,13 +270,10 @@ export function RoadRepairAnalytics() {
                 <Card>
                     <CardContent className="p-5">
                         <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                            <Building2 className="h-4 w-4 text-sky-500" />
-                            Работы в графике
+                            <Gauge className="h-4 w-4 text-violet-500" />
+                            Качество
                         </div>
-                        <div className="mt-3 text-3xl font-semibold tabular-nums">{totals.onSchedulePct}%</div>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                            Большинство смен укладывается в план, но часть объектов всё ещё требует плотного контроля.
-                        </p>
+                        <div className="mt-3 text-3xl font-semibold tabular-nums">{totals.avgQuality}</div>
                     </CardContent>
                 </Card>
 
@@ -350,22 +281,52 @@ export function RoadRepairAnalytics() {
                     <CardContent className="p-5">
                         <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                             <Wrench className="h-4 w-4 text-amber-500" />
-                            Закрытые дефекты
+                            Дефекты
                         </div>
                         <div className="mt-3 text-3xl font-semibold tabular-nums">{totals.totalDefectsClosed}</div>
-                        <p className="mt-2 text-sm text-muted-foreground">
-                            Подтверждённые замечания по покрытию, закрытые в рамках текущего ремонтного контура.
-                        </p>
+                    </CardContent>
+                </Card>
+
+                <Card className="border-red-500/20 bg-red-500/[0.05]">
+                    <CardContent className="p-5">
+                        <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-red-700 dark:text-red-300">
+                            <AlertTriangle className="h-4 w-4" />
+                            Высокий риск
+                        </div>
+                        <div className="mt-3 text-3xl font-semibold tabular-nums">{totals.highRiskProjects}</div>
                     </CardContent>
                 </Card>
             </div>
 
+            <Card className="border-primary/15 bg-primary/[0.04]">
+                <CardHeader>
+                    <CardTitle>Что важно руководителю</CardTitle>
+                    <CardDescription>
+                        Управленческий вывод по выбранным подрядчикам и периоду без технической детализации.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="grid gap-4 lg:grid-cols-3">
+                    <div className="rounded-lg border bg-background/80 p-4">
+                        <div className="text-sm font-semibold">Темп работ</div>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{scheduleStatus}</p>
+                    </div>
+                    <div className="rounded-lg border bg-background/80 p-4">
+                        <div className="text-sm font-semibold">Качество приемки</div>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{qualityStatus}</p>
+                    </div>
+                    <div className="rounded-lg border bg-background/80 p-4">
+                        <div className="text-sm font-semibold">Риск штаба</div>
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">{riskStatus}</p>
+                    </div>
+                </CardContent>
+            </Card>
+
             <div className="grid gap-6 xl:grid-cols-2">
                 <Card>
                     <CardHeader>
-                        <CardTitle>План и выполнение ремонта</CardTitle>
+                        <CardTitle>План и факт ремонта</CardTitle>
                         <CardDescription>
-                            Суточный объём работ по подрядчику: {selectedContractorLabel.toLowerCase()}.
+                            Суточный объем работ: {selectedContractorsLabel.toLowerCase()}.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -374,20 +335,14 @@ export function RoadRepairAnalytics() {
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="dateLabel" tickLine={false} axisLine={false} minTickGap={18} />
                                 <YAxis tickLine={false} axisLine={false} tickFormatter={(value) => `${value} км`} />
-                                <ChartTooltip
-                                    content={
-                                        <ChartTooltipContent
-                                            formatter={(value, name) => [`${value} км`, progressConfig[name as keyof typeof progressConfig]?.label ?? name]}
-                                        />
-                                    }
-                                />
+                                <ChartTooltip content={<ChartTooltipContent />} />
                                 <ChartLegend content={<ChartLegendContent />} />
                                 <Area
                                     type="monotone"
                                     dataKey="plannedKm"
                                     stroke="var(--color-plannedKm)"
                                     fill="var(--color-plannedKm)"
-                                    fillOpacity={0.16}
+                                    fillOpacity={0.14}
                                     strokeWidth={2}
                                 />
                                 <Area
@@ -395,7 +350,7 @@ export function RoadRepairAnalytics() {
                                     dataKey="completedKm"
                                     stroke="var(--color-completedKm)"
                                     fill="var(--color-completedKm)"
-                                    fillOpacity={0.28}
+                                    fillOpacity={0.24}
                                     strokeWidth={2}
                                 />
                             </AreaChart>
@@ -405,74 +360,63 @@ export function RoadRepairAnalytics() {
 
                 <Card>
                     <CardHeader>
-                        <CardTitle>Закрытие дефектов покрытия</CardTitle>
+                        <CardTitle>Качество и закрытие дефектов</CardTitle>
                         <CardDescription>
-                            Суточная динамика по устранённым замечаниям без провала в качество дорожного контура.
+                            Дефекты закрываются без потери индекса качества приемки.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <ChartContainer config={defectsConfig} className="h-[300px] w-full">
-                            <BarChart data={dailyTrend} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
+                        <ChartContainer config={qualityConfig} className="h-[300px] w-full">
+                            <ComposedChart data={dailyTrend} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="dateLabel" tickLine={false} axisLine={false} minTickGap={18} />
-                                <YAxis tickLine={false} axisLine={false} />
-                                <ChartTooltip
-                                    content={
-                                        <ChartTooltipContent
-                                            formatter={(value) => [`${value}`, "Закрыто дефектов"]}
-                                        />
-                                    }
-                                />
-                                <Bar
-                                    dataKey="defectsClosed"
-                                    fill="var(--color-defectsClosed)"
-                                    radius={[6, 6, 0, 0]}
-                                />
-                            </BarChart>
+                                <YAxis yAxisId="left" tickLine={false} axisLine={false} />
+                                <YAxis yAxisId="right" orientation="right" tickLine={false} axisLine={false} />
+                                <ChartTooltip content={<ChartTooltipContent />} />
+                                <ChartLegend content={<ChartLegendContent />} />
+                                <Bar yAxisId="left" dataKey="defectsClosed" fill="var(--color-defectsClosed)" radius={[6, 6, 0, 0]} />
+                                <Line yAxisId="right" type="monotone" dataKey="qualityScore" stroke="var(--color-qualityScore)" strokeWidth={2} dot={{ r: 3 }} />
+                            </ComposedChart>
                         </ChartContainer>
                     </CardContent>
                 </Card>
             </div>
 
             <div className="grid gap-6 xl:grid-cols-5">
-                <Card className="xl:col-span-3">
+                <Card className="xl:col-span-2">
                     <CardHeader>
-                        <CardTitle>Районы по ремонтной нагрузке</CardTitle>
+                        <CardTitle>Стадии ремонтных объектов</CardTitle>
                         <CardDescription>
-                            Завершённые и активные объекты по районам. Ремонт вынесен в общий дорожный контур, без отдельного рейтинга.
+                            Где находится основной объем работ и что требует контроля.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <ChartContainer config={districtConfig} className="h-[320px] w-full">
-                            <BarChart data={districtSummary} layout="vertical" margin={{ left: 24, right: 12, top: 12, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                                <XAxis type="number" tickLine={false} axisLine={false} />
-                                <YAxis
-                                    type="category"
-                                    dataKey="district"
-                                    tickLine={false}
-                                    axisLine={false}
-                                    width={120}
-                                />
+                        <ChartContainer config={stageConfig} className="h-[320px] w-full">
+                            <BarChart data={stageRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <XAxis dataKey="stage" tickLine={false} axisLine={false} minTickGap={12} />
+                                <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
                                 <ChartTooltip content={<ChartTooltipContent />} />
-                                <ChartLegend content={<ChartLegendContent />} />
-                                <Bar dataKey="completedSites" fill="var(--color-completedSites)" radius={[0, 6, 6, 0]} />
-                                <Bar dataKey="activeSites" fill="var(--color-activeSites)" radius={[0, 6, 6, 0]} />
+                                <Bar dataKey="count" fill="var(--color-count)" radius={[6, 6, 0, 0]} />
                             </BarChart>
                         </ChartContainer>
                     </CardContent>
                 </Card>
 
-                <Card className="xl:col-span-2">
+                <Card className="xl:col-span-3">
                     <CardHeader>
-                        <CardTitle>Текущие дорожные объекты</CardTitle>
+                        <CardTitle>Контроль объектов ремонта</CardTitle>
                         <CardDescription>
-                            Рабочий список по модулю «Состояние дорог» с ближайшим действием по каждому участку.
+                            Приоритеты выстроены по уровню риска и количеству открытых замечаний.
                         </CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-4">
-                        {visibleProjects.map((project) => (
-                            <div key={`${project.street}-${project.contractorId}`} className="rounded-xl border bg-muted/20 p-4">
+                    <CardContent className="grid gap-4 md:grid-cols-2">
+                        {visibleProjects.length === 0 ? (
+                            <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
+                                Выберите хотя бы одного подрядчика, чтобы увидеть объекты ремонта и связанные риски.
+                            </div>
+                        ) : visibleProjects.map((project) => (
+                            <div key={`${project.street}-${project.contractorId}`} className="rounded-lg border bg-muted/20 p-4">
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
                                         <div className="font-medium">{project.street}</div>
@@ -481,31 +425,40 @@ export function RoadRepairAnalytics() {
                                                 <MapPinned className="h-3.5 w-3.5" />
                                                 {project.district}
                                             </span>
-                                            <span>•</span>
-                                            <span>{getContractorLabel(project.contractorId)}</span>
+                                            <span>{getRoadContractorName(project.contractorId)}</span>
                                         </div>
                                     </div>
-                                    <Badge variant="outline">{project.stage}</Badge>
+                                    <Badge
+                                        variant="outline"
+                                        className={cn("border px-2.5 py-1", riskTone[project.riskLevel])}
+                                    >
+                                        {project.riskLevel}
+                                    </Badge>
                                 </div>
 
                                 <div className="mt-4">
                                     <div className="mb-2 flex items-center justify-between text-xs text-muted-foreground">
-                                        <span>Готовность участка</span>
+                                        <span>{project.stage}</span>
                                         <span>{project.completionPct}%</span>
                                     </div>
                                     <div className="h-2 rounded-full bg-muted">
                                         <div
                                             className="h-full rounded-full bg-emerald-500 transition-all"
-                                            style={{ width: `${project.completionPct}%` }}
+                                            style={{ width: `${Math.min(100, project.completionPct)}%` }}
                                         />
                                     </div>
                                 </div>
 
-                                <div className="mt-3 text-sm text-muted-foreground">
-                                    Открытых дефектов: <span className="font-medium text-foreground">{project.openDefects}</span>
-                                </div>
-                                <div className="mt-1 text-sm text-muted-foreground">
-                                    Следующий шаг: <span className="text-foreground">{project.nextAction}</span>
+                                <div className="mt-3 grid gap-1 text-sm text-muted-foreground">
+                                    <div>
+                                        Открытых дефектов: <span className="font-medium text-foreground">{project.openDefects}</span>
+                                    </div>
+                                    <div>
+                                        Плановая дата: <span className="font-medium text-foreground">{project.plannedFinish}</span>
+                                    </div>
+                                    <div>
+                                        Следующий шаг: <span className="text-foreground">{project.nextAction}</span>
+                                    </div>
                                 </div>
                             </div>
                         ))}

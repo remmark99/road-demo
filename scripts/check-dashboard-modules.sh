@@ -15,10 +15,13 @@ echo "SUMMARY: starting dashboard modules checks"
 
 if npm run lint -- \
   app/dashboard/page.tsx \
+  components/dashboard/road-*.tsx \
+  components/dashboard/ai-chatbot.tsx \
   components/dashboard/park-security-analytics.tsx \
   components/dashboard/park-operations-analytics.tsx \
   components/dashboard/transport-route-analytics.tsx \
   components/dashboard/transport-service-analytics.tsx \
+  lib/mock/road-analytics-mock-data.ts \
   lib/mock/park-mock-data.ts \
   lib/mock/transport-mock-data.ts >"$LINT_LOG" 2>&1; then
   echo "SUMMARY: lint passed"

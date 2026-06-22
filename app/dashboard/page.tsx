@@ -50,6 +50,11 @@ import { ParkOperationsAnalytics } from "@/components/dashboard/park-operations-
 import { TransportRouteAnalytics } from "@/components/dashboard/transport-route-analytics"
 import { TransportServiceAnalytics } from "@/components/dashboard/transport-service-analytics"
 import { RoadRepairAnalytics } from "@/components/dashboard/road-repair-analytics"
+import { RoadCurrentAnalytics } from "@/components/dashboard/road-current-analytics"
+import { RoadEfficiencyMatrixAnalytics } from "@/components/dashboard/road-efficiency-matrix-analytics"
+import { RoadContractorsAnalytics } from "@/components/dashboard/road-contractors-analytics"
+import { RoadPrecipitationAnalytics } from "@/components/dashboard/road-precipitation-analytics"
+import { RoadCityAnalytics } from "@/components/dashboard/road-city-analytics"
 import { Skeleton } from "@/components/ui/skeleton"
 
 type DashboardView =
@@ -98,28 +103,28 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     label: "Текущее состояние",
     icon: Activity,
     module: "roads",
-    url: "https://superset.board-coding.ru/superset/dashboard/3?standalone=2&expand_filters=0"
+    component: RoadCurrentAnalytics,
   },
   {
     id: "cleaning",
     label: "Матрица эффективности",
     icon: Grid3X3,
     module: "roads",
-    url: "https://superset.board-coding.ru/superset/dashboard/4?standalone=2&expand_filters=0"
+    component: RoadEfficiencyMatrixAnalytics,
   },
   {
     id: "incidents",
     label: "Подрядчики",
     icon: Users,
     module: "roads",
-    url: "https://superset.board-coding.ru/superset/dashboard/5?standalone=2&expand_filters=0"
+    component: RoadContractorsAnalytics,
   },
   {
     id: "predictions",
     label: "Влияние осадков",
     icon: CloudRain,
     module: "roads",
-    url: "https://superset.board-coding.ru/superset/dashboard/6?standalone=2&expand_filters=0"
+    component: RoadPrecipitationAnalytics,
   },
   {
     id: "road_repair",
@@ -133,7 +138,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     label: "Город",
     icon: Building2,
     module: "roads",
-    url: "https://superset.board-coding.ru/superset/dashboard/7?standalone=2&expand_filters=0"
+    component: RoadCityAnalytics,
   },
   {
     id: "stop_kpi",
@@ -306,13 +311,14 @@ export default function DashboardPage() {
       ? stopMode
       : getFirstAvailableStopMode(activeDashboard) ?? stopMode
   const showStopModeToggle = Boolean(activeDashboard?.stopModes && activeStopModes.length > 1)
-  const sidebarSections: SidebarSection[] = [
+  const sidebarSectionDefinitions: SidebarSection[] = [
     { key: "roads", title: "Состояние дорог", dashboards: roadsDashboardsList },
     { key: "stops", title: "Остановки", dashboards: stopsDashboardsList },
     { key: "shore", title: "Безопасный берег", dashboards: shoreDashboardsList },
     { key: "parks", title: "Безопасный парк", dashboards: parkDashboardsList },
     { key: "transport", title: "Контроль транспорта", dashboards: transportDashboardsList },
-  ].filter((section) => section.dashboards.length > 0)
+  ]
+  const sidebarSections = sidebarSectionDefinitions.filter((section) => section.dashboards.length > 0)
 
   const toggleSection = (sectionKey: keyof typeof SIDEBAR_SECTION_DEFAULTS) => {
     setExpandedSections((current) => ({

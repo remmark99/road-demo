@@ -64,10 +64,63 @@ const PAGE_SIZE = 1000
 const MAX_RAW_ROWS = 60000
 const PARALLEL_PAGE_REQUESTS = 8
 const CACHE_TTL_MS = 45_000
+const SUPABASE_QUERY_TIMEOUT_MS = 8_000
+const SUPABASE_QUERY_ATTEMPTS = 3
+const SUPABASE_RETRY_DELAY_MS = 250
 const BUSYNESS_COLUMNS = "location_id,window_start,window_end,person_count_avg,person_count_max,sample_count"
 
 const responseCache = new Map<string, CacheEntry>()
 let stopsCache: Promise<Map<number, StopInfo>> | null = null
+let lastSuccessfulPayload: StopLoadAnalyticsResponse | null = null
+
+function wait(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+    return Promise.race([
+        promise,
+        new Promise<T>((_, reject) => {
+            setTimeout(() => reject(new Error(message)), ms)
+        }),
+    ])
+}
+
+function isRetryableSupabaseMessage(message: string) {
+    return /fetch failed|network|timeout|terminated|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(message)
+}
+
+async function runSupabaseQuery<T extends { error: { message: string } | null }>(
+    factory: () => Promise<T>,
+    label: string,
+) {
+    let lastError: unknown = null
+
+    for (let attempt = 1; attempt <= SUPABASE_QUERY_ATTEMPTS; attempt += 1) {
+        try {
+            const result = await withTimeout(
+                factory(),
+                SUPABASE_QUERY_TIMEOUT_MS,
+                `${label} timeout`,
+            )
+
+            if (!result.error || !isRetryableSupabaseMessage(result.error.message) || attempt === SUPABASE_QUERY_ATTEMPTS) {
+                return result
+            }
+
+            lastError = new Error(result.error.message)
+        } catch (error) {
+            lastError = error
+            if (attempt === SUPABASE_QUERY_ATTEMPTS) {
+                throw error
+            }
+        }
+
+        await wait(SUPABASE_RETRY_DELAY_MS * attempt)
+    }
+
+    throw lastError instanceof Error ? lastError : new Error(`${label} failed`)
+}
 
 function startOfLocalDay(date: Date) {
     const result = new Date(date)
@@ -118,7 +171,10 @@ function toRangeResponse(from: Date, to: Date): StopLoadRangeResponse {
 
 async function loadStops() {
     const supabase = await createClient()
-    const { data, error } = await supabase.rpc("get_bus_stops_geojson")
+    const { data, error } = await runSupabaseQuery(
+        () => supabase.rpc("get_bus_stops_geojson"),
+        "bus stops lookup",
+    )
 
     if (error) {
         throw new Error(error.message)
@@ -169,11 +225,14 @@ function buildStopDisplay(locationId: string, stopsLookup: Map<number, StopInfo>
 
 async function fetchLatestWindow() {
     const supabase = await createClient()
-    const { data, error } = await supabase
-        .from("busyness_windows")
-        .select(BUSYNESS_COLUMNS)
-        .order("window_start", { ascending: false })
-        .limit(1)
+    const { data, error } = await runSupabaseQuery(
+        () => supabase
+            .from("busyness_windows")
+            .select(BUSYNESS_COLUMNS)
+            .order("window_start", { ascending: false })
+            .limit(1),
+        "latest busyness window",
+    )
 
     if (error) {
         throw new Error(error.message)
@@ -184,11 +243,14 @@ async function fetchLatestWindow() {
 
 async function fetchBusynessRows(from: Date, to: Date) {
     const supabase = await createClient()
-    const countQuery = await supabase
-        .from("busyness_windows")
-        .select("location_id", { count: "exact", head: true })
-        .gte("window_start", from.toISOString())
-        .lte("window_start", to.toISOString())
+    const countQuery = await runSupabaseQuery(
+        () => supabase
+            .from("busyness_windows")
+            .select("location_id", { count: "exact", head: true })
+            .gte("window_start", from.toISOString())
+            .lte("window_start", to.toISOString()),
+        "busyness count",
+    )
 
     if (countQuery.error) {
         throw new Error(countQuery.error.message)
@@ -219,13 +281,16 @@ async function fetchBusynessRows(from: Date, to: Date) {
     for (let index = 0; index < ranges.length; index += PARALLEL_PAGE_REQUESTS) {
         const chunk = ranges.slice(index, index + PARALLEL_PAGE_REQUESTS)
         const results = await Promise.all(chunk.map(({ fromIndex, toIndex }) => (
-            supabase
-                .from("busyness_windows")
-                .select(BUSYNESS_COLUMNS)
-                .gte("window_start", from.toISOString())
-                .lte("window_start", to.toISOString())
-                .order("window_start", { ascending: false })
-                .range(fromIndex, toIndex)
+            runSupabaseQuery(
+                () => supabase
+                    .from("busyness_windows")
+                    .select(BUSYNESS_COLUMNS)
+                    .gte("window_start", from.toISOString())
+                    .lte("window_start", to.toISOString())
+                    .order("window_start", { ascending: false })
+                    .range(fromIndex, toIndex),
+                `busyness range ${fromIndex}-${toIndex}`,
+            )
         )))
 
         for (const result of results) {
@@ -344,7 +409,14 @@ function aggregateRows(
 }
 
 async function buildPayload(from: Date, to: Date): Promise<StopLoadAnalyticsResponse> {
-    const stopsLookup = await getStopsLookup()
+    let stopsLookup = new Map<number, StopInfo>()
+
+    try {
+        stopsLookup = await getStopsLookup()
+    } catch (error) {
+        console.warn("Stop load analytics using fallback stop labels.", error)
+    }
+
     let displayedFrom = from
     let displayedTo = to
     let fallbackRange: StopLoadRangeResponse | null = null
@@ -373,6 +445,19 @@ async function buildPayload(from: Date, to: Date): Promise<StopLoadAnalyticsResp
         limit: MAX_RAW_ROWS,
         sourceRows: result.rows.length,
         totalRows: result.totalRows,
+    }
+}
+
+function buildEmptyPayload(from: Date, to: Date): StopLoadAnalyticsResponse {
+    return {
+        displayedRange: toRangeResponse(from, to),
+        fallbackRange: null,
+        locationHours: [],
+        locations: [],
+        truncated: false,
+        limit: MAX_RAW_ROWS,
+        sourceRows: 0,
+        totalRows: 0,
     }
 }
 
@@ -405,6 +490,7 @@ export async function GET(request: Request) {
             expiresAt: Date.now() + CACHE_TTL_MS,
             payload,
         })
+        lastSuccessfulPayload = payload
 
         return NextResponse.json(payload, {
             headers: {
@@ -414,9 +500,11 @@ export async function GET(request: Request) {
     } catch (error) {
         console.error("Error fetching stop load analytics:", error)
 
-        return NextResponse.json(
-            { error: error instanceof Error ? error.message : "Failed to fetch stop load analytics." },
-            { status: 500 },
-        )
+        return NextResponse.json(lastSuccessfulPayload ?? buildEmptyPayload(from, to), {
+            headers: {
+                "Cache-Control": "no-store",
+                "X-Data-Status": lastSuccessfulPayload ? "stale-fallback" : "empty-fallback",
+            },
+        })
     }
 }
