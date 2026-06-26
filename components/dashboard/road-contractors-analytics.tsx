@@ -2,13 +2,12 @@
 
 import { useMemo, useState } from "react"
 import {
-    Area,
-    AreaChart,
     Bar,
     BarChart,
     CartesianGrid,
     Line,
     LineChart,
+    ReferenceLine,
     XAxis,
     YAxis,
 } from "recharts"
@@ -52,7 +51,7 @@ const contractorConfig = ROAD_CONTRACTORS.reduce((acc, contractor) => {
     return acc
 }, {} as ChartConfig)
 
-type MetricKey = "overdueCount" | "avgResolutionHours" | "avgReactionMinutes" | "slaPct"
+type MetricKey = "overdueCount" | "avgResolutionHours" | "avgReactionHours" | "slaPct"
 type MetricMode = "sum" | "avg"
 type MonthChartRow = {
     monthLabel: string
@@ -100,7 +99,7 @@ function buildMetricRows(
                 const sum = row.sums[contractor.id] ?? 0
                 const count = row.counts[contractor.id] ?? 0
                 result[contractor.id] = mode === "avg"
-                    ? Math.round(sum / Math.max(1, count))
+                    ? Number((sum / Math.max(1, count)).toFixed(metric === "slaPct" ? 0 : 1))
                     : sum
             }
 
@@ -178,7 +177,7 @@ export function RoadContractorsAnalytics() {
 
     const overdueRows = useMemo(() => buildMetricRows("overdueCount", "sum", filteredRows), [filteredRows])
     const resolutionRows = useMemo(() => buildMetricRows("avgResolutionHours", "avg", filteredRows), [filteredRows])
-    const reactionRows = useMemo(() => buildMetricRows("avgReactionMinutes", "avg", filteredRows), [filteredRows])
+    const reactionRows = useMemo(() => buildMetricRows("avgReactionHours", "avg", filteredRows), [filteredRows])
     const slaRows = useMemo(() => buildMetricRows("slaPct", "avg", filteredRows), [filteredRows])
 
     const totals = useMemo(() => {
@@ -190,7 +189,7 @@ export function RoadContractorsAnalytics() {
         const avgReaction =
             filteredRows.length === 0
                 ? 0
-                : Math.round(filteredRows.reduce((sum, row) => sum + row.avgReactionMinutes, 0) / filteredRows.length)
+                : Number((filteredRows.reduce((sum, row) => sum + row.avgReactionHours, 0) / filteredRows.length).toFixed(1))
         const avgSla =
             filteredRows.length === 0
                 ? 0
@@ -320,7 +319,7 @@ export function RoadContractorsAnalytics() {
                 <Card>
                     <CardContent className="p-5">
                         <div className="text-sm text-muted-foreground">Реакция</div>
-                        <div className="mt-2 text-3xl font-semibold tabular-nums">{totals.avgReaction} мин</div>
+                        <div className="mt-2 text-3xl font-semibold tabular-nums">{totals.avgReaction} ч</div>
                     </CardContent>
                 </Card>
                 <Card>
@@ -348,7 +347,14 @@ export function RoadContractorsAnalytics() {
                                 <ChartTooltip content={<ChartTooltipContent />} />
                                 <ChartLegend content={<ChartLegendContent />} />
                                 {visibleContractors.map((contractor) => (
-                                    <Bar key={contractor.id} dataKey={contractor.id} fill={`var(--color-${contractor.id})`} radius={[4, 4, 0, 0]} />
+                                    <Bar
+                                        key={contractor.id}
+                                        dataKey={contractor.id}
+                                        stackId="overdue"
+                                        fill={`var(--color-${contractor.id})`}
+                                        radius={[4, 4, 0, 0]}
+                                        maxBarSize={42}
+                                    />
                                 ))}
                             </BarChart>
                         </ChartContainer>
@@ -364,24 +370,24 @@ export function RoadContractorsAnalytics() {
                     </CardHeader>
                     <CardContent>
                         <ChartContainer config={contractorConfig} className="h-[300px] w-full">
-                            <AreaChart data={resolutionRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
+                            <LineChart data={resolutionRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="monthLabel" tickLine={false} axisLine={false} />
                                 <YAxis tickLine={false} axisLine={false} tickFormatter={(value) => `${value} ч`} />
                                 <ChartTooltip content={<ChartTooltipContent />} />
                                 <ChartLegend content={<ChartLegendContent />} />
                                 {visibleContractors.map((contractor) => (
-                                    <Area
+                                    <Line
                                         key={contractor.id}
                                         type="monotone"
                                         dataKey={contractor.id}
                                         stroke={`var(--color-${contractor.id})`}
-                                        fill={`var(--color-${contractor.id})`}
-                                        fillOpacity={0.12}
                                         strokeWidth={2}
+                                        dot={{ r: 3 }}
+                                        activeDot={{ r: 5 }}
                                     />
                                 ))}
-                            </AreaChart>
+                            </LineChart>
                         </ChartContainer>
                     </CardContent>
                 </Card>
@@ -393,7 +399,7 @@ export function RoadContractorsAnalytics() {
                             Среднее время реакции
                         </CardTitle>
                         <CardDescription>
-                            Минуты от фиксации события до назначения подрядчика.
+                            Часы от фиксации события до назначения подрядчика.
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -401,7 +407,8 @@ export function RoadContractorsAnalytics() {
                             <LineChart data={reactionRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="monthLabel" tickLine={false} axisLine={false} />
-                                <YAxis tickLine={false} axisLine={false} tickFormatter={(value) => `${value} мин`} />
+                                <YAxis tickLine={false} axisLine={false} domain={[0, 24]} ticks={[0, 6, 12, 18, 24]} tickFormatter={(value) => `${value} ч`} />
+                                <ReferenceLine y={12} stroke="hsl(var(--muted-foreground))" strokeDasharray="4 4" />
                                 <ChartTooltip content={<ChartTooltipContent />} />
                                 <ChartLegend content={<ChartLegendContent />} />
                                 {visibleContractors.map((contractor) => (
@@ -434,7 +441,7 @@ export function RoadContractorsAnalytics() {
                             <LineChart data={slaRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="monthLabel" tickLine={false} axisLine={false} />
-                                <YAxis tickLine={false} axisLine={false} domain={[60, 100]} tickFormatter={(value) => `${value}%`} />
+                                <YAxis tickLine={false} axisLine={false} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={(value) => `${value}%`} />
                                 <ChartTooltip content={<ChartTooltipContent />} />
                                 <ChartLegend content={<ChartLegendContent />} />
                                 {visibleContractors.map((contractor) => (

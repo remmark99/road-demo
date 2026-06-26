@@ -3,6 +3,7 @@
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import { useRef, useEffect, useState, useCallback, useMemo } from "react"
+import { Bar, BarChart as RechartsBarChart, CartesianGrid, Cell, Line, LineChart, XAxis, YAxis } from "recharts"
 import { Button } from "@/components/ui/button"
 import jsPDF from "jspdf"
 import * as htmlToImage from 'html-to-image'
@@ -10,6 +11,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Bot, Send, User, Loader2, RefreshCw, Database, Search, BarChart, FileText, Download, Maximize2, Plus, MessageSquare, Trash2, FileDown, ChevronDown, ChevronUp, BusFront, Layers } from "lucide-react"
 import { chatStorage, type ChatSession } from "@/lib/chat-storage"
@@ -27,6 +29,7 @@ type PreloadedReportOption = {
     description: string
     question: string
     response: string
+    visualVariant: "mayor" | "department"
 }
 
 export type AssistantMode = "platform" | "stops"
@@ -109,6 +112,7 @@ const PLATFORM_PRELOADED_REPORTS: PreloadedReportOption[] = [
         title: "Сводка для мэра",
         description: "Короткий доклад по текущей дорожной обстановке.",
         question: "Сформируй управленческую сводку по текущей дорожной обстановке для мэра.",
+        visualVariant: "mayor",
         response: `## Управленческая сводка для мэра: дорожная обстановка
 
 ### 1. Картина на сегодня
@@ -153,6 +157,7 @@ const PLATFORM_PRELOADED_REPORTS: PreloadedReportOption[] = [
         title: "План для дорожного хозяйства",
         description: "Приоритеты контроля подрядчиков и ремонта дорог.",
         question: "Подготовь оперативный план контроля для главы дорожного хозяйства.",
+        visualVariant: "department",
         response: `## Оперативный план для дорожного хозяйства
 
 ### 1. Ежедневный контроль
@@ -196,6 +201,124 @@ const PLATFORM_PRELOADED_REPORTS: PreloadedReportOption[] = [
 **Итоговый фокус:** меньше обсуждать среднюю температуру по городу и больше работать с конкретными отклонениями, подрядчиками, объектами и следующими действиями.`,
     },
 ]
+
+const reportScoreConfig = {
+    value: { label: "Значение", color: "hsl(210, 89%, 54%)" },
+} satisfies ChartConfig
+
+const mayorScoreRows = [
+    { name: "Камеры онлайн", value: 98, fill: "hsl(160, 72%, 38%)" },
+    { name: "Исполнение", value: 89, fill: "hsl(210, 89%, 54%)" },
+    { name: "Погода", value: 76, fill: "hsl(35, 92%, 52%)" },
+    { name: "Ремонт", value: 94, fill: "hsl(262, 83%, 58%)" },
+]
+
+const mayorTrendRows = [
+    { name: "Наблюдение", value: 98 },
+    { name: "Регламент", value: 89 },
+    { name: "Осадки", value: 76 },
+    { name: "Ремонт", value: 94 },
+]
+
+const departmentResilienceRows = [
+    { name: "СеверДор", value: 91, overdue: 4, fill: "hsl(210, 89%, 54%)" },
+    { name: "Магистраль", value: 88, overdue: 5, fill: "hsl(190, 91%, 41%)" },
+    { name: "РемДор", value: 82, overdue: 7, fill: "hsl(262, 83%, 58%)" },
+    { name: "Горсервис", value: 73, overdue: 10, fill: "hsl(160, 72%, 38%)" },
+    { name: "ЮграДор", value: 61, overdue: 14, fill: "hsl(35, 92%, 52%)" },
+]
+
+const departmentPriorityRows = [
+    { name: "Связь", value: 96 },
+    { name: "Смены", value: 74 },
+    { name: "Осадки", value: 68 },
+    { name: "Ремонт", value: 81 },
+]
+
+function PreloadedReportMessage({ report }: { report: PreloadedReportOption }) {
+    const isMayorReport = report.visualVariant === "mayor"
+    const scoreRows = isMayorReport ? mayorScoreRows : departmentResilienceRows
+    const trendRows = isMayorReport ? mayorTrendRows : departmentPriorityRows
+
+    return (
+        <div className="w-full space-y-4 rounded-xl border bg-background p-4 shadow-sm">
+            <div>
+                <Badge variant="outline" className="mb-3 rounded-full bg-primary/[0.06] text-primary">
+                    {isMayorReport ? "Готовый доклад" : "Оперативный план"}
+                </Badge>
+                <div className="markdown-content text-sm">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{report.response}</ReactMarkdown>
+                </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+                <div className="rounded-lg border bg-muted/20 p-3">
+                    <div className="mb-2 text-sm font-semibold">
+                        {isMayorReport ? "Индексы для доклада" : "Устойчивость подрядчиков к осадкам"}
+                    </div>
+                    <ChartContainer config={reportScoreConfig} className="h-[220px] w-full">
+                        <RechartsBarChart data={scoreRows} layout="vertical" margin={{ left: 8, right: 14, top: 8, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                            <XAxis
+                                type="number"
+                                domain={[0, 100]}
+                                ticks={[0, 25, 50, 75, 100]}
+                                tickFormatter={(value) => `${value}%`}
+                                tickLine={false}
+                                axisLine={false}
+                            />
+                            <YAxis type="category" dataKey="name" width={88} tickLine={false} axisLine={false} />
+                            <ChartTooltip content={<ChartTooltipContent />} />
+                            <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                                {scoreRows.map((row) => (
+                                    <Cell key={row.name} fill={row.fill} />
+                                ))}
+                            </Bar>
+                        </RechartsBarChart>
+                    </ChartContainer>
+                </div>
+
+                <div className="rounded-lg border bg-muted/20 p-3">
+                    <div className="mb-2 text-sm font-semibold">
+                        {isMayorReport ? "Баланс управленческих контуров" : "Готовность направлений на неделю"}
+                    </div>
+                    <ChartContainer config={reportScoreConfig} className="h-[220px] w-full">
+                        <LineChart data={trendRows} margin={{ left: 0, right: 14, top: 12, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                            <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                            <YAxis
+                                domain={[0, 100]}
+                                ticks={[0, 25, 50, 75, 100]}
+                                tickFormatter={(value) => `${value}%`}
+                                tickLine={false}
+                                axisLine={false}
+                            />
+                            <ChartTooltip content={<ChartTooltipContent />} />
+                            <Line
+                                type="monotone"
+                                dataKey="value"
+                                stroke="var(--color-value)"
+                                strokeWidth={2}
+                                dot={{ r: 4 }}
+                                activeDot={{ r: 6 }}
+                            />
+                        </LineChart>
+                    </ChartContainer>
+                </div>
+            </div>
+
+            {!isMayorReport && (
+                <div className="grid gap-2 text-xs text-muted-foreground md:grid-cols-2">
+                    {departmentResilienceRows.slice(0, 4).map((row) => (
+                        <div key={row.name} className="rounded-lg border bg-background px-3 py-2">
+                            <span className="font-medium text-foreground">{row.name}</span>: устойчивость {row.value}%, погодных просрочек {row.overdue}
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    )
+}
 
 const PLATFORM_INITIAL_SUGGESTED_QUESTION_TEXTS = [
     "Какие модули аналитики есть на платформе и за что отвечает каждый?",
@@ -246,6 +369,7 @@ type ChatMessagePart = {
     type: string;
     text?: string;
     toolName?: string;
+    reportId?: string;
 };
 
 type RenderableChatMessage = {
@@ -269,7 +393,8 @@ const isChatMessagePart = (part: unknown): part is ChatMessagePart => {
     return (
         typeof candidate.type === "string" &&
         (candidate.text === undefined || typeof candidate.text === "string") &&
-        (candidate.toolName === undefined || typeof candidate.toolName === "string")
+        (candidate.toolName === undefined || typeof candidate.toolName === "string") &&
+        (candidate.reportId === undefined || typeof candidate.reportId === "string")
     );
 };
 
@@ -280,7 +405,7 @@ const getMessageText = (message: RenderableChatMessage, separator = "\n") =>
     typeof message.content === "string"
         ? message.content
         : getMessageParts(message)
-            .filter((part) => part.type === "text" && typeof part.text === "string")
+            .filter((part) => (part.type === "text" || part.type === "preloaded-report") && typeof part.text === "string")
             .map((part) => part.text ?? "")
             .join(separator);
 
@@ -288,6 +413,7 @@ const hasMessageContent = (message: RenderableChatMessage) =>
     (typeof message.content === "string" && message.content.trim().length > 0) ||
     getMessageParts(message).some((part) =>
         (part.type === "text" && (part.text ?? "").trim().length > 0) ||
+        (part.type === "preloaded-report" && (part.text ?? "").trim().length > 0) ||
         part.type === "tool-invocation" ||
         part.type === "tool-result" ||
         part.type === "dynamic-tool" ||
@@ -852,7 +978,7 @@ export function AIChatbot({
             {
                 id: `preloaded-assistant-${report.id}-${timestamp}`,
                 role: "assistant",
-                parts: [{ type: "text", text: report.response }],
+                parts: [{ type: "preloaded-report", text: report.response, reportId: report.id }],
             },
         ]);
     };
@@ -1026,6 +1152,8 @@ export function AIChatbot({
                         >
                             {allMessages.map((message) => {
                                 const hasContent = hasMessageContent(message);
+                                const messageParts = getMessageParts(message);
+                                const isPreloadedReportMessage = messageParts.some((part) => part.type === "preloaded-report");
 
                                 if (!hasContent) return null;
 
@@ -1047,20 +1175,33 @@ export function AIChatbot({
                                             )}
                                         </div>
                                         <div
-                                            className={`max-w-[88%] rounded-2xl px-3.5 py-2.5 ${message.role === "user"
-                                                ? "bg-primary text-primary-foreground"
-                                                : "bg-muted shadow-sm"
-                                                }`}
+                                            className={cn(
+                                                "rounded-2xl px-3.5 py-2.5",
+                                                message.role === "user"
+                                                    ? "max-w-[88%] bg-primary text-primary-foreground"
+                                                    : isPreloadedReportMessage
+                                                        ? "w-full max-w-[min(980px,calc(100%-3rem))] bg-background shadow-sm"
+                                                        : "max-w-[88%] bg-muted shadow-sm"
+                                            )}
                                         >
                                             <div className="text-sm markdown-content">
                                                 {typeof message.content === "string"
                                                     ? renderContentWithImages(message.content)
-                                                    : getMessageParts(message).map((part, i: number) => {
+                                                    : messageParts.map((part, i: number) => {
                                                         if (part.type === "text") {
                                                             return (
                                                                 <div key={i}>
                                                                     {renderContentWithImages(part.text || "")}
                                                                 </div>
+                                                            )
+                                                        }
+                                                        if (part.type === "preloaded-report") {
+                                                            const report = PLATFORM_PRELOADED_REPORTS.find((item) => item.id === part.reportId)
+
+                                                            return report ? (
+                                                                <PreloadedReportMessage key={i} report={report} />
+                                                            ) : (
+                                                                <div key={i}>{renderContentWithImages(part.text || "")}</div>
                                                             )
                                                         }
                                                         if (part.type === "tool-invocation") {
