@@ -53,7 +53,7 @@ type MatrixRow = {
     efficiencyPct: number
     overdueIncidents: number
     completedOrders: number
-    reactionMinutes: number
+    reactionHours: number
     color: string
 }
 
@@ -86,7 +86,7 @@ function MatrixTooltip({
                 </div>
                 <div className="flex justify-between gap-4">
                     <span>Средняя реакция</span>
-                    <span className="font-mono text-foreground">{row.reactionMinutes} мин</span>
+                    <span className="font-mono text-foreground">{row.reactionHours} ч</span>
                 </div>
             </div>
         </div>
@@ -121,7 +121,7 @@ export function RoadEfficiencyMatrixAnalytics() {
                 efficiencyPct: number
                 overdueIncidents: number
                 completedOrders: number
-                reactionMinutes: number
+                reactionHours: number
                 rows: number
             }
         >()
@@ -133,7 +133,7 @@ export function RoadEfficiencyMatrixAnalytics() {
                     efficiencyPct: 0,
                     overdueIncidents: 0,
                     completedOrders: 0,
-                    reactionMinutes: 0,
+                    reactionHours: 0,
                     rows: 0,
                 })
             }
@@ -142,7 +142,7 @@ export function RoadEfficiencyMatrixAnalytics() {
             entry.efficiencyPct += row.efficiencyPct
             entry.overdueIncidents += row.overdueIncidents
             entry.completedOrders += row.completedOrders
-            entry.reactionMinutes += row.reactionMinutes
+            entry.reactionHours += row.reactionHours
             entry.rows += 1
         }
 
@@ -157,7 +157,7 @@ export function RoadEfficiencyMatrixAnalytics() {
                 efficiencyPct: entry?.rows ? Math.round(entry.efficiencyPct / entry.rows) : contractor.baseEfficiencyPct,
                 overdueIncidents: entry?.overdueIncidents ?? 0,
                 completedOrders: entry?.completedOrders ?? 0,
-                reactionMinutes: entry?.rows ? Math.round(entry.reactionMinutes / entry.rows) : 0,
+                reactionHours: entry?.rows ? Number((entry.reactionHours / entry.rows).toFixed(1)) : 0,
                 color: contractor.color,
             }
         }).sort((left, right) => right.managedKm - left.managedKm)
@@ -169,7 +169,7 @@ export function RoadEfficiencyMatrixAnalytics() {
         )
         const totalKm = matrixRows.reduce((sum, row) => sum + row.managedKm, 0)
         const totalOverdue = matrixRows.reduce((sum, row) => sum + row.overdueIncidents, 0)
-        const fastest = matrixRows.slice().sort((left, right) => left.reactionMinutes - right.reactionMinutes)[0]
+        const fastest = matrixRows.slice().sort((left, right) => left.reactionHours - right.reactionHours)[0]
 
         return {
             avgEfficiency,
@@ -308,7 +308,7 @@ export function RoadEfficiencyMatrixAnalytics() {
                                 name="Км дорог под управлением"
                                 tickLine={false}
                                 axisLine={false}
-                                domain={[20, 56]}
+                                domain={[15, 60]}
                                 tickFormatter={(value) => `${value} км`}
                                 label={{ value: "Км дорог под управлением", position: "insideBottom", offset: -16 }}
                             />
@@ -318,7 +318,8 @@ export function RoadEfficiencyMatrixAnalytics() {
                                 name="Эффективность исполнения"
                                 tickLine={false}
                                 axisLine={false}
-                                domain={[68, 98]}
+                                domain={[0, 100]}
+                                ticks={[0, 25, 50, 75, 100]}
                                 tickFormatter={(value) => `${value}%`}
                                 label={{ value: "Эффективность исполнения, %", angle: -90, position: "insideLeft" }}
                             />
@@ -354,7 +355,7 @@ export function RoadEfficiencyMatrixAnalytics() {
                     <CardContent className="p-5 text-sm">
                         Лучшее среднее время реакции в выбранном периоде:{" "}
                         <span className="font-semibold">{totals.fastest.contractorName}</span>,{" "}
-                        <span className="font-mono">{totals.fastest.reactionMinutes} мин</span>.
+                        <span className="font-mono">{totals.fastest.reactionHours} ч</span>.
                     </CardContent>
                 </Card>
             )}

@@ -49,7 +49,6 @@ import { ParkSecurityAnalytics } from "@/components/dashboard/park-security-anal
 import { ParkOperationsAnalytics } from "@/components/dashboard/park-operations-analytics"
 import { TransportRouteAnalytics } from "@/components/dashboard/transport-route-analytics"
 import { TransportServiceAnalytics } from "@/components/dashboard/transport-service-analytics"
-import { RoadRepairAnalytics } from "@/components/dashboard/road-repair-analytics"
 import { RoadCurrentAnalytics } from "@/components/dashboard/road-current-analytics"
 import { RoadEfficiencyMatrixAnalytics } from "@/components/dashboard/road-efficiency-matrix-analytics"
 import { RoadContractorsAnalytics } from "@/components/dashboard/road-contractors-analytics"
@@ -62,7 +61,6 @@ type DashboardView =
   | "cleaning"
   | "incidents"
   | "predictions"
-  | "road_repair"
   | "city"
   | "stop_kpi"
   | "stop_districts"
@@ -125,13 +123,6 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     icon: CloudRain,
     module: "roads",
     component: RoadPrecipitationAnalytics,
-  },
-  {
-    id: "road_repair",
-    label: "Ремонт дорог",
-    icon: Hammer,
-    module: "roads",
-    component: RoadRepairAnalytics,
   },
   {
     id: "city",
@@ -249,7 +240,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
   }
 ] as const
 
-const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "road_repair", "city"]
+const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city"]
 const STOPS_DASHBOARDS = ["stop_kpi", "stop_passenger", "stop_security", "stop_condition", "stop_districts", "stop_vandalism"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]

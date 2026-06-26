@@ -6,8 +6,6 @@ import {
     BarChart,
     CartesianGrid,
     Cell,
-    Line,
-    LineChart,
     XAxis,
     YAxis,
 } from "recharts"
@@ -37,22 +35,17 @@ import {
     ROAD_CONTRACTORS,
     ROAD_PRECIPITATION_CATEGORIES,
     ROAD_SEASONS,
-    filterRoadRowsBySeason,
     getRoadSeasonLabel,
-    roadMonthlyContractorRows,
+    roadPrecipitationContractorRows,
     roadPrecipitationRows,
     type RoadContractorId,
+    type PrecipitationCategoryId,
     type RoadSeasonFilter,
 } from "@/lib/mock/road-analytics-mock-data"
 
 const precipitationConfig = {
     incidents: { label: "Количество инцидентов", color: "hsl(210, 89%, 54%)" },
 } satisfies ChartConfig
-
-const contractorConfig = ROAD_CONTRACTORS.reduce((acc, contractor) => {
-    acc[contractor.id] = { label: contractor.shortName, color: contractor.color }
-    return acc
-}, {} as ChartConfig)
 
 const precipitationColors = [
     "hsl(160, 72%, 38%)",
@@ -61,10 +54,67 @@ const precipitationColors = [
     "hsl(0, 84%, 60%)",
 ]
 
-type WeatherMonthRow = {
-    monthLabel: string
-    monthIndex: number
-} & Record<RoadContractorId, number>
+const weatherComparisonConfig = ROAD_PRECIPITATION_CATEGORIES.reduce((acc, category, index) => {
+    acc[category.id] = { label: category.label, color: precipitationColors[index] }
+    return acc
+}, {} as ChartConfig)
+
+type ContractorWeatherRow = {
+    contractorId: RoadContractorId
+    contractorName: string
+    contractorShortName: string
+} & Record<string, number | string>
+
+function WeatherOverdueTooltip({
+    active,
+    payload,
+}: {
+    active?: boolean
+    payload?: Array<{
+        color?: string
+        dataKey?: string | number
+        value?: number | string
+        payload?: ContractorWeatherRow
+    }>
+}) {
+    const row = payload?.[0]?.payload
+
+    if (!active || !row || !payload?.length) return null
+
+    return (
+        <div className="min-w-64 rounded-lg border bg-background px-3 py-2 text-xs shadow-xl">
+            <div className="font-semibold">{row.contractorName}</div>
+            <div className="mt-1 text-muted-foreground">Погодные просрочки и устойчивость по уровню осадков</div>
+            <div className="mt-3 grid gap-2">
+                {payload.map((item) => {
+                    const categoryId = String(item.dataKey) as PrecipitationCategoryId
+                    const category = ROAD_PRECIPITATION_CATEGORIES.find((candidate) => candidate.id === categoryId)
+                    const resilience = row[`${categoryId}Resilience`]
+
+                    if (!category || typeof item.value !== "number" || typeof resilience !== "number") return null
+
+                    return (
+                        <div key={categoryId} className="grid gap-1">
+                            <div className="flex items-center justify-between gap-4">
+                                <span className="inline-flex items-center gap-2 font-medium">
+                                    <span
+                                        className="h-2.5 w-2.5 rounded-sm"
+                                        style={{ backgroundColor: item.color }}
+                                    />
+                                    {category.label}
+                                </span>
+                                <span className="font-mono text-foreground">{item.value}</span>
+                            </div>
+                            <div className="text-muted-foreground">
+                                устойчивость: <span className="font-mono text-foreground">{resilience}%</span>
+                            </div>
+                        </div>
+                    )
+                })}
+            </div>
+        </div>
+    )
+}
 
 function getSelectedContractorsLabel(selectedContractors: RoadContractorId[]) {
     if (selectedContractors.length === ROAD_CONTRACTORS.length) return "Все подрядчики"
@@ -80,6 +130,9 @@ export function RoadPrecipitationAnalytics() {
     const [selectedContractors, setSelectedContractors] = useState<RoadContractorId[]>(
         ROAD_CONTRACTORS.map((contractor) => contractor.id)
     )
+    const visibleContractors = useMemo(() => {
+        return ROAD_CONTRACTORS.filter((item) => selectedContractors.includes(item.id))
+    }, [selectedContractors])
 
     const precipitationRows = useMemo(() => {
         return ROAD_PRECIPITATION_CATEGORIES.map((category) => {
@@ -97,31 +150,35 @@ export function RoadPrecipitationAnalytics() {
         })
     }, [season])
 
-    const weatherRows = useMemo<WeatherMonthRow[]>(() => {
-        const rows = filterRoadRowsBySeason(roadMonthlyContractorRows, season)
-        const grouped = new Map<number, WeatherMonthRow>()
-
-        for (const row of rows) {
-            if (!grouped.has(row.monthIndex)) {
-                grouped.set(row.monthIndex, {
-                    monthLabel: row.monthLabel,
-                    monthIndex: row.monthIndex,
-                    sever: 0,
-                    gors: 0,
-                    yugra: 0,
-                    surgut: 0,
-                    magistral: 0,
-                    sibdor: 0,
-                    komfort: 0,
-                })
+    const weatherRows = useMemo<ContractorWeatherRow[]>(() => {
+        return visibleContractors.map((contractor) => {
+            const result: ContractorWeatherRow = {
+                contractorId: contractor.id,
+                contractorName: contractor.name,
+                contractorShortName: contractor.shortName,
             }
 
-            const entry = grouped.get(row.monthIndex)!
-            entry[row.contractorId] += row.weatherOverdue
-        }
+            for (const category of ROAD_PRECIPITATION_CATEGORIES) {
+                const rows = roadPrecipitationContractorRows.filter((row) => (
+                    row.categoryId === category.id &&
+                    row.contractorId === contractor.id &&
+                    (season === "all" || row.season === season)
+                ))
+                const avgResilience = rows.length === 0
+                    ? 0
+                    : Math.round(rows.reduce((sum, row) => sum + row.resiliencePct, 0) / rows.length)
 
-        return Array.from(grouped.values()).sort((left, right) => left.monthIndex - right.monthIndex)
-    }, [season])
+                result[category.id] = rows.reduce((sum, row) => sum + row.weatherOverdue, 0)
+                result[`${category.id}Resilience`] = avgResilience
+            }
+
+            return result
+        }).sort((left, right) => {
+            const leftOverdue = ROAD_PRECIPITATION_CATEGORIES.reduce((sum, category) => sum + Number(left[category.id] ?? 0), 0)
+            const rightOverdue = ROAD_PRECIPITATION_CATEGORIES.reduce((sum, category) => sum + Number(right[category.id] ?? 0), 0)
+            return rightOverdue - leftOverdue
+        })
+    }, [season, visibleContractors])
 
     const toggleContractor = (contractorId: RoadContractorId) => {
         setSelectedContractors((current) =>
@@ -139,23 +196,29 @@ export function RoadPrecipitationAnalytics() {
         )
     }
 
-    const visibleContractors = useMemo(() => {
-        return ROAD_CONTRACTORS.filter((item) => selectedContractors.includes(item.id))
-    }, [selectedContractors])
-
     const totals = useMemo(() => {
         const incidentCount = precipitationRows.reduce((sum, row) => sum + row.incidents, 0)
         const weatherOverdue = weatherRows.reduce((sum, row) => (
-            sum + visibleContractors.reduce((contractorSum, item) => contractorSum + row[item.id], 0)
+            sum + ROAD_PRECIPITATION_CATEGORIES.reduce((categorySum, category) => categorySum + Number(row[category.id] ?? 0), 0)
         ), 0)
         const hardestCategory = precipitationRows.slice().sort((left, right) => right.incidents - left.incidents)[0]
+        const weakest = weatherRows.flatMap((row) => (
+            ROAD_PRECIPITATION_CATEGORIES.map((category) => ({
+                contractorName: String(row.contractorName),
+                contractorShortName: String(row.contractorShortName),
+                category: category.label,
+                resiliencePct: Number(row[`${category.id}Resilience`] ?? 0),
+                weatherOverdue: Number(row[category.id] ?? 0),
+            }))
+        )).sort((left, right) => left.resiliencePct - right.resiliencePct || right.weatherOverdue - left.weatherOverdue)[0]
 
         return {
             incidentCount,
             weatherOverdue,
             hardestCategory,
+            weakest,
         }
-    }, [precipitationRows, visibleContractors, weatherRows])
+    }, [precipitationRows, weatherRows])
 
     const selectedContractorsLabel = getSelectedContractorsLabel(selectedContractors)
 
@@ -288,9 +351,9 @@ export function RoadPrecipitationAnalytics() {
                     <CardHeader>
                         <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
-                                <CardTitle>Просрочки подрядчиков из-за непогоды</CardTitle>
+                                <CardTitle>Устойчивость подрядчиков к осадкам</CardTitle>
                                 <CardDescription>
-                                    Месячная динамика по выбранным подрядчикам; лишние линии скрываются фильтром.
+                                    Сравнение по 4 уровням осадков: выше процент - меньше погодных срывов регламента.
                                 </CardDescription>
                             </div>
                             <Badge variant="outline" className="bg-background">
@@ -299,35 +362,56 @@ export function RoadPrecipitationAnalytics() {
                         </div>
                     </CardHeader>
                     <CardContent>
-                        <ChartContainer config={contractorConfig} className="h-[340px] w-full">
-                            <LineChart data={weatherRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                <XAxis dataKey="monthLabel" tickLine={false} axisLine={false} />
-                                <YAxis tickLine={false} axisLine={false} />
-                                <ChartTooltip content={<ChartTooltipContent />} />
-                                <ChartLegend content={<ChartLegendContent />} />
-                                {visibleContractors.map((item) => (
-                                    <Line
-                                        key={item.id}
-                                        type="monotone"
-                                        dataKey={item.id}
-                                        stroke={`var(--color-${item.id})`}
-                                        strokeWidth={2}
-                                        dot={{ r: 3 }}
+                        {weatherRows.length > 0 ? (
+                            <ChartContainer config={weatherComparisonConfig} className="h-[380px] w-full">
+                                <BarChart data={weatherRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                    <XAxis dataKey="contractorShortName" tickLine={false} axisLine={false} tickMargin={8} />
+                                    <YAxis
+                                        tickLine={false}
+                                        axisLine={false}
+                                        allowDecimals={false}
+                                        label={{ value: "Просрочки", angle: -90, position: "insideLeft" }}
                                     />
-                                ))}
-                            </LineChart>
-                        </ChartContainer>
+                                    <ChartTooltip content={<WeatherOverdueTooltip />} />
+                                    <ChartLegend content={<ChartLegendContent />} />
+                                    {ROAD_PRECIPITATION_CATEGORIES.map((category) => (
+                                        <Bar
+                                            key={category.id}
+                                            dataKey={category.id}
+                                            fill={`var(--color-${category.id})`}
+                                            radius={[5, 5, 0, 0]}
+                                            maxBarSize={34}
+                                        />
+                                    ))}
+                                </BarChart>
+                            </ChartContainer>
+                        ) : (
+                            <div className="flex h-[380px] items-center justify-center rounded-lg border bg-muted/20 text-sm text-muted-foreground">
+                                Выберите хотя бы одного подрядчика, чтобы сравнить погодные просрочки.
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             </div>
 
             {totals.hardestCategory && (
                 <Card className="border-amber-500/20 bg-amber-500/[0.06]">
-                    <CardContent className="p-5 text-sm">
-                        Максимальная нагрузка в выбранном разрезе приходится на категорию{" "}
-                        <span className="font-semibold">{totals.hardestCategory.label.toLowerCase()}</span>:{" "}
-                        <span className="font-mono">{totals.hardestCategory.incidents}</span> инцидентов.
+                    <CardContent className="grid gap-3 p-5 text-sm md:grid-cols-2">
+                        <div>
+                            Максимальная нагрузка в выбранном разрезе приходится на категорию{" "}
+                            <span className="font-semibold">{totals.hardestCategory.label.toLowerCase()}</span>:{" "}
+                            <span className="font-mono">{totals.hardestCategory.incidents}</span> инцидентов.
+                        </div>
+                        {totals.weakest && (
+                            <div>
+                                Самая слабая устойчивость:{" "}
+                                <span className="font-semibold">{totals.weakest.contractorShortName}</span>,{" "}
+                                {totals.weakest.category.toLowerCase()} -{" "}
+                                <span className="font-mono">{totals.weakest.resiliencePct}%</span>, просрочек{" "}
+                                <span className="font-mono">{totals.weakest.weatherOverdue}</span>.
+                            </div>
+                        )}
                     </CardContent>
                 </Card>
             )}

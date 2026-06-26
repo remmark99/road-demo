@@ -49,7 +49,7 @@ const statusConfig = {
 
 const efficiencyConfig = {
     efficiencyPct: { label: "Эффективность", color: "hsl(160, 72%, 38%)" },
-    reactionMinutes: { label: "Реакция, мин", color: "hsl(210, 89%, 54%)" },
+    reactionHours: { label: "Реакция, ч", color: "hsl(210, 89%, 54%)" },
 } satisfies ChartConfig
 
 const integerFormat = new Intl.NumberFormat("ru-RU")
@@ -75,7 +75,7 @@ export function RoadCurrentAnalytics() {
                 overdueIncidents: number
                 completedOrders: number
                 efficiencyPct: number
-                reactionMinutes: number
+                reactionHours: number
                 rows: number
             }
         >()
@@ -92,7 +92,7 @@ export function RoadCurrentAnalytics() {
                     overdueIncidents: 0,
                     completedOrders: 0,
                     efficiencyPct: 0,
-                    reactionMinutes: 0,
+                    reactionHours: 0,
                     rows: 0,
                 })
             }
@@ -102,7 +102,7 @@ export function RoadCurrentAnalytics() {
             entry.overdueIncidents += row.overdueIncidents
             entry.completedOrders += row.completedOrders
             entry.efficiencyPct += row.efficiencyPct
-            entry.reactionMinutes += row.reactionMinutes
+            entry.reactionHours += row.reactionHours
             entry.rows += 1
         }
 
@@ -110,7 +110,7 @@ export function RoadCurrentAnalytics() {
             .map((row) => ({
                 ...row,
                 efficiencyPct: row.rows === 0 ? 0 : Math.round(row.efficiencyPct / row.rows),
-                reactionMinutes: row.rows === 0 ? 0 : Math.round(row.reactionMinutes / row.rows),
+                reactionHours: row.rows === 0 ? 0 : Number((row.reactionHours / row.rows).toFixed(1)),
             }))
             .sort((left, right) => left.date.localeCompare(right.date))
     }, [filteredRows])
@@ -122,7 +122,7 @@ export function RoadCurrentAnalytics() {
         const avgReaction =
             filteredRows.length === 0
                 ? 0
-                : Math.round(filteredRows.reduce((sum, row) => sum + row.reactionMinutes, 0) / filteredRows.length)
+                : Number((filteredRows.reduce((sum, row) => sum + row.reactionHours, 0) / filteredRows.length).toFixed(1))
 
         return {
             incidents,
@@ -228,7 +228,7 @@ export function RoadCurrentAnalytics() {
                             <BarChart data={dailyRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="dateLabel" tickLine={false} axisLine={false} minTickGap={18} />
-                                <YAxis tickLine={false} axisLine={false} />
+                                <YAxis tickLine={false} axisLine={false} allowDecimals={false} />
                                 <ChartTooltip content={<ChartTooltipContent />} />
                                 <ChartLegend content={<ChartLegendContent />} />
                                 <Bar dataKey="incidents" fill="var(--color-incidents)" radius={[6, 6, 0, 0]} />
@@ -250,10 +250,27 @@ export function RoadCurrentAnalytics() {
                             <AreaChart data={dailyRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="dateLabel" tickLine={false} axisLine={false} minTickGap={18} />
-                                <YAxis tickLine={false} axisLine={false} />
+                                <YAxis
+                                    yAxisId="efficiency"
+                                    tickLine={false}
+                                    axisLine={false}
+                                    domain={[0, 100]}
+                                    ticks={[0, 25, 50, 75, 100]}
+                                    tickFormatter={(value) => `${value}%`}
+                                />
+                                <YAxis
+                                    yAxisId="reaction"
+                                    orientation="right"
+                                    tickLine={false}
+                                    axisLine={false}
+                                    domain={[0, 24]}
+                                    ticks={[0, 6, 12, 18, 24]}
+                                    tickFormatter={(value) => `${value} ч`}
+                                />
                                 <ChartTooltip content={<ChartTooltipContent />} />
                                 <ChartLegend content={<ChartLegendContent />} />
                                 <Area
+                                    yAxisId="efficiency"
                                     type="monotone"
                                     dataKey="efficiencyPct"
                                     stroke="var(--color-efficiencyPct)"
@@ -262,10 +279,11 @@ export function RoadCurrentAnalytics() {
                                     strokeWidth={2}
                                 />
                                 <Area
+                                    yAxisId="reaction"
                                     type="monotone"
-                                    dataKey="reactionMinutes"
-                                    stroke="var(--color-reactionMinutes)"
-                                    fill="var(--color-reactionMinutes)"
+                                    dataKey="reactionHours"
+                                    stroke="var(--color-reactionHours)"
+                                    fill="var(--color-reactionHours)"
                                     fillOpacity={0.12}
                                     strokeWidth={2}
                                 />
@@ -294,7 +312,7 @@ export function RoadCurrentAnalytics() {
                             <MapPinned className="h-4 w-4 text-primary" />
                             Средняя реакция
                         </div>
-                        <div className="mt-2 text-2xl font-semibold tabular-nums">{totals.avgReaction} мин</div>
+                        <div className="mt-2 text-2xl font-semibold tabular-nums">{totals.avgReaction} ч</div>
                     </CardContent>
                 </Card>
             </div>
