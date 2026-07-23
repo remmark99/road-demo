@@ -1136,37 +1136,147 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     })
   }, [isDark])
 
-  // Add TKO sites layer
+  // Add TKO sites layer (with clustering)
   const addTkoSites = useCallback(() => {
     if (!map.current) return
 
     const sourceId = "tko-sites"
+    const layerId = "tko-sites-layer"
+
     if (map.current.getSource(sourceId)) return
 
+    // Clustered source
     map.current.addSource(sourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+      cluster: true,
+      clusterMaxZoom: 18,
+      clusterRadius: 50
+    })
+
+    // Raw (non-clustered) source
+    map.current.addSource(`${sourceId}-raw`, {
       type: "geojson",
       data: { type: "FeatureCollection", features: [] }
     })
 
+    // Cluster circles
     map.current.addLayer({
-      id: "tko-sites-layer",
-      type: "symbol",
+      id: `${sourceId}-clusters`,
+      type: "circle",
       source: sourceId,
+      filter: ["has", "point_count"],
+      paint: {
+        "circle-radius": [
+          "step",
+          ["get", "point_count"],
+          15,
+          10, 20,
+          50, 25
+        ],
+        "circle-color": "#16a34a",
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff",
+      },
       layout: {
-        "icon-image": "tko-icon",
-        "icon-allow-overlap": true,
-        "icon-size": 1.0
+        "visibility": showClusters ? "visible" : "none"
       }
     })
 
-    // Tooltip on hover
+    // Cluster counts
+    map.current.addLayer({
+      id: `${sourceId}-cluster-count`,
+      type: "symbol",
+      source: sourceId,
+      filter: ["has", "point_count"],
+      layout: {
+        "text-field": "{point_count_abbreviated}",
+        "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        "text-size": 12,
+        "visibility": showClusters ? "visible" : "none"
+      },
+      paint: {
+        "text-color": "#ffffff"
+      }
+    })
+
+    const paintConfig = {
+      "circle-radius": 10,
+      "circle-color": [
+        "case",
+        ["==", ["get", "status"], "active"], "#16a34a",
+        "#9ca3af"
+      ] as any,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#ffffff",
+    }
+
+    const symbolLayout = {
+      "icon-image": "tko-icon",
+      "icon-allow-overlap": true,
+      "icon-size": 0.65,
+      "visibility": "visible"
+    } as any
+
+    // Unclustered points (circle)
+    map.current.addLayer({
+      id: layerId,
+      type: "circle",
+      source: sourceId,
+      filter: ["!", ["has", "point_count"]],
+      paint: paintConfig,
+      layout: { "visibility": "visible" }
+    })
+
+    // Unclustered icon
+    map.current.addLayer({
+      id: `${layerId}-symbol`,
+      type: "symbol",
+      source: sourceId,
+      filter: ["!", ["has", "point_count"]],
+      layout: symbolLayout
+    })
+
+    // Raw points (no clustering)
+    map.current.addLayer({
+      id: `${layerId}-raw`,
+      type: "circle",
+      source: `${sourceId}-raw`,
+      paint: paintConfig,
+      layout: { "visibility": "none" }
+    })
+
+    map.current.addLayer({
+      id: `${layerId}-raw-symbol`,
+      type: "symbol",
+      source: `${sourceId}-raw`,
+      layout: { ...symbolLayout, "visibility": "none" }
+    })
+
+    // Click on cluster to zoom in
+    map.current.on("click", `${sourceId}-clusters`, (e) => {
+      const features = map.current?.queryRenderedFeatures(e.point, {
+        layers: [`${sourceId}-clusters`]
+      })
+      if (!features?.length) return
+      const clusterId = features[0].properties.cluster_id
+      const source = map.current!.getSource(sourceId) as maplibregl.GeoJSONSource
+      source.getClusterExpansionZoom(clusterId).then(zoom => {
+        map.current?.easeTo({
+          center: (features[0].geometry as any).coordinates,
+          zoom: zoom + 1
+        })
+      })
+    })
+
+    // Tooltip on hover (for both clustered unclustered and raw layers)
     const popup = new maplibregl.Popup({
       closeButton: false,
       closeOnClick: false,
       offset: 10,
     })
 
-    map.current.on("mouseenter", "tko-sites-layer", (e) => {
+    const showTooltip = (e: any) => {
       map.current!.getCanvas().style.cursor = "pointer"
       const feature = e.features?.[0]
       if (feature) {
@@ -1189,11 +1299,23 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
           )
           .addTo(map.current!)
       }
-    })
+    }
 
-    map.current.on("mouseleave", "tko-sites-layer", () => {
+    const hideTooltip = () => {
       map.current!.getCanvas().style.cursor = ""
       popup.remove()
+    }
+
+    map.current.on("mouseenter", layerId, showTooltip)
+    map.current.on("mouseleave", layerId, hideTooltip)
+    map.current.on("mouseenter", `${layerId}-raw`, showTooltip)
+    map.current.on("mouseleave", `${layerId}-raw`, hideTooltip)
+
+    map.current.on("mouseenter", `${sourceId}-clusters`, () => {
+      map.current!.getCanvas().style.cursor = "pointer"
+    })
+    map.current.on("mouseleave", `${sourceId}-clusters`, () => {
+      map.current!.getCanvas().style.cursor = ""
     })
   }, [isDark])
 
@@ -1533,14 +1655,29 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   useEffect(() => {
     if (!map.current || !mapLoaded || !tkoSitesData) return
     const source = map.current.getSource("tko-sites") as maplibregl.GeoJSONSource
-    if (source) {
-      source.setData(tkoSitesData)
-      const visibility = hasModule('asr') ? 'visible' : 'none'
-      if (map.current.getLayer('tko-sites-layer')) {
-        map.current.setLayoutProperty('tko-sites-layer', 'visibility', visibility)
+    const rawSource = map.current.getSource("tko-sites-raw") as maplibregl.GeoJSONSource
+    if (!source || !rawSource) return
+
+    source.setData(tkoSitesData)
+    rawSource.setData(tkoSitesData)
+
+    const isVisible = hasModule('asr')
+
+    const clusterLayers = ["tko-sites-clusters", "tko-sites-cluster-count", "tko-sites-layer", "tko-sites-layer-symbol"]
+    const rawLayers = ["tko-sites-layer-raw", "tko-sites-layer-raw-symbol"]
+
+    clusterLayers.forEach(l => {
+      if (map.current!.getLayer(l)) {
+        map.current!.setLayoutProperty(l, "visibility", isVisible && showClusters ? "visible" : "none")
       }
-    }
-  }, [mapLoaded, tkoSitesData, hasModule, addTkoSites])
+    })
+
+    rawLayers.forEach(l => {
+      if (map.current!.getLayer(l)) {
+        map.current!.setLayoutProperty(l, "visibility", isVisible && !showClusters ? "visible" : "none")
+      }
+    })
+  }, [mapLoaded, tkoSitesData, hasModule, addTkoSites, showClusters])
 
   // Sync camera data to the GeoJSON source
 
