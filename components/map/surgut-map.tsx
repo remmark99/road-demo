@@ -9,8 +9,9 @@ import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { fetchBusStopHeatmapData, fetchBusStopOccupancyHeatmapData, type BusStopHeatmapResult, type BusStopOccupancyHeatmapResult } from "@/lib/api/bus-stop-heatmap"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
 import { fetchAnchorsGeoJSON } from "@/lib/api/anchors"
+import { fetchTkoSitesGeoJSON } from "@/lib/api/tko-sites"
 import { SHORELINE_GEOJSON } from "@/lib/mock/shoreline"
-import type { Camera, RoadStatus, AnchorsGeoJSON } from "@/lib/types"
+import type { Camera, RoadStatus, AnchorsGeoJSON, TkoSitesGeoJSON } from "@/lib/types"
 
 import { VideoModal } from "./video-modal"
 import { BusStopModal, type SelectedBusStop } from "./bus-stop-modal"
@@ -208,6 +209,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [busStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
   const [parksData, setParksData] = useState<any>(null)
   const [anchorsData, setAnchorsData] = useState<AnchorsGeoJSON | null>(null)
+  const [tkoSitesData, setTkoSitesData] = useState<TkoSitesGeoJSON | null>(null)
   const [heatmapData, setHeatmapData] = useState<BusStopHeatmapResult | null>(null)
   const [heatmapMode, setHeatmapMode] = useState<"safety" | "occupancy">("safety")
   const [occupancyData, setOccupancyData] = useState<BusStopOccupancyHeatmapResult | null>(null)
@@ -1134,6 +1136,67 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     })
   }, [isDark])
 
+  // Add TKO sites layer
+  const addTkoSites = useCallback(() => {
+    if (!map.current) return
+
+    const sourceId = "tko-sites"
+    if (map.current.getSource(sourceId)) return
+
+    map.current.addSource(sourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    })
+
+    map.current.addLayer({
+      id: "tko-sites-layer",
+      type: "symbol",
+      source: sourceId,
+      layout: {
+        "icon-image": "tko-icon",
+        "icon-allow-overlap": true,
+        "icon-size": 1.0
+      }
+    })
+
+    // Tooltip on hover
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 10,
+    })
+
+    map.current.on("mouseenter", "tko-sites-layer", (e) => {
+      map.current!.getCanvas().style.cursor = "pointer"
+      const feature = e.features?.[0]
+      if (feature) {
+        const props = feature.properties as any
+        const statusColor = props.status === 'active' ? '#4ade80' : '#9ca3af'
+        const statusLabel = props.status === 'active' ? 'Активна' : 'Неактивна'
+        popup
+          .setLngLat((e as any).lngLat)
+          .setHTML(
+            `<div class="p-2 text-sm">
+                <div class="font-semibold text-emerald-500 flex items-center gap-1.5 mb-0.5">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                  ${props.name}
+                </div>
+                ${props.description ? `<div class="text-xs text-muted-foreground">${props.description}</div>` : ''}
+                <div class="mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full inline-block border" style="background: ${statusColor}15; color: ${statusColor}; border-color: ${statusColor}33">
+                  ${statusLabel}
+                </div>
+              </div>`
+          )
+          .addTo(map.current!)
+      }
+    })
+
+    map.current.on("mouseleave", "tko-sites-layer", () => {
+      map.current!.getCanvas().style.cursor = ""
+      popup.remove()
+    })
+  }, [isDark])
+
   // Add heatmap layer for bus stop alert density
   const addBusStopHeatmap = useCallback(() => {
     if (!map.current) return
@@ -1253,6 +1316,12 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     } else {
       setAnchorsData({ type: "FeatureCollection", features: [] })
     }
+
+    if (hasModule('asr')) {
+      fetchTkoSitesGeoJSON(modules).then(setTkoSitesData)
+    } else {
+      setTkoSitesData({ type: "FeatureCollection", features: [] })
+    }
   }, [modules, hasModule, modulesLoading])
 
   // Realtime subscription for anchors
@@ -1306,13 +1375,14 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       addParks()
       addShoreline()
       addAnchors()
+      addTkoSites()
       addRoads()
       addBusStops()
       addBusStopHeatmap()
       addCameraLayers()
       addAnchors()
     })
-  }, [isDark, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline, mapLoaded])
+  }, [isDark, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline, addTkoSites, mapLoaded])
 
   // Initialize map - this should only run once
   useEffect(() => {
@@ -1347,6 +1417,12 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         const anchorImg = new window.Image(24, 24)
         anchorImg.onload = () => map.current?.addImage('anchor-icon', anchorImg)
         anchorImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(anchorSvg)
+
+        // TKO (waste) icon - green trash bin
+        const tkoSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28" fill="none"><circle cx="14" cy="14" r="12" fill="#16a34a" stroke="#ffffff" stroke-width="2"/><path d="M9 10h10M18 10v9c0 .6-.4 1-1 1h-6c-.6 0-1-.4-1-1v-9M11 10V9c0-.6.4-1 1-1h4c.6 0 1 .4 1 1v1" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M12.5 13v4M15.5 13v4" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round"/></svg>`
+        const tkoImg = new window.Image(28, 28)
+        tkoImg.onload = () => map.current?.addImage('tko-icon', tkoImg)
+        tkoImg.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(tkoSvg)
       }
       setMapLoaded(true)
     })
@@ -1369,6 +1445,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     addParks()
     addShoreline()
     addAnchors()
+    addTkoSites()
     addRoads()
     addBusStops()
     addBusStopHeatmap()
@@ -1394,7 +1471,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         map.current?.off('click', clickHandler)
       }
     }
-  }, [mapLoaded, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline])
+  }, [mapLoaded, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline, addTkoSites])
 
   // Sync parks data to source
   useEffect(() => {
@@ -1451,6 +1528,19 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       map.current.setLayoutProperty('shoreline-layer', 'visibility', hasModule('shore') ? 'visible' : 'none')
     }
   }, [mapLoaded, hasModule, addShoreline])
+
+  // Sync TKO sites data to source
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !tkoSitesData) return
+    const source = map.current.getSource("tko-sites") as maplibregl.GeoJSONSource
+    if (source) {
+      source.setData(tkoSitesData)
+      const visibility = hasModule('asr') ? 'visible' : 'none'
+      if (map.current.getLayer('tko-sites-layer')) {
+        map.current.setLayoutProperty('tko-sites-layer', 'visibility', visibility)
+      }
+    }
+  }, [mapLoaded, tkoSitesData, hasModule, addTkoSites])
 
   // Sync camera data to the GeoJSON source
 

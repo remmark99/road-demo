@@ -88,3 +88,26 @@ export interface AnchorsGeoJSON {
     }
   }[]
 }
+
+export interface TkoSite {
+  id: number
+  siteIndex: number
+  name: string
+  description: string | null
+  lat: number
+  lng: number
+  status: 'active' | 'inactive'
+  module: string
+}
+
+export interface TkoSitesGeoJSON {
+  type: 'FeatureCollection'
+  features: {
+    type: 'Feature'
+    properties: TkoSite
+    geometry: {
+      type: 'Point'
+      coordinates: [number, number]
+    }
+  }[]
+}
