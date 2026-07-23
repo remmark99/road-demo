@@ -65,6 +65,7 @@ const MODULE_LABELS: Record<string, string> = {
   stops: 'Остановки',
   parks: 'Безопасный парк',
   transport: 'Контроль транспорта',
+  asr: 'АСР',
 }
 
 export function Navigation() {
