@@ -18,6 +18,7 @@ import { BusStopModal, type SelectedBusStop } from "./bus-stop-modal"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useModuleAccess } from "@/components/providers/module-context"
+import { useCity } from "@/components/providers/city-context"
 import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -199,6 +200,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   }, [spiderifiedStop])
 
   const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
+  const { city } = useCity()
   const [isDark, setIsDark] = useState(true)
   const lastThemeRef = useRef(isDark)
   const [cameras, setCameras] = useState<Camera[]>([])
@@ -1515,8 +1517,8 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     map.current = new maplibregl.Map({
       container: mapContainer.current,
       style: getMapStyle(initialDark),
-      center: [73.406, 61.253],
-      zoom: 15
+      center: [city.lng, city.lat],
+      zoom: city.zoom
     })
 
     map.current.addControl(new maplibregl.NavigationControl(), "top-right")
@@ -1555,6 +1557,17 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Fly to city when it changes
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+    map.current.flyTo({
+      center: [city.lng, city.lat],
+      zoom: city.zoom,
+      duration: 2000,
+      essential: true,
+    })
+  }, [city, mapLoaded])
 
 
 

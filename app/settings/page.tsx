@@ -88,7 +88,7 @@ const MODULE_INFO: Record<string, { name: string; description: string }> = {
   stops: { name: 'Остановки', description: 'Аналитика автобусных остановок' },
   parks: { name: 'Безопасный парк', description: 'Мониторинг парковых территорий' },
   transport: { name: 'Контроль транспорта', description: 'Отслеживание транспортных средств' },
-  asr: { name: 'АСР', description: 'Администрация Сургутского района' },
+  asr: { name: 'Площадки ТКО', description: 'Мониторинг площадок ТКО (мусорных контейнеров)' },
 }
 
 function getReportPeriodLabel(report: AiReportResponse) {

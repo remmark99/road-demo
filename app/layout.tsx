@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
 import { Toaster } from "@/components/ui/sonner"
 import { ModuleProvider } from "@/components/providers/module-context"
+import { CityProvider } from "@/components/providers/city-context"
 
 export const metadata: Metadata = {
   title: {
@@ -103,9 +104,11 @@ export default function RootLayout({
         />
       </head>
       <body className={`font-sans antialiased`}>
-        <ModuleProvider>
-          {children}
-        </ModuleProvider>
+        <CityProvider>
+          <ModuleProvider>
+            {children}
+          </ModuleProvider>
+        </CityProvider>
         <Toaster position="bottom-right" />
         <Analytics />
 

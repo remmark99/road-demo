@@ -45,12 +45,15 @@ import {
   LayoutGrid,
   Eye,
   EyeOff,
+  MapPin,
+  ChevronDown,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { cn } from "@/lib/utils"
 import { LogoIcon } from "@/components/logo"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
 import { useModuleAccess } from "@/components/providers/module-context"
+import { useCity, CITIES } from "@/components/providers/city-context"
 
 const navItems = [
   { href: "/", label: "Карта", icon: Map },
@@ -65,7 +68,7 @@ const MODULE_LABELS: Record<string, string> = {
   stops: 'Остановки',
   parks: 'Безопасный парк',
   transport: 'Контроль транспорта',
-  asr: 'АСР',
+  asr: 'Площадки ТКО',
 }
 
 export function Navigation() {
@@ -75,6 +78,7 @@ export function Navigation() {
   const [authLoading, setAuthLoading] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
   const { role, allModules, modules: activeModules, toggleModule } = useModuleAccess()
+  const { city, setCity } = useCity()
 
   useEffect(() => {
     const supabase = createClient()
@@ -241,6 +245,34 @@ export function Navigation() {
               Вектор Города
             </span>
           </Link>
+
+          {/* City Switcher */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="gap-1.5 h-8 px-3 text-sm font-medium">
+                <MapPin className="h-3.5 w-3.5 text-primary" />
+                <span className="hidden sm:inline">{city.name}</span>
+                <ChevronDown className="h-3 w-3 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[160px]">
+              <DropdownMenuLabel className="text-xs text-muted-foreground">Выбрать город</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {CITIES.map((c) => (
+                <DropdownMenuItem
+                  key={c.id}
+                  onClick={() => setCity(c)}
+                  className={cn(
+                    "gap-2 cursor-pointer",
+                    city.id === c.id && "bg-primary/10 text-primary font-medium"
+                  )}
+                >
+                  <MapPin className={cn("h-3.5 w-3.5", city.id === c.id ? "text-primary" : "text-muted-foreground")} />
+                  {c.name}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Separator orientation="vertical" className="h-6 hidden lg:block" />
 
