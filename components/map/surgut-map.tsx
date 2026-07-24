@@ -136,6 +136,20 @@ function generateCirclePolygon(lat: number, lng: number, radius: number): [numbe
   return points
 }
 
+// Haversine distance in meters between two coordinates
+const TKO_COVERAGE_RADIUS = 150 // meters — camera considered "covering" if within this
+const TKO_WARN_RADIUS = 300 // meters — yellow zone
+
+function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLng = (lng2 - lng1) * Math.PI / 180
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) ** 2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+}
+
 interface SurgutMapProps {
   selectedTime?: Date
   statusOverride?: Record<string, RoadStatus>
@@ -227,6 +241,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [heatmapAlertTypes, setHeatmapAlertTypes] = useState<StopSafetyAlertType[]>([...STOP_SAFETY_ALERT_TYPES])
 
   const [selectedContractor, setSelectedContractor] = useState<string>("all")
+  const [showTkoCoverage, setShowTkoCoverage] = useState(false)
 
   // Add roads as a single GeoJSON source with styled layers
   const addRoads = useCallback(() => {
@@ -2012,6 +2027,210 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     })
   }, [showClusters, mapLoaded, busStopsData, cameras])
 
+  // TKO coverage analysis layers
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+
+    const coverageSourceId = "tko-coverage-circles"
+    const coverageLayerFill = "tko-coverage-fill"
+    const coverageLayerLine = "tko-coverage-line"
+    const blindSpotsSourceId = "tko-blind-spots"
+    const blindSpotsLayerCircle = "tko-blind-spots-circle"
+    const blindSpotsLayerPulse = "tko-blind-spots-pulse"
+
+    // Create sources/layers if they don't exist
+    if (!map.current.getSource(coverageSourceId)) {
+      map.current.addSource(coverageSourceId, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] }
+      })
+      map.current.addLayer({
+        id: coverageLayerFill,
+        type: "fill",
+        source: coverageSourceId,
+        paint: {
+          "fill-color": "#16a34a",
+          "fill-opacity": 0.08
+        },
+        layout: { "visibility": "none" }
+      })
+      map.current.addLayer({
+        id: coverageLayerLine,
+        type: "line",
+        source: coverageSourceId,
+        paint: {
+          "line-color": "#16a34a",
+          "line-width": 1,
+          "line-dasharray": [3, 2],
+          "line-opacity": 0.4
+        },
+        layout: { "visibility": "none" }
+      })
+    }
+
+    if (!map.current.getSource(blindSpotsSourceId)) {
+      map.current.addSource(blindSpotsSourceId, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] }
+      })
+      // Outer pulsing ring
+      map.current.addLayer({
+        id: blindSpotsLayerPulse,
+        type: "circle",
+        source: blindSpotsSourceId,
+        paint: {
+          "circle-radius": 18,
+          "circle-color": "transparent",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": [
+            "case",
+            ["==", ["get", "coverage"], "none"], "#ef4444",
+            "#f59e0b"
+          ],
+          "circle-stroke-opacity": 0.6
+        },
+        layout: { "visibility": "none" }
+      })
+      // Inner colored dot
+      map.current.addLayer({
+        id: blindSpotsLayerCircle,
+        type: "circle",
+        source: blindSpotsSourceId,
+        paint: {
+          "circle-radius": 6,
+          "circle-color": [
+            "case",
+            ["==", ["get", "coverage"], "none"], "#ef4444",
+            ["==", ["get", "coverage"], "partial"], "#f59e0b",
+            "#16a34a"
+          ],
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff"
+        },
+        layout: { "visibility": "none" }
+      })
+    }
+
+    if (!showTkoCoverage || !hasModule('asr') || !tkoSitesData) {
+      // Hide layers
+      const layers = [coverageLayerFill, coverageLayerLine, blindSpotsLayerCircle, blindSpotsLayerPulse]
+      layers.forEach(l => {
+        if (map.current!.getLayer(l)) map.current!.setLayoutProperty(l, "visibility", "none")
+      })
+      return
+    }
+
+    // Filter ONLY cameras belonging to 'asr' module (including offline cameras)
+    const asrCameras = cameras.filter(c => c.module === 'asr')
+
+    // Build coverage circles around ASR cameras
+    const circlesGeoJSON: any = {
+      type: "FeatureCollection",
+      features: asrCameras.map(cam => ({
+        type: "Feature",
+        properties: { name: cam.name },
+        geometry: {
+          type: "Polygon",
+          coordinates: [generateCirclePolygon(cam.lat, cam.lng, TKO_COVERAGE_RADIUS)]
+        }
+      }))
+    }
+
+    const coverageSource = map.current.getSource(coverageSourceId) as maplibregl.GeoJSONSource
+    if (coverageSource) coverageSource.setData(circlesGeoJSON)
+
+    // For each TKO site, compute distance to nearest ASR camera
+    const blindSpotFeatures = tkoSitesData.features.map(f => {
+      const siteLng = f.geometry?.coordinates?.[0] ?? f.properties?.lng
+      const siteLat = f.geometry?.coordinates?.[1] ?? f.properties?.lat
+
+      if (!siteLat || !siteLng) return null
+
+      let minDist = Infinity
+      for (const cam of asrCameras) {
+        const d = haversineDistance(siteLat, siteLng, cam.lat, cam.lng)
+        if (d < minDist) minDist = d
+      }
+
+      let coverage: string
+      if (asrCameras.length === 0 || minDist > TKO_WARN_RADIUS) {
+        coverage = "none" // red
+      } else if (minDist > TKO_COVERAGE_RADIUS) {
+        coverage = "partial" // yellow
+      } else {
+        coverage = "covered" // green — camera is in coverage range
+      }
+
+      // Only show uncovered (none) / partially covered (partial)
+      if (coverage === "covered") return null
+
+      return {
+        type: "Feature",
+        properties: {
+          ...f.properties,
+          coverage,
+          nearestCameraDistance: Math.round(minDist),
+        },
+        geometry: f.geometry
+      }
+    }).filter(Boolean)
+
+    const blindSource = map.current.getSource(blindSpotsSourceId) as maplibregl.GeoJSONSource
+    if (blindSource) blindSource.setData({ type: "FeatureCollection", features: blindSpotFeatures as any })
+
+    // Show layers
+    const layers = [coverageLayerFill, coverageLayerLine, blindSpotsLayerCircle, blindSpotsLayerPulse]
+    layers.forEach(l => {
+      if (map.current!.getLayer(l)) map.current!.setLayoutProperty(l, "visibility", "visible")
+    })
+
+    // Tooltip for blind spots
+    const popup = new maplibregl.Popup({
+      closeButton: false,
+      closeOnClick: false,
+      offset: 12,
+    })
+
+    const onBlindSpotEnter = (e: any) => {
+      map.current!.getCanvas().style.cursor = "pointer"
+      const feature = e.features?.[0]
+      if (feature) {
+        const props = feature.properties as any
+        const isNone = props.coverage === "none"
+        const titleColor = isNone ? "#ef4444" : "#f59e0b"
+        const badgeLabel = isNone ? "🔴 Слепая зона" : "🟡 Частичное покрытие"
+        const distText = props.nearestCameraDistance === 999999 || isNaN(props.nearestCameraDistance)
+          ? "Камеры отсутствуют"
+          : `${props.nearestCameraDistance} м до ближайшей камеры`
+
+        popup
+          .setLngLat((e as any).lngLat)
+          .setHTML(
+            `<div class="p-2 text-sm">
+              <div class="font-semibold flex items-center gap-1.5 mb-0.5" style="color: ${titleColor}">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                ${props.name}
+              </div>
+              <div class="text-xs text-muted-foreground mb-1">${distText}</div>
+              <div class="text-[10px] font-medium px-1.5 py-0.5 rounded-full inline-block border" style="background: ${titleColor}15; color: ${titleColor}; border-color: ${titleColor}33">
+                ${badgeLabel}
+              </div>
+            </div>`
+          )
+          .addTo(map.current!)
+      }
+    }
+
+    const onBlindSpotLeave = () => {
+      map.current!.getCanvas().style.cursor = ""
+      popup.remove()
+    }
+
+    map.current.on("mouseenter", blindSpotsLayerCircle, onBlindSpotEnter)
+    map.current.on("mouseleave", blindSpotsLayerCircle, onBlindSpotLeave)
+
+  }, [showTkoCoverage, mapLoaded, cameras, tkoSitesData, hasModule])
+
   // Update/show FOV
   useEffect(() => {
     if (!map.current || !mapLoaded) return
@@ -2259,6 +2478,33 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                     {heatmapMode === "safety" && heatmapData
                       ? `${heatmapData.totalAlerts} событий за выбранный период`
                       : "Загруженность по датчикам пассажиропотока"}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* TKO Coverage Analysis */}
+            {hasModule('asr') && (
+              <div className="space-y-3">
+                <div className="font-medium text-sm border-b pb-1 mb-2">Площадки ТКО (🗑️)</div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="tko-coverage" checked={showTkoCoverage} onCheckedChange={(checked) => setShowTkoCoverage(!!checked)} />
+                  <Label htmlFor="tko-coverage" className="text-sm cursor-pointer font-medium">Анализ покрытия</Label>
+                </div>
+                {showTkoCoverage && (
+                  <div className="text-xs text-muted-foreground pl-6 -mt-1 space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" />
+                      <span>Слепая зона (&gt;{TKO_WARN_RADIUS}м до камеры)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
+                      <span>Частичное покрытие ({TKO_COVERAGE_RADIUS}–{TKO_WARN_RADIUS}м)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full border border-dashed border-[#16a34a] bg-[#16a34a]/10" />
+                      <span>Зона покрытия камер ({TKO_COVERAGE_RADIUS}м)</span>
+                    </div>
                   </div>
                 )}
               </div>
