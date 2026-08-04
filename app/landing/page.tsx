@@ -106,6 +106,20 @@ const MODULES = [
         dotColor: "bg-sky-400",
         tags: ["АДМС", "Метеограмма", "ИТС"],
     },
+    {
+        id: "tko",
+        title: "Мониторинг ТКО",
+        subtitle: "Контроль обращения с твёрдыми коммунальными отходами",
+        description: "Мониторинг контейнерных площадок, контроль графиков вывоза, аналитика наполненности и маршрутов спецтехники.",
+        image: "/landing/tko.svg",
+        href: "#",
+        color: "from-lime-500/20 to-yellow-500/10",
+        borderColor: "border-lime-500/30 hover:border-lime-400/60",
+        glowColor: "group-hover:shadow-lime-500/20",
+        accentColor: "text-lime-400",
+        dotColor: "bg-lime-400",
+        tags: ["Скоро", "ТКО", "Спецтехника"],
+    },
 ]
 
 const PRICING = [
@@ -192,6 +206,18 @@ const PRICING = [
         accentColor: "text-sky-500 dark:text-sky-400",
         dotColor: "bg-sky-400",
         features: ["Бессрочная лицензия", "Интеграция с АДМС", "Метеограмма и прогнозы", "Оповещения и рекомендации"],
+    },
+    {
+        id: "tko",
+        title: "Мониторинг ТКО",
+        description: "Контроль контейнерных площадок, графиков вывоза ТКО, аналитика наполненности и маршрутов спецтехники",
+        license: null,
+        support: null,
+        color: "from-lime-500/20 to-yellow-500/10",
+        borderColor: "border-lime-500/30 hover:border-lime-400/60",
+        accentColor: "text-lime-500 dark:text-lime-400",
+        dotColor: "bg-lime-400",
+        features: ["Бессрочная лицензия", "Контроль площадок", "Аналитика маршрутов", "Графики вывоза"],
     },
 ]
 
@@ -365,7 +391,7 @@ export default function LandingPage() {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {MODULES.map((mod) => {
                             const isExternal = mod.href.startsWith("http")
-                            const isComingSoon = mod.id === "shore" || mod.id === "transport" || mod.id === "park"
+                            const isComingSoon = mod.id === "shore" || mod.id === "transport" || mod.id === "park" || mod.id === "tko"
                             const statusColorMap: Record<string, string> = { roads: 'text-amber-600', stops: 'text-teal-600', procurement: 'text-rose-600', meteo: 'text-sky-600' }
                             const statusColor = statusColorMap[mod.id] ?? 'text-blue-600'
                             const CardWrapper = isExternal ? 'a' : Link

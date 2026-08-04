@@ -1,0 +1,219 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 800" fill="none">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="800" y2="800">
+      <stop offset="0%" stop-color="#0a0f06"/>
+      <stop offset="100%" stop-color="#0d1208"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glow-lg">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="800" fill="url(#bg)"/>
+
+  <!-- Ambient glow -->
+  <ellipse cx="400" cy="420" rx="300" ry="200" fill="#84cc16" opacity="0.04" filter="url(#glow-lg)"/>
+
+  <!-- ========== ISOMETRIC GROUND PLATFORM ========== -->
+  <g filter="url(#glow)">
+    <!-- Main platform (isometric diamond) -->
+    <polygon points="400,560 600,460 400,360 200,460" 
+             fill="#84cc16" fill-opacity="0.03" 
+             stroke="#84cc16" stroke-width="1.5" stroke-opacity="0.5"/>
+    <!-- Platform thickness left -->
+    <polygon points="200,460 200,480 400,580 400,560" 
+             fill="#84cc16" fill-opacity="0.02" 
+             stroke="#84cc16" stroke-width="1" stroke-opacity="0.25"/>
+    <!-- Platform thickness right -->
+    <polygon points="400,560 400,580 600,480 600,460" 
+             fill="#84cc16" fill-opacity="0.015" 
+             stroke="#84cc16" stroke-width="1" stroke-opacity="0.2"/>
+  </g>
+
+  <!-- Isometric grid lines on platform -->
+  <g stroke="#84cc16" stroke-opacity="0.08" stroke-width="0.5">
+    <line x1="300" y1="410" x2="500" y2="510"/>
+    <line x1="350" y1="385" x2="550" y2="485"/>
+    <line x1="450" y1="385" x2="250" y2="485"/>
+    <line x1="500" y1="410" x2="300" y2="510"/>
+  </g>
+
+  <!-- ========== DUMPSTER 1 (back-left, large) ========== -->
+  <g filter="url(#glow)">
+    <!-- Body front-left face -->
+    <polygon points="290,420 290,360 350,330 350,390" 
+             fill="#84cc16" fill-opacity="0.04"
+             stroke="#a3e635" stroke-width="1.5" stroke-opacity="0.7"/>
+    <!-- Body front-right face -->
+    <polygon points="350,330 350,390 420,425 420,365" 
+             fill="#84cc16" fill-opacity="0.025"
+             stroke="#a3e635" stroke-width="1.5" stroke-opacity="0.5"/>
+    <!-- Body top face -->
+    <polygon points="290,360 350,330 420,365 360,395" 
+             fill="#84cc16" fill-opacity="0.06"
+             stroke="#a3e635" stroke-width="1.5" stroke-opacity="0.8"/>
+    <!-- Lid (slightly open/angled) -->
+    <polygon points="288,362 348,332 352,325 292,355" 
+             fill="#a3e635" fill-opacity="0.06"
+             stroke="#a3e635" stroke-width="1.2" stroke-opacity="0.6"/>
+    <!-- Horizontal ribs on front-left -->
+    <line x1="293" y1="380" x2="347" y2="352" stroke="#a3e635" stroke-width="0.8" stroke-opacity="0.3"/>
+    <line x1="293" y1="400" x2="347" y2="372" stroke="#a3e635" stroke-width="0.8" stroke-opacity="0.3"/>
+    <!-- Wheels -->
+    <ellipse cx="300" cy="422" rx="6" ry="3" fill="none" stroke="#a3e635" stroke-width="1" stroke-opacity="0.4"/>
+    <ellipse cx="340" cy="402" rx="6" ry="3" fill="none" stroke="#a3e635" stroke-width="1" stroke-opacity="0.4"/>
+  </g>
+
+  <!-- ========== DUMPSTER 2 (back-right, large) ========== -->
+  <g filter="url(#glow)">
+    <!-- Body front-left face -->
+    <polygon points="410,440 410,380 470,350 470,410" 
+             fill="#84cc16" fill-opacity="0.04"
+             stroke="#84cc16" stroke-width="1.5" stroke-opacity="0.6"/>
+    <!-- Body front-right face -->
+    <polygon points="470,350 470,410 540,445 540,385" 
+             fill="#84cc16" fill-opacity="0.025"
+             stroke="#84cc16" stroke-width="1.5" stroke-opacity="0.45"/>
+    <!-- Body top face -->
+    <polygon points="410,380 470,350 540,385 480,415" 
+             fill="#84cc16" fill-opacity="0.05"
+             stroke="#84cc16" stroke-width="1.5" stroke-opacity="0.7"/>
+    <!-- Lid closed -->
+    <polygon points="408,382 468,352 472,347 412,377" 
+             fill="#84cc16" fill-opacity="0.05"
+             stroke="#84cc16" stroke-width="1.2" stroke-opacity="0.5"/>
+    <!-- Horizontal ribs -->
+    <line x1="413" y1="400" x2="467" y2="372" stroke="#84cc16" stroke-width="0.8" stroke-opacity="0.25"/>
+    <line x1="413" y1="420" x2="467" y2="392" stroke="#84cc16" stroke-width="0.8" stroke-opacity="0.25"/>
+    <!-- Wheels -->
+    <ellipse cx="420" cy="442" rx="6" ry="3" fill="none" stroke="#84cc16" stroke-width="1" stroke-opacity="0.35"/>
+    <ellipse cx="460" cy="422" rx="6" ry="3" fill="none" stroke="#84cc16" stroke-width="1" stroke-opacity="0.35"/>
+  </g>
+
+  <!-- ========== SMALL BIN 1 (front-left) ========== -->
+  <g filter="url(#glow)">
+    <!-- Body -->
+    <polygon points="260,480 260,450 295,433 295,463" 
+             fill="#65a30d" fill-opacity="0.04"
+             stroke="#a3e635" stroke-width="1.2" stroke-opacity="0.55"/>
+    <polygon points="295,433 295,463 330,480 330,450" 
+             fill="#65a30d" fill-opacity="0.025"
+             stroke="#a3e635" stroke-width="1.2" stroke-opacity="0.4"/>
+    <!-- Top -->
+    <polygon points="260,450 295,433 330,450 295,467" 
+             fill="#a3e635" fill-opacity="0.05"
+             stroke="#a3e635" stroke-width="1.2" stroke-opacity="0.6"/>
+    <!-- Lid flap -->
+    <rect x="280" y="438" width="30" height="3" rx="1" fill="#a3e635" fill-opacity="0.1" 
+          transform="rotate(-27, 295, 440)" stroke="#a3e635" stroke-width="0.8" stroke-opacity="0.3"/>
+  </g>
+
+  <!-- ========== SMALL BIN 2 (front-center) ========== -->
+  <g filter="url(#glow)">
+    <polygon points="340,500 340,470 375,453 375,483" 
+             fill="#65a30d" fill-opacity="0.04"
+             stroke="#a3e635" stroke-width="1.2" stroke-opacity="0.5"/>
+    <polygon points="375,453 375,483 410,500 410,470" 
+             fill="#65a30d" fill-opacity="0.025"
+             stroke="#a3e635" stroke-width="1.2" stroke-opacity="0.35"/>
+    <!-- Top -->
+    <polygon points="340,470 375,453 410,470 375,487" 
+             fill="#a3e635" fill-opacity="0.05"
+             stroke="#a3e635" stroke-width="1.2" stroke-opacity="0.55"/>
+  </g>
+
+  <!-- ========== FENCE / ENCLOSURE (3 sides) ========== -->
+  <g stroke="#84cc16" stroke-opacity="0.2" stroke-width="1">
+    <!-- Back-left fence -->
+    <line x1="250" y1="430" x2="250" y2="465"/>
+    <line x1="270" y1="420" x2="270" y2="455"/>
+    <line x1="250" y1="435" x2="270" y2="425"/>
+    <line x1="250" y1="450" x2="270" y2="440"/>
+    <!-- Back fence top rail -->
+    <line x1="270" y1="420" x2="430" y2="340"/>
+    <line x1="270" y1="455" x2="270" y2="420" stroke-opacity="0.15"/>
+    <!-- Back-right fence -->
+    <line x1="550" y1="450" x2="550" y2="485"/>
+    <line x1="530" y1="440" x2="530" y2="475"/>
+    <line x1="530" y1="445" x2="550" y2="455"/>
+    <line x1="530" y1="460" x2="550" y2="470"/>
+  </g>
+
+  <!-- ========== CAMERA POLE ========== -->
+  <g filter="url(#glow)">
+    <!-- Pole -->
+    <line x1="560" y1="470" x2="560" y2="230" 
+          stroke="#a3e635" stroke-width="2" stroke-opacity="0.7"/>
+    <!-- Pole base (isometric circle) -->
+    <ellipse cx="560" cy="470" rx="12" ry="6" 
+             fill="#a3e635" fill-opacity="0.05" 
+             stroke="#a3e635" stroke-width="1.2" stroke-opacity="0.4"/>
+    
+    <!-- Camera arm extending left -->
+    <line x1="560" y1="240" x2="530" y2="235" 
+          stroke="#a3e635" stroke-width="2" stroke-opacity="0.7"/>
+    
+    <!-- Camera body -->
+    <g transform="translate(515, 228)">
+      <!-- Camera housing -->
+      <polygon points="0,0 25,5 25,18 0,13" 
+               fill="#a3e635" fill-opacity="0.08"
+               stroke="#a3e635" stroke-width="1.5" stroke-opacity="0.8"/>
+      <!-- Lens -->
+      <ellipse cx="2" cy="7" rx="4" ry="5" 
+               fill="#a3e635" fill-opacity="0.15"
+               stroke="#a3e635" stroke-width="1.2" stroke-opacity="0.9"/>
+      <!-- Inner lens -->
+      <ellipse cx="2" cy="7" rx="2" ry="2.5" 
+               fill="#a3e635" fill-opacity="0.3"/>
+      <!-- Top detail -->
+      <line x1="5" y1="-2" x2="20" y2="2" stroke="#a3e635" stroke-width="1" stroke-opacity="0.4"/>
+    </g>
+
+    <!-- Camera view cone (field of view) -->
+    <polygon points="517,235 340,370 280,340" 
+             fill="#a3e635" fill-opacity="0.025"
+             stroke="#a3e635" stroke-width="0.5" stroke-opacity="0.12"/>
+    <!-- Scan lines inside cone -->
+    <line x1="517" y1="235" x2="310" y2="355" stroke="#a3e635" stroke-width="0.3" stroke-opacity="0.08"/>
+    <line x1="517" y1="235" x2="360" y2="365" stroke="#a3e635" stroke-width="0.3" stroke-opacity="0.06"/>
+  </g>
+
+  <!-- ========== SIGNAL / STATUS INDICATOR ========== -->
+  <!-- Small blinking indicator on camera -->
+  <circle cx="535" cy="226" r="2.5" fill="#a3e635" opacity="0.9"/>
+  <circle cx="535" cy="226" r="6" fill="#a3e635" opacity="0.15"/>
+
+  <!-- Signal waves from camera -->
+  <g stroke="#a3e635" fill="none" stroke-width="1" opacity="0.2">
+    <path d="M 570,225 C 575,220 580,225 580,230" stroke-opacity="0.3"/>
+    <path d="M 574,220 C 582,212 590,222 590,235" stroke-opacity="0.2"/>
+    <path d="M 578,215 C 589,204 600,218 600,238" stroke-opacity="0.1"/>
+  </g>
+
+  <!-- ========== SUBTLE GROUND DETAILS ========== -->
+  <!-- Shadow under dumpsters -->
+  <ellipse cx="360" cy="430" rx="80" ry="15" fill="#84cc16" opacity="0.02"/>
+  <ellipse cx="480" cy="450" rx="70" ry="12" fill="#84cc16" opacity="0.015"/>
+
+  <!-- Small debris/leaves particles -->
+  <g fill="#a3e635" opacity="0.15">
+    <circle cx="320" cy="510" r="1.5"/>
+    <circle cx="380" cy="530" r="1"/>
+    <circle cx="450" cy="520" r="1.5"/>
+    <circle cx="280" cy="490" r="1"/>
+    <circle cx="500" cy="500" r="1.2"/>
+  </g>
+</svg>
