@@ -52,7 +52,21 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
                         .single()
 
                     if (data && !error && mounted) {
-                        const dbModules: string[] = data.modules || []
+                        let dbModules: string[] = data.modules || []
+
+                        // Fetch system signed license from /api/license
+                        try {
+                            const licRes = await fetch('/api/license')
+                            if (licRes.ok) {
+                                const licData = await licRes.json()
+                                if (licData.valid && Array.isArray(licData.modules)) {
+                                    dbModules = dbModules.filter(m => licData.modules.includes(m))
+                                }
+                            }
+                        } catch (licErr) {
+                            console.error("Failed to check license API:", licErr)
+                        }
+
                         setAllModules(dbModules)
                         setRole(data.role || 'user')
 

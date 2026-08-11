@@ -2068,52 +2068,158 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       })
     }
 
+    const blindSpotsClustersLayer = `${blindSpotsSourceId}-clusters`
+    const blindSpotsClusterCountLayer = `${blindSpotsSourceId}-cluster-count`
+    const blindSpotsRawSourceId = `${blindSpotsSourceId}-raw`
+    const blindSpotsLayerCircleRaw = `${blindSpotsLayerCircle}-raw`
+    const blindSpotsLayerPulseRaw = `${blindSpotsLayerPulse}-raw`
+
     if (!map.current.getSource(blindSpotsSourceId)) {
+      // Clustered source (respects the "Группировка меток" toggle)
       map.current.addSource(blindSpotsSourceId, {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+        cluster: true,
+        clusterMaxZoom: 18,
+        clusterRadius: 50,
+        clusterProperties: {
+          hasNone: ["max", ["case", ["==", ["get", "coverage"], "none"], 1, 0]]
+        }
+      })
+      // Raw (unclustered) source
+      map.current.addSource(blindSpotsRawSourceId, {
         type: "geojson",
         data: { type: "FeatureCollection", features: [] }
       })
-      // Outer pulsing ring
+
+      // Cluster bubbles — red if the cluster contains any blind ("none") site, else amber
       map.current.addLayer({
-        id: blindSpotsLayerPulse,
+        id: blindSpotsClustersLayer,
         type: "circle",
         source: blindSpotsSourceId,
+        filter: ["has", "point_count"],
         paint: {
-          "circle-radius": 18,
-          "circle-color": "transparent",
-          "circle-stroke-width": 2,
-          "circle-stroke-color": [
-            "case",
-            ["==", ["get", "coverage"], "none"], "#ef4444",
-            "#f59e0b"
+          "circle-radius": [
+            "step",
+            ["get", "point_count"],
+            15,
+            10, 20,
+            50, 25
           ],
-          "circle-stroke-opacity": 0.6
-        },
-        layout: { "visibility": "none" }
-      })
-      // Inner colored dot
-      map.current.addLayer({
-        id: blindSpotsLayerCircle,
-        type: "circle",
-        source: blindSpotsSourceId,
-        paint: {
-          "circle-radius": 6,
           "circle-color": [
             "case",
-            ["==", ["get", "coverage"], "none"], "#ef4444",
-            ["==", ["get", "coverage"], "partial"], "#f59e0b",
-            "#16a34a"
+            [">", ["get", "hasNone"], 0], "#ef4444",
+            "#f59e0b"
           ],
           "circle-stroke-width": 2,
           "circle-stroke-color": "#ffffff"
         },
         layout: { "visibility": "none" }
       })
+      map.current.addLayer({
+        id: blindSpotsClusterCountLayer,
+        type: "symbol",
+        source: blindSpotsSourceId,
+        filter: ["has", "point_count"],
+        layout: {
+          "text-field": "{point_count_abbreviated}",
+          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+          "text-size": 12,
+          "visibility": "none"
+        },
+        paint: {
+          "text-color": "#ffffff"
+        }
+      })
+
+      const pulsePaint = {
+        "circle-radius": 18,
+        "circle-color": "transparent",
+        "circle-stroke-width": 2,
+        "circle-stroke-color": [
+          "case",
+          ["==", ["get", "coverage"], "none"], "#ef4444",
+          "#f59e0b"
+        ] as any,
+        "circle-stroke-opacity": 0.6
+      }
+      const dotPaint = {
+        "circle-radius": 6,
+        "circle-color": [
+          "case",
+          ["==", ["get", "coverage"], "none"], "#ef4444",
+          ["==", ["get", "coverage"], "partial"], "#f59e0b",
+          "#16a34a"
+        ] as any,
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff"
+      }
+
+      // Outer pulsing ring / inner dot for unclustered (singleton) points from the clustered source
+      map.current.addLayer({
+        id: blindSpotsLayerPulse,
+        type: "circle",
+        source: blindSpotsSourceId,
+        filter: ["!", ["has", "point_count"]],
+        paint: pulsePaint,
+        layout: { "visibility": "none" }
+      })
+      map.current.addLayer({
+        id: blindSpotsLayerCircle,
+        type: "circle",
+        source: blindSpotsSourceId,
+        filter: ["!", ["has", "point_count"]],
+        paint: dotPaint,
+        layout: { "visibility": "none" }
+      })
+
+      // Raw (always-individual) pulse/dot layers for when clustering is off
+      map.current.addLayer({
+        id: blindSpotsLayerPulseRaw,
+        type: "circle",
+        source: blindSpotsRawSourceId,
+        paint: pulsePaint,
+        layout: { "visibility": "none" }
+      })
+      map.current.addLayer({
+        id: blindSpotsLayerCircleRaw,
+        type: "circle",
+        source: blindSpotsRawSourceId,
+        paint: dotPaint,
+        layout: { "visibility": "none" }
+      })
+
+      // Click on a blind-spot cluster to zoom in
+      map.current.on("click", blindSpotsClustersLayer, (e) => {
+        const features = map.current?.queryRenderedFeatures(e.point, {
+          layers: [blindSpotsClustersLayer]
+        })
+        if (!features?.length) return
+        const clusterId = features[0].properties.cluster_id
+        const source = map.current!.getSource(blindSpotsSourceId) as maplibregl.GeoJSONSource
+        source.getClusterExpansionZoom(clusterId).then(zoom => {
+          map.current?.easeTo({
+            center: (features[0].geometry as any).coordinates,
+            zoom: zoom + 1
+          })
+        })
+      })
+      map.current.on("mouseenter", blindSpotsClustersLayer, () => {
+        map.current!.getCanvas().style.cursor = "pointer"
+      })
+      map.current.on("mouseleave", blindSpotsClustersLayer, () => {
+        map.current!.getCanvas().style.cursor = ""
+      })
     }
 
     if (!showTkoCoverage || !hasModule('asr') || !tkoSitesData) {
       // Hide layers
-      const layers = [coverageLayerFill, coverageLayerLine, blindSpotsLayerCircle, blindSpotsLayerPulse]
+      const layers = [
+        coverageLayerFill, coverageLayerLine,
+        blindSpotsLayerCircle, blindSpotsLayerPulse,
+        blindSpotsClustersLayer, blindSpotsClusterCountLayer,
+        blindSpotsLayerCircleRaw, blindSpotsLayerPulseRaw
+      ]
       layers.forEach(l => {
         if (map.current!.getLayer(l)) map.current!.setLayoutProperty(l, "visibility", "none")
       })
@@ -2175,13 +2281,26 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       }
     }).filter(Boolean)
 
+    const blindSpotsGeoJSON = { type: "FeatureCollection", features: blindSpotFeatures as any }
     const blindSource = map.current.getSource(blindSpotsSourceId) as maplibregl.GeoJSONSource
-    if (blindSource) blindSource.setData({ type: "FeatureCollection", features: blindSpotFeatures as any })
+    if (blindSource) blindSource.setData(blindSpotsGeoJSON as any)
+    const blindRawSource = map.current.getSource(blindSpotsRawSourceId) as maplibregl.GeoJSONSource
+    if (blindRawSource) blindRawSource.setData(blindSpotsGeoJSON as any)
 
-    // Show layers
-    const layers = [coverageLayerFill, coverageLayerLine, blindSpotsLayerCircle, blindSpotsLayerPulse]
-    layers.forEach(l => {
+    // Show layers — clustered set follows the "Группировка меток" toggle, same as TKO sites
+    const coverageAreaLayers = [coverageLayerFill, coverageLayerLine]
+    coverageAreaLayers.forEach(l => {
       if (map.current!.getLayer(l)) map.current!.setLayoutProperty(l, "visibility", "visible")
+    })
+
+    const clusteredLayers = [blindSpotsClustersLayer, blindSpotsClusterCountLayer, blindSpotsLayerCircle, blindSpotsLayerPulse]
+    clusteredLayers.forEach(l => {
+      if (map.current!.getLayer(l)) map.current!.setLayoutProperty(l, "visibility", showClusters ? "visible" : "none")
+    })
+
+    const rawLayers = [blindSpotsLayerCircleRaw, blindSpotsLayerPulseRaw]
+    rawLayers.forEach(l => {
+      if (map.current!.getLayer(l)) map.current!.setLayoutProperty(l, "visibility", showClusters ? "none" : "visible")
     })
 
     // Tooltip for blind spots
@@ -2228,8 +2347,10 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
     map.current.on("mouseenter", blindSpotsLayerCircle, onBlindSpotEnter)
     map.current.on("mouseleave", blindSpotsLayerCircle, onBlindSpotLeave)
+    map.current.on("mouseenter", blindSpotsLayerCircleRaw, onBlindSpotEnter)
+    map.current.on("mouseleave", blindSpotsLayerCircleRaw, onBlindSpotLeave)
 
-  }, [showTkoCoverage, mapLoaded, cameras, tkoSitesData, hasModule])
+  }, [showTkoCoverage, mapLoaded, cameras, tkoSitesData, hasModule, showClusters])
 
   // Update/show FOV
   useEffect(() => {
