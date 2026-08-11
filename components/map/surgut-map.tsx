@@ -150,6 +150,39 @@ function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
+// TKO site descriptions are stored as "Key: value; Key: value; ..." — render them
+// as a readable list instead of dumping the raw semicolon-joined string.
+function formatTkoDescription(description: string | null | undefined): string {
+  if (!description) return ""
+  const rows = description.split(";").map(s => s.trim()).filter(Boolean)
+  return `<div class="tko-popup-fields">${rows.map(row => {
+    const separator = row.indexOf(":")
+    if (separator === -1) {
+      return `<div class="tko-popup-field-row"><span>${escapeHtml(row)}</span></div>`
+    }
+    const key = escapeHtml(row.slice(0, separator).trim())
+    const value = escapeHtml(row.slice(separator + 1).trim())
+    return `<div class="tko-popup-field-row"><span class="tko-popup-field-key">${key}</span><span>${value}</span></div>`
+  }).join("")}</div>`
+}
+
+function tkoStatusPillHtml(status: string | undefined): string {
+  const isActive = status === "active"
+  const color = isActive ? "#4ade80" : "#9ca3af"
+  const label = isActive ? "Активна" : "Неактивна"
+  return `<span class="map-popup-pill" style="background:${color}1f;color:${color};border-color:${color}40">
+    <span class="map-popup-pill-dot" style="background:${color}"></span>${label}
+  </span>`
+}
+
 interface SurgutMapProps {
   selectedTime?: Date
   statusOverride?: Record<string, RoadStatus>
@@ -349,16 +382,19 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         popup
           .setLngLat(e.lngLat)
           .setHTML(
-            `<div class="p-2 text-sm whitespace-nowrap">
-              <div class="font-semibold">${feature.properties.name || "Без названия"}</div>
-              <div class="text-muted-foreground text-xs">${cfg?.label ?? highway}</div>
-              <div class="mt-1.5 flex items-center gap-1.5 border-t pt-1.5">
-                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
-                <span class="text-xs font-medium">${feature.properties.contractor || "Не назначен"}</span>
+            `<div class="map-popup">
+              <div class="map-popup-title">
+                <span>${escapeHtml(feature.properties.name || "Без названия")}</span>
               </div>
-              <div class="flex items-center gap-1.5 mt-1.5">
-                <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusInfo.color}"></span>
-                <span class="text-xs text-muted-foreground">${statusInfo.label}</span>
+              <div class="map-popup-subtitle">${escapeHtml(cfg?.label ?? highway ?? "")}</div>
+              <div class="map-popup-field-row map-popup-divider">
+                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>
+                <span>${escapeHtml(feature.properties.contractor || "Не назначен")}</span>
+              </div>
+              <div class="map-popup-footer">
+                <span class="map-popup-pill" style="background:${statusInfo.color}1f;color:${statusInfo.color};border-color:${statusInfo.color}40">
+                  <span class="map-popup-pill-dot" style="background:${statusInfo.color}"></span>${statusInfo.label}
+                </span>
               </div>
             </div>`
           )
@@ -1296,26 +1332,33 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     const showTooltip = (e: any) => {
       map.current!.getCanvas().style.cursor = "pointer"
       const feature = e.features?.[0]
-      if (feature) {
-        const props = feature.properties as any
-        const statusColor = props.status === 'active' ? '#4ade80' : '#9ca3af'
-        const statusLabel = props.status === 'active' ? 'Активна' : 'Неактивна'
-        popup
-          .setLngLat((e as any).lngLat)
-          .setHTML(
-            `<div class="p-2 text-sm">
-                <div class="font-semibold text-emerald-500 flex items-center gap-1.5 mb-0.5">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                  ${props.name}
-                </div>
-                ${props.description ? `<div class="text-xs text-muted-foreground">${props.description}</div>` : ''}
-                <div class="mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full inline-block border" style="background: ${statusColor}15; color: ${statusColor}; border-color: ${statusColor}33">
-                  ${statusLabel}
-                </div>
-              </div>`
-          )
-          .addTo(map.current!)
+      if (!feature) return
+
+      // When TKO coverage analysis is on, a blind-spot marker may be stacked on top of
+      // this same site — let its own (richer) popup own the hover instead of stacking two.
+      const coverageLayers = ["tko-blind-spots-circle", "tko-blind-spots-circle-raw"].filter(
+        l => map.current!.getLayer(l) && map.current!.getLayoutProperty(l, "visibility") === "visible"
+      )
+      if (coverageLayers.length && map.current!.queryRenderedFeatures(e.point, { layers: coverageLayers }).length) {
+        return
       }
+
+      const props = feature.properties as any
+      popup
+        .setLngLat((e as any).lngLat)
+        .setHTML(
+          `<div class="map-popup">
+              <div class="map-popup-title map-popup-title-emerald">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                <span>${escapeHtml(props.name ?? "")}</span>
+              </div>
+              ${formatTkoDescription(props.description)}
+              <div class="map-popup-footer">
+                ${tkoStatusPillHtml(props.status)}
+              </div>
+            </div>`
+        )
+        .addTo(map.current!)
     }
 
     const hideTooltip = () => {
@@ -2210,6 +2253,56 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       map.current.on("mouseleave", blindSpotsClustersLayer, () => {
         map.current!.getCanvas().style.cursor = ""
       })
+
+      // Tooltip for blind spots — registered once here (not on every effect rerun) so
+      // toggling "Анализ покрытия" doesn't stack up duplicate listeners/popups over time.
+      const blindSpotPopup = new maplibregl.Popup({
+        closeButton: false,
+        closeOnClick: false,
+        offset: 12,
+      })
+
+      const onBlindSpotEnter = (e: any) => {
+        map.current!.getCanvas().style.cursor = "pointer"
+        const feature = e.features?.[0]
+        if (!feature) return
+
+        const props = feature.properties as any
+        const isNone = props.coverage === "none"
+        const titleColor = isNone ? "#ef4444" : "#f59e0b"
+        const badgeLabel = isNone ? "🔴 Слепая зона" : "🟡 Частичное покрытие"
+        const distText = props.nearestCameraDistance === 999999 || isNaN(props.nearestCameraDistance)
+          ? "Камеры отсутствуют"
+          : `${props.nearestCameraDistance} м до ближайшей камеры`
+
+        blindSpotPopup
+          .setLngLat((e as any).lngLat)
+          .setHTML(
+            `<div class="map-popup">
+              <div class="map-popup-title" style="color: ${titleColor}">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                <span>${escapeHtml(props.name ?? "")}</span>
+              </div>
+              ${formatTkoDescription(props.description)}
+              <div class="map-popup-field-row"><span class="tko-popup-field-key">До камеры</span><span>${escapeHtml(distText)}</span></div>
+              <div class="map-popup-footer">
+                ${tkoStatusPillHtml(props.status)}
+                <span class="map-popup-pill" style="background:${titleColor}1f;color:${titleColor};border-color:${titleColor}40">${badgeLabel}</span>
+              </div>
+            </div>`
+          )
+          .addTo(map.current!)
+      }
+
+      const onBlindSpotLeave = () => {
+        map.current!.getCanvas().style.cursor = ""
+        blindSpotPopup.remove()
+      }
+
+      map.current.on("mouseenter", blindSpotsLayerCircle, onBlindSpotEnter)
+      map.current.on("mouseleave", blindSpotsLayerCircle, onBlindSpotLeave)
+      map.current.on("mouseenter", blindSpotsLayerCircleRaw, onBlindSpotEnter)
+      map.current.on("mouseleave", blindSpotsLayerCircleRaw, onBlindSpotLeave)
     }
 
     if (!showTkoCoverage || !hasModule('asr') || !tkoSitesData) {
@@ -2302,53 +2395,6 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     rawLayers.forEach(l => {
       if (map.current!.getLayer(l)) map.current!.setLayoutProperty(l, "visibility", showClusters ? "none" : "visible")
     })
-
-    // Tooltip for blind spots
-    const popup = new maplibregl.Popup({
-      closeButton: false,
-      closeOnClick: false,
-      offset: 12,
-    })
-
-    const onBlindSpotEnter = (e: any) => {
-      map.current!.getCanvas().style.cursor = "pointer"
-      const feature = e.features?.[0]
-      if (feature) {
-        const props = feature.properties as any
-        const isNone = props.coverage === "none"
-        const titleColor = isNone ? "#ef4444" : "#f59e0b"
-        const badgeLabel = isNone ? "🔴 Слепая зона" : "🟡 Частичное покрытие"
-        const distText = props.nearestCameraDistance === 999999 || isNaN(props.nearestCameraDistance)
-          ? "Камеры отсутствуют"
-          : `${props.nearestCameraDistance} м до ближайшей камеры`
-
-        popup
-          .setLngLat((e as any).lngLat)
-          .setHTML(
-            `<div class="p-2 text-sm">
-              <div class="font-semibold flex items-center gap-1.5 mb-0.5" style="color: ${titleColor}">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                ${props.name}
-              </div>
-              <div class="text-xs text-muted-foreground mb-1">${distText}</div>
-              <div class="text-[10px] font-medium px-1.5 py-0.5 rounded-full inline-block border" style="background: ${titleColor}15; color: ${titleColor}; border-color: ${titleColor}33">
-                ${badgeLabel}
-              </div>
-            </div>`
-          )
-          .addTo(map.current!)
-      }
-    }
-
-    const onBlindSpotLeave = () => {
-      map.current!.getCanvas().style.cursor = ""
-      popup.remove()
-    }
-
-    map.current.on("mouseenter", blindSpotsLayerCircle, onBlindSpotEnter)
-    map.current.on("mouseleave", blindSpotsLayerCircle, onBlindSpotLeave)
-    map.current.on("mouseenter", blindSpotsLayerCircleRaw, onBlindSpotEnter)
-    map.current.on("mouseleave", blindSpotsLayerCircleRaw, onBlindSpotLeave)
 
   }, [showTkoCoverage, mapLoaded, cameras, tkoSitesData, hasModule, showClusters])
 

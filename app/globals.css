@@ -154,10 +154,107 @@
   pointer-events: none !important;
   background: hsl(var(--card)) !important;
   color: hsl(var(--card-foreground)) !important;
-  border: none !important;
+  border: 1px solid hsl(var(--border)) !important;
   border-radius: 0.75rem !important;
   padding: 0 !important;
-  box-shadow: 0 4px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05) !important;
+  max-width: 300px !important;
+  box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.25), 0 4px 10px -4px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Shared content styling for map hover/click popups (roads, TKO sites, coverage) */
+.map-popup {
+  padding: 0.625rem 0.75rem;
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.map-popup-title {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+.map-popup-title-emerald {
+  color: #10b981;
+}
+
+.map-popup-title svg {
+  flex-shrink: 0;
+}
+
+.map-popup-subtitle {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem;
+  margin-top: 0.125rem;
+}
+
+.map-popup-field-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: hsl(var(--foreground));
+  margin-top: 0.375rem;
+}
+
+.map-popup-field-row svg {
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground));
+}
+
+.map-popup-divider {
+  padding-top: 0.375rem;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.map-popup-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.map-popup-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.map-popup-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
+
+.tko-popup-fields {
+  margin-top: 0.375rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid hsl(var(--border));
+  max-height: 8rem;
+  overflow-y: auto;
+}
+
+.tko-popup-field-row {
+  display: flex;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: hsl(var(--foreground));
+  padding: 0.09rem 0;
+}
+
+.tko-popup-field-key {
+  color: hsl(var(--muted-foreground));
+  flex-shrink: 0;
 }
 
 .maplibregl-popup-tip {
