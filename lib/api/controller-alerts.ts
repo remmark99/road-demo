@@ -11,6 +11,7 @@ export interface ControllerAlert {
     alarm: string
     prev_alarm: string | null
     message: string
+    clip_path?: string | null
 }
 
 export interface FetchControllerAlertsOptions {

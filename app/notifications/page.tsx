@@ -1417,6 +1417,7 @@ function ControllerAlertsTab() {
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(25)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
 
   useEffect(() => {
     fetchControllerAlerts({
@@ -1612,13 +1613,14 @@ function ControllerAlertsTab() {
       ) : (
         <div className="space-y-2">
           {/* Table header */}
-          <div className="hidden md:grid md:grid-cols-[minmax(8rem,_1fr)_minmax(10rem,_1.3fr)_minmax(8rem,_1fr)_minmax(6rem,_0.8fr)_minmax(12rem,_1.6fr)_minmax(0,_1.5fr)] gap-4 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+          <div className="hidden md:grid md:grid-cols-[minmax(8rem,_1fr)_minmax(10rem,_1.3fr)_minmax(8rem,_1fr)_minmax(6rem,_0.8fr)_minmax(12rem,_1.6fr)_minmax(0,_1.5fr)_2rem] gap-4 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
             <div className="min-w-0">Время</div>
             <div className="min-w-0">Датчик</div>
             <div className="min-w-0">Категория</div>
             <div className="min-w-0">Значение</div>
             <div className="min-w-0">Статус</div>
             <div className="min-w-0">Сообщение</div>
+            <div className="min-w-0"></div>
           </div>
 
           {alerts.map((alert) => {
@@ -1637,14 +1639,21 @@ function ControllerAlertsTab() {
               categoryLabel,
               alarmCfg.label
             )
+            const hasMedia = Boolean(alert.clip_path)
+            const isExpanded = expandedId === alert.id
 
             return (
               <Card
                 key={alert.id}
-                className="transition-colors hover:border-primary/50"
+                className={`transition-all duration-300 hover:border-primary/50 ${
+                  hasMedia ? "cursor-pointer" : ""
+                } ${isExpanded ? "border-primary" : ""}`}
+                onClick={() =>
+                  hasMedia ? setExpandedId(isExpanded ? null : alert.id) : undefined
+                }
               >
                 <CardContent className="p-4">
-                  <div className="grid grid-cols-1 gap-4 items-center md:grid-cols-[minmax(8rem,_1fr)_minmax(10rem,_1.3fr)_minmax(8rem,_1fr)_minmax(6rem,_0.8fr)_minmax(12rem,_1.6fr)_minmax(0,_1.5fr)]">
+                  <div className="grid grid-cols-1 gap-4 items-center md:grid-cols-[minmax(8rem,_1fr)_minmax(10rem,_1.3fr)_minmax(8rem,_1fr)_minmax(6rem,_0.8fr)_minmax(12rem,_1.6fr)_minmax(0,_1.5fr)_2rem]">
                     {/* Time */}
                     <div className="min-w-0 flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
@@ -1709,7 +1718,93 @@ function ControllerAlertsTab() {
                     <div className="min-w-0 text-sm text-muted-foreground truncate">
                       {message}
                     </div>
+
+                    {/* Chevron icon indicator for media */}
+                    <div className="hidden md:flex justify-end items-center">
+                      {hasMedia && (
+                        <ChevronRight
+                          className={`h-4 w-4 text-muted-foreground transition-transform ${
+                            isExpanded ? "rotate-90" : ""
+                          }`}
+                        />
+                      )}
+                    </div>
                   </div>
+
+                  {/* Expanded view when alert has image / clip */}
+                  {isExpanded && hasMedia && alert.clip_path && (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="aspect-video bg-muted rounded-lg overflow-hidden flex items-center justify-center">
+                          {alert.clip_path.toLowerCase().match(/\.(jpg|jpeg|png|webp)$/) ? (
+                            /* eslint-disable-next-line @next/next/no-img-element */
+                            <img
+                              src={alert.clip_path}
+                              alt={categoryLabel}
+                              className="w-full h-full object-cover"
+                              onClick={(e) => e.stopPropagation()}
+                            />
+                          ) : (
+                            <video
+                              className="w-full h-full object-cover"
+                              controls
+                              preload="metadata"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <source src={alert.clip_path} type="video/mp4" />
+                            </video>
+                          )}
+                        </div>
+
+                        <div className="space-y-3 text-sm">
+                          <div>
+                            <div className="text-muted-foreground">Датчик</div>
+                            <div className="font-medium">
+                              {getSensorLabel(alert.element)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Элемент #{alert.element}, адрес #{alert.address}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">
+                              Время фиксации
+                            </div>
+                            <div className="font-medium">
+                              {formatTime(alert.created_at)}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Категория</div>
+                            <div className="font-medium">{categoryLabel}</div>
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Сообщение</div>
+                            <div className="font-medium">{message}</div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <a
+                              href={alert.clip_path}
+                              download
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              {alert.clip_path
+                                .toLowerCase()
+                                .match(/\.(jpg|jpeg|png|webp)$/)
+                                ? "Скачать фото"
+                                : "Скачать медиа"}
+                            </a>
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )
