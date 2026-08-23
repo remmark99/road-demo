@@ -3,7 +3,14 @@
 import { Suspense, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
-import { fetchAlerts, ALERT_TYPE_CONFIG, ALERT_CATEGORIES, MODULE_MAP } from "@/lib/api/alerts"
+import {
+  fetchAlerts,
+  fetchLyingPersonEpisodes,
+  ALERT_TYPE_CONFIG,
+  ALERT_CATEGORIES,
+  MODULE_MAP,
+  type LyingPersonEpisode,
+} from "@/lib/api/alerts"
 import { fetchCameras } from "@/lib/api/cameras"
 import { STOP_TRASH_OVERFLOW_ALERT_TYPES } from "@/lib/api/stop-condition-windows"
 import {
@@ -83,6 +90,7 @@ import {
 } from "@/lib/stop-analytics-config"
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50]
+const LYING_EPISODE_REFRESH_INTERVAL_MS = 30_000
 const TRASH_OVERFLOW_FILTER_TYPES = [...STOP_TRASH_OVERFLOW_ALERT_TYPES]
 const TRASH_OVERFLOW_FILTER_KEY = "trash-overflow"
 
@@ -382,6 +390,31 @@ function formatTimeAgo(dateStr: string) {
   return formatTime(dateStr)
 }
 
+function formatDuration(startedAt: string, lastSeenAt: string) {
+  const durationMs =
+    new Date(lastSeenAt).getTime() - new Date(startedAt).getTime()
+
+  if (!Number.isFinite(durationMs) || durationMs < 0) return "—"
+
+  const totalSeconds = Math.floor(durationMs / 1000)
+  if (totalSeconds < 60) return `${totalSeconds} сек.`
+
+  const totalMinutes = Math.floor(totalSeconds / 60)
+  if (totalMinutes < 60) return `${totalMinutes} мин.`
+
+  const totalHours = Math.floor(totalMinutes / 60)
+  const remainingMinutes = totalMinutes % 60
+  if (totalHours < 24) {
+    return remainingMinutes > 0
+      ? `${totalHours} ч. ${remainingMinutes} мин.`
+      : `${totalHours} ч.`
+  }
+
+  const days = Math.floor(totalHours / 24)
+  const remainingHours = totalHours % 24
+  return remainingHours > 0 ? `${days} дн. ${remainingHours} ч.` : `${days} дн.`
+}
+
 function getModuleLabel(moduleName: string | null | undefined) {
   if (!moduleName) return "—"
   return MODULE_MAP[moduleName] ?? "Другой модуль"
@@ -443,6 +476,16 @@ function getMetadataString(
   }
 
   return null
+}
+
+function getLyingPersonEpisodeId(alert: Alert) {
+  if (alert.alert_type !== "lying_person") return null
+  return getMetadataString(alert.metadata, ["episode_id"])
+}
+
+function versionEpisodeImage(imageUrl: string, updatedAt: string) {
+  const separator = imageUrl.includes("?") ? "&" : "?"
+  return `${imageUrl}${separator}v=${encodeURIComponent(updatedAt)}`
 }
 
 function getStopCameraIndexCandidates(cameraIndex: number | null) {
@@ -649,11 +692,29 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const [repairShortcutSelected, setRepairShortcutSelected] = useState(false)
   const [selectedCameras, setSelectedCameras] = useState<number[]>(querySelectedCameras)
   const [alerts, setAlerts] = useState<Alert[]>([])
+  const [lyingPersonEpisodes, setLyingPersonEpisodes] = useState<
+    LyingPersonEpisode[]
+  >([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(25)
   const [expandedId, setExpandedId] = useState<string | null>(initialAlertId)
+  const [episodeRefreshTick, setEpisodeRefreshTick] = useState(0)
+  const hasOpenLyingPersonEpisode = lyingPersonEpisodes.some(
+    (episode) => episode.status === "open"
+  )
+
+  useEffect(() => {
+    // Legacy alert pages do not poll. Refresh only while a visible lying-person
+    // episode can still receive heartbeats or transition to closed.
+    if (!hasStops || !hasOpenLyingPersonEpisode) return
+    const timer = window.setInterval(
+      () => setEpisodeRefreshTick((current) => current + 1),
+      LYING_EPISODE_REFRESH_INTERVAL_MS
+    )
+    return () => window.clearInterval(timer)
+  }, [hasOpenLyingPersonEpisode, hasStops])
 
   useEffect(() => {
     if (initialAlertId && !loading) {
@@ -706,7 +767,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   useEffect(() => {
     const request =
       allowedTypes.length === 0
-        ? Promise.resolve({ alerts: [], total: 0 })
+        ? Promise.resolve({ alerts: [], total: 0, hasMore: false })
         : fetchAlerts({
             types:
               effectiveSelectedTypes.length > 0
@@ -718,12 +779,37 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
             offset: page * pageSize,
           })
 
-    request.then((result) => {
+    let cancelled = false
+
+    request.then(async (result) => {
+      const episodeIds = Array.from(
+        new Set(
+          result.alerts
+            .map(getLyingPersonEpisodeId)
+            .filter((id): id is string => id !== null)
+        )
+      )
+      const episodes = await fetchLyingPersonEpisodes(episodeIds)
+
+      if (cancelled) return
+
       setAlerts(result.alerts)
+      setLyingPersonEpisodes(episodes)
       setTotal(result.total)
       setLoading(false)
     })
-  }, [effectiveSelectedTypes, selectedCameras, page, pageSize, allowedTypes])
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    effectiveSelectedTypes,
+    selectedCameras,
+    page,
+    pageSize,
+    allowedTypes,
+    episodeRefreshTick,
+  ])
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -821,6 +907,10 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const visibleAlerts = useMemo(
     () => [...alerts, ...(page === 0 ? filteredDemoAlerts : [])],
     [alerts, filteredDemoAlerts, page]
+  )
+  const lyingPersonEpisodesById = useMemo(
+    () => new Map(lyingPersonEpisodes.map((episode) => [episode.id, episode])),
+    [lyingPersonEpisodes]
   )
 
   return (
@@ -1211,6 +1301,11 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
             const isHighlighted = alert.id === initialAlertId
             const stopDisplay = getAlertStopDisplay(alert)
             const message = getRussianAlertMessage(alert, config.label)
+            const episodeId = getLyingPersonEpisodeId(alert)
+            const episode = episodeId
+              ? lyingPersonEpisodesById.get(episodeId)
+              : undefined
+            const episodeIsOpen = episode?.status === "open"
 
             return (
               <Card
@@ -1258,8 +1353,28 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                       </div>
                     </div>
 
-                    <div className="md:col-span-4 text-sm truncate">
-                      {message}
+                    <div className="md:col-span-4 min-w-0 text-sm">
+                      <div className="truncate">{message}</div>
+                      {episode && (
+                        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <Badge
+                            variant="outline"
+                            className={
+                              episodeIsOpen
+                                ? "border-amber-500/40 bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {episodeIsOpen ? "Продолжается" : "Завершено"}
+                          </Badge>
+                          <span className="truncate">
+                            {formatTime(episode.started_at)} — {formatTime(episode.last_seen_at)}
+                          </span>
+                          <span className="shrink-0">
+                            {formatDuration(episode.started_at, episode.last_seen_at)} · {episode.observation_count} набл.
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="md:col-span-1">
@@ -1288,46 +1403,113 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                   {isExpanded && !demoAlert && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="aspect-video bg-muted rounded-lg overflow-hidden">
-                          {alert.clip_path ? (
-                            (() => {
-                              const isImage =
-                                alert.clip_path &&
-                                alert.clip_path
-                                  .toLowerCase()
-                                  .match(/\.(jpg|jpeg|png)$/)
-                              return isImage ? (
-                                /* eslint-disable-next-line @next/next/no-img-element */
-                                <img
-                                  src={alert.clip_path}
-                                  alt={config.label}
-                                  className="w-full h-full object-cover"
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              ) : (
-                                <video
-                                  className="w-full h-full object-cover"
-                                  controls
-                                  preload="metadata"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <source
+                        {episode ? (
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
+                            {[
+                              {
+                                label: "Первый кадр",
+                                imageUrl: episode.first_image_url,
+                              },
+                              {
+                                label: "Последний кадр",
+                                imageUrl: episode.latest_image_url,
+                              },
+                            ].map(({ label, imageUrl }) => (
+                              <div key={label} className="space-y-1.5">
+                                <div className="text-xs font-medium text-muted-foreground">
+                                  {label}
+                                </div>
+                                <div className="aspect-video overflow-hidden rounded-lg bg-muted">
+                                  {imageUrl ? (
+                                    /* eslint-disable-next-line @next/next/no-img-element */
+                                    <img
+                                      src={versionEpisodeImage(
+                                        imageUrl,
+                                        episode.updated_at
+                                      )}
+                                      alt={`${config.label}: ${label.toLowerCase()}`}
+                                      className="h-full w-full object-cover"
+                                      onClick={(event) => event.stopPropagation()}
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
+                                      Фото недоступно
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="aspect-video bg-muted rounded-lg overflow-hidden">
+                            {alert.clip_path ? (
+                              (() => {
+                                const isImage =
+                                  alert.clip_path &&
+                                  alert.clip_path
+                                    .toLowerCase()
+                                    .match(/\.(jpg|jpeg|png)$/)
+                                return isImage ? (
+                                  /* eslint-disable-next-line @next/next/no-img-element */
+                                  <img
                                     src={alert.clip_path}
-                                    type="video/mp4"
+                                    alt={config.label}
+                                    className="w-full h-full object-cover"
+                                    onClick={(e) => e.stopPropagation()}
                                   />
-                                </video>
-                              )
-                            })()
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center">
-                              <p className="text-muted-foreground text-sm">
-                                Видео недоступно
-                              </p>
-                            </div>
-                          )}
-                        </div>
+                                ) : (
+                                  <video
+                                    className="w-full h-full object-cover"
+                                    controls
+                                    preload="metadata"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <source
+                                      src={alert.clip_path}
+                                      type="video/mp4"
+                                    />
+                                  </video>
+                                )
+                              })()
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center">
+                                <p className="text-muted-foreground text-sm">
+                                  Видео недоступно
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         <div className="space-y-3 text-sm">
+                          {episode && (
+                            <div className="grid grid-cols-2 gap-3 rounded-lg border p-3">
+                              <div>
+                                <div className="text-muted-foreground">Статус</div>
+                                <div className="font-medium">
+                                  {episodeIsOpen ? "Продолжается" : "Завершено"}
+                                </div>
+                              </div>
+                              <div>
+                                <div className="text-muted-foreground">Длительность</div>
+                                <div className="font-medium">
+                                  {formatDuration(episode.started_at, episode.last_seen_at)}
+                                </div>
+                              </div>
+                              <div className="col-span-2">
+                                <div className="text-muted-foreground">Период наблюдения</div>
+                                <div className="font-medium">
+                                  {formatTime(episode.started_at)} — {formatTime(episode.last_seen_at)}
+                                </div>
+                              </div>
+                              <div className="col-span-2">
+                                <div className="text-muted-foreground">Наблюдений</div>
+                                <div className="font-medium">
+                                  {episode.observation_count}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                           <div>
                             <div className="text-muted-foreground">
                               Остановка
