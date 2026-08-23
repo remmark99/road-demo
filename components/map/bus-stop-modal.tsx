@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Wifi, WifiOff, Thermometer, Droplets, Zap, AlertTriangle, ShieldAlert, BusFront, Hammer } from "lucide-react"
 import { fetchLatestMeasurements, subscribeMeasurements, type SensorReading } from "@/lib/api/measurements"
+import { fetchControllerAlerts, type ControllerAlert } from "@/lib/api/controller-alerts"
 
 export interface BusStopSensorData {
     is_online: boolean
@@ -29,52 +30,103 @@ interface BusStopModalProps {
     onClose: () => void
 }
 
+function formatTime(isoString: string | null | undefined) {
+    if (!isoString) return "—"
+    try {
+        const d = new Date(isoString)
+        return d.toLocaleTimeString("ru-RU", {
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+        })
+    } catch {
+        return "—"
+    }
+}
+
 export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
     const [realReadings, setRealReadings] = useState<SensorReading[]>([])
-
-    // Check if this is the target station
-    const isTargetStation = busStop?.name?.toLowerCase().includes("юности") && busStop?.description?.toLowerCase().includes("ленин") || false;
+    const [realAlerts, setRealAlerts] = useState<ControllerAlert[]>([])
+    const [loading, setLoading] = useState(false)
 
     useEffect(() => {
-        if (!busStop || !isTargetStation) return;
+        if (!busStop) {
+            setRealReadings([])
+            setRealAlerts([])
+            return
+        }
 
-        // Fetch real data for this specific stop
-        fetchLatestMeasurements().then(setRealReadings)
+        let isMounted = true
+        setLoading(true)
+
+        async function loadData() {
+            try {
+                const [readings, alertsResult] = await Promise.all([
+                    fetchLatestMeasurements(busStop?.id),
+                    fetchControllerAlerts({ limit: 10 }),
+                ])
+                if (isMounted) {
+                    setRealReadings(readings)
+                    setRealAlerts(alertsResult.alerts || [])
+                    setLoading(false)
+                }
+            } catch (e) {
+                console.error("Error loading bus stop telemetry:", e)
+                if (isMounted) setLoading(false)
+            }
+        }
+
+        loadData()
 
         const unsubscribe = subscribeMeasurements(() => {
-            fetchLatestMeasurements().then(setRealReadings)
-        })
+            loadData()
+        }, busStop.id)
 
-        return () => unsubscribe()
-    }, [busStop, isTargetStation])
+        return () => {
+            isMounted = false
+            unsubscribe()
+        }
+    }, [busStop])
 
     if (!busStop) return null
 
-    // Use real data if it's the target station and we have readings, otherwise use mock data
-    let sd = busStop.sensor_data
+    // Determine equipment presence and online status based strictly on real readings & database status
+    const dht13 = realReadings.find((r) => r.element === 13) // Temperature & Humidity
+    const temp14 = realReadings.find((r) => r.element === 14) // Temp sensor 2
+    const dio1 = realReadings.find((r) => r.element === 1) // Digital input
 
-    if (isTargetStation && realReadings.length > 0) {
-        const dio1 = realReadings.find(r => r.element === 1)
-        const dht13 = realReadings.find(r => r.element === 13) // temp & humidity
-        const temp14 = realReadings.find(r => r.element === 14) // internal temp
+    const hasRealReadings = realReadings.some(
+        (r) =>
+            r.temperature !== null ||
+            r.humidity !== null ||
+            r.digitalState !== null ||
+            r.temperatureAlarm !== null ||
+            r.humidityAlarm !== null ||
+            r.digitalAlarm !== null
+    )
 
-        sd = {
-            ...sd,
-            is_online: true,
-            has_equipment: true,
-            is_partly_equipped: false,
-            temperature_out: dht13?.temperature ?? undefined,
-            temperature_in: temp14?.temperature ?? undefined,
-            humidity: dht13?.humidity ?? undefined,
-            heater_working: dio1?.digitalState ?? undefined,
-            // You can also map alarms to glass_broken or other statuses if needed
-            glass_broken: dio1?.digitalState === false, // Example: mapping broken state
-        } as BusStopSensorData
-    }
+    const hasEquipment = hasRealReadings || Boolean(busStop.sensor_data?.has_equipment || busStop.sensor_data?.is_partly_equipped)
+    const isOnline = hasRealReadings || Boolean(busStop.sensor_data?.is_online)
 
-    const isOnline = sd?.is_online ?? false
-    // Force hasEquipment for the target station so the grid always renders
-    const hasEquipment = isTargetStation ? true : (sd?.has_equipment || sd?.is_partly_equipped)
+    // Real metric values (no fallbacks to fake random values)
+    const tempOut = dht13?.temperature ?? undefined
+    const tempIn = temp14?.temperature ?? undefined
+    const humidity = dht13?.humidity ?? undefined
+
+    // Real alarm conditions (derived strictly from active real alarms or non-normal statuses)
+    const glassBrokenAlarm = realReadings.some(
+        (r) => r.digitalAlarm === "alarm" || r.digitalAlarm === "critical"
+    ) || realAlerts.some((a) => a.category === "glass_break" && (a.alarm === "alarm" || a.alarm === "critical"))
+
+    const heaterFaultAlarm = realReadings.some(
+        (r) => r.element === 1 && (r.digitalAlarm === "critical" || r.digitalAlarm === "warning")
+    )
+
+    const tempWarningAlarm = realReadings.some(
+        (r) => r.temperatureAlarm === "warning" || r.temperatureAlarm === "critical"
+    )
+
+    const hasAnyRealProblems = glassBrokenAlarm || heaterFaultAlarm || tempWarningAlarm
 
     return (
         <Dialog open={!!busStop} onOpenChange={onClose}>
@@ -108,67 +160,70 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                             <BusFront className="h-10 w-10 text-muted-foreground mb-3 opacity-50" />
                             <p className="text-muted-foreground font-medium">Оборудование не установлено</p>
                             <p className="text-xs text-muted-foreground mt-1">
-                                На данной остановке нет датчиков телеметрии.
+                                На данной остановке пока нет подключенных датчиков телеметрии.
                             </p>
                         </div>
                     ) : (
                         <div className="space-y-6">
-                            {/* Critical Alerts */}
-                            {isOnline && (sd?.glass_broken || sd?.heater_working === false) && (
+                            {/* Critical Alerts Banner: ONLY rendered if there are real active problems */}
+                            {isOnline && hasAnyRealProblems && (
                                 <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 space-y-2">
                                     <div className="font-semibold flex items-center gap-2">
                                         <AlertTriangle className="h-4 w-4" />
                                         Внимание: Обнаружены проблемы
                                     </div>
                                     <ul className="text-sm list-disc pl-5 space-y-1">
-                                        {sd?.glass_broken && <li>Зафиксирован вандализм (разбито стекло).</li>}
-                                        {sd?.heater_working === false && <li>Отказ системы обогрева остановки.</li>}
+                                        {glassBrokenAlarm && <li>Зафиксирован вандализм (разбито стекло).</li>}
+                                        {heaterFaultAlarm && <li>Отказ системы обогрева остановки.</li>}
+                                        {tempWarningAlarm && <li>Предупреждение по температуре.</li>}
                                     </ul>
                                 </div>
                             )}
 
                             {/* Sensor Grid */}
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                <div className="p-3 bg-secondary rounded-lg flex flex-col items-center justify-center text-center">
+                                <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
                                     <Thermometer className="h-5 w-5 text-sky-500 mb-2" />
                                     <div className="text-xs text-muted-foreground">Т. снаружи</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && sd?.temperature_out !== undefined ? `${sd.temperature_out.toFixed(1)}°C` : '—'}
+                                        {isOnline && tempOut !== undefined ? `${tempOut.toFixed(1)}°C` : '—'}
                                     </div>
                                 </div>
-                                <div className="p-3 bg-secondary rounded-lg flex flex-col items-center justify-center text-center">
+                                <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
                                     <Thermometer className="h-5 w-5 text-orange-500 mb-2" />
                                     <div className="text-xs text-muted-foreground">Т. внутри</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && sd?.temperature_in !== undefined ? `${sd.temperature_in.toFixed(1)}°C` : '—'}
+                                        {isOnline && tempIn !== undefined ? `${tempIn.toFixed(1)}°C` : '—'}
                                     </div>
                                 </div>
-                                <div className="p-3 bg-secondary rounded-lg flex flex-col items-center justify-center text-center">
+                                <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
                                     <Droplets className="h-5 w-5 text-blue-400 mb-2" />
                                     <div className="text-xs text-muted-foreground">Влажность</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && sd?.humidity !== undefined ? `${sd.humidity.toFixed(1)}%` : '—'}
+                                        {isOnline && humidity !== undefined ? `${humidity.toFixed(1)}%` : '—'}
                                     </div>
                                 </div>
-                                <div className="p-3 bg-secondary rounded-lg flex flex-col items-center justify-center text-center">
-                                    <Zap className={`h-5 w-5 mb-2 ${isOnline && sd?.heater_working !== undefined && sd.heater_working ? 'text-amber-400' : 'text-muted-foreground'}`} />
+                                <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
+                                    <Zap className={`h-5 w-5 mb-2 ${isOnline && dio1?.digitalState ? 'text-amber-400' : 'text-muted-foreground'}`} />
                                     <div className="text-xs text-muted-foreground">Обогрев</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && sd?.heater_working !== undefined ? (sd.heater_working ? 'Исправен' : 'Отказ') : '—'}
+                                        {isOnline && dio1?.digitalState !== null && dio1?.digitalState !== undefined
+                                            ? (dio1.digitalState ? 'Включен' : 'Отключен')
+                                            : '—'}
                                     </div>
                                 </div>
-                                <div className="p-3 bg-secondary rounded-lg flex flex-col items-center justify-center text-center">
-                                    <Hammer className={`h-5 w-5 mb-2 ${isOnline ? (sd?.glass_broken ? 'text-red-500' : 'text-emerald-500') : 'text-muted-foreground'}`} />
+                                <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
+                                    <Hammer className={`h-5 w-5 mb-2 ${isOnline ? (glassBrokenAlarm ? 'text-red-500' : 'text-emerald-500') : 'text-muted-foreground'}`} />
                                     <div className="text-xs text-muted-foreground">Датчик разбития</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline ? (sd?.glass_broken ? 'Тревога' : 'Норма') : '—'}
+                                        {isOnline ? (glassBrokenAlarm ? 'Тревога' : 'Норма') : '—'}
                                     </div>
                                 </div>
                             </div>
 
                             <Separator />
 
-                            {/* Recent Events Mock */}
+                            {/* Real Event Log */}
                             <div>
                                 <h3 className="text-sm font-medium mb-3 flex items-center gap-2">
                                     <ShieldAlert className="h-4 w-4 text-muted-foreground" />
@@ -179,35 +234,36 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                                         <div className="text-sm text-muted-foreground text-center py-4 bg-muted/50 rounded-lg">
                                             История недоступна (устройство оффлайн)
                                         </div>
+                                    ) : loading ? (
+                                        <div className="text-xs text-muted-foreground text-center py-3 bg-secondary/30 rounded-lg animate-pulse">
+                                            Загрузка событий...
+                                        </div>
+                                    ) : realAlerts.length === 0 ? (
+                                        <div className="text-xs text-muted-foreground text-center py-4 bg-secondary/30 rounded-lg">
+                                            Событий не зафиксировано
+                                        </div>
                                     ) : (
-                                        <>
-                                            {sd?.glass_broken && (
-                                                <div className="flex justify-between items-center text-sm p-2 rounded bg-red-500/5 border border-red-500/10">
-                                                    <span className="text-red-500 font-medium">{isTargetStation ? 'Срабатывание цифрового датчика 1' : 'Срабатывание датчика разбития стекла'}</span>
-                                                    <span className="text-xs text-muted-foreground">Недавно</span>
-                                                </div>
-                                            )}
-                                            {sd?.heater_working === false && (
-                                                <div className="flex justify-between items-center text-sm p-2 rounded bg-amber-500/5 border border-amber-500/10">
-                                                    <span className="text-amber-500 font-medium">Отказ системы обогревателя</span>
-                                                    <span className="text-xs text-muted-foreground">Недавно</span>
-                                                </div>
-                                            )}
-                                            {isTargetStation && realReadings.some(r => r.temperatureAlarm) && (
-                                                <div className="flex justify-between items-center text-sm p-2 rounded bg-amber-500/5 border border-amber-500/10">
-                                                    <span className="text-amber-500 font-medium">Предупреждение температуры</span>
-                                                    <span className="text-xs text-muted-foreground">Недавно</span>
-                                                </div>
-                                            )}
-                                            <div className="flex justify-between items-center text-sm p-2 rounded bg-secondary/50">
-                                                <span className="text-muted-foreground">Отправка телеметрии</span>
-                                                <span className="text-xs text-muted-foreground">Только что</span>
+                                        realAlerts.map((alert) => (
+                                            <div
+                                                key={alert.id}
+                                                className="flex justify-between items-center text-sm p-2 rounded bg-secondary/50 border border-secondary"
+                                            >
+                                                <span
+                                                    className={
+                                                        alert.alarm === "alarm" || alert.alarm === "critical"
+                                                            ? "text-red-500 font-medium"
+                                                            : alert.alarm === "warning"
+                                                            ? "text-amber-500 font-medium"
+                                                            : "text-foreground"
+                                                    }
+                                                >
+                                                    {alert.message || `Событие элемента ${alert.element}`}
+                                                </span>
+                                                <span className="text-xs text-muted-foreground tabular-nums">
+                                                    {formatTime(alert.created_at)}
+                                                </span>
                                             </div>
-                                            <div className="flex justify-between items-center text-sm p-2 rounded bg-secondary/50">
-                                                <span className="text-muted-foreground">Синхронизация времени системы</span>
-                                                <span className="text-xs text-muted-foreground">1 час назад</span>
-                                            </div>
-                                        </>
+                                        ))
                                     )}
                                 </div>
                             </div>
