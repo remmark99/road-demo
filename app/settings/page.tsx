@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { type DateRange } from "react-day-picker"
@@ -11,19 +11,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Send, Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon, FileDown } from "lucide-react"
+import { Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon, FileDown, MessageCircle, ExternalLink, Unplug } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
+import type { NotificationEventTypeOption } from "@/lib/notifications/catalog"
+import type { NotificationPreferencesResponse } from "@/lib/notifications/types"
 
-const STORAGE_KEY = "road-demo-user-settings"
 const STANDARD_REPORT_MIN_DATE = new Date(2025, 0, 1)
 const USER_NUMBER_FORMAT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
-
-interface UserSettings {
-  email: string
-  telegram: string
-}
 
 type AiReportMetric = {
   label: string
@@ -66,22 +61,6 @@ type AiReportResponse = {
   sourceNote?: string
 }
 
-const timeOptions = [
-  "00:00", "01:00", "02:00", "03:00", "04:00", "05:00",
-  "06:00", "07:00", "08:00", "09:00", "10:00", "11:00", "12:00",
-  "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00",
-  "20:00", "21:00", "22:00", "23:00"
-]
-
-const dayOptions = [
-  { value: "monday", label: "Понедельник" },
-  { value: "tuesday", label: "Вторник" },
-  { value: "wednesday", label: "Среда" },
-  { value: "thursday", label: "Четверг" },
-  { value: "friday", label: "Пятница" },
-  { value: "saturday", label: "Суббота" },
-  { value: "sunday", label: "Воскресенье" },
-]
 const MODULE_INFO: Record<string, { name: string; description: string }> = {
   roads: { name: 'Состояние дорог', description: 'Мониторинг дорожного покрытия и уборки' },
   shore: { name: 'Безопасный берег', description: 'Контроль прибрежных зон' },
@@ -174,8 +153,8 @@ function wrapCanvasText(context: CanvasRenderingContext2D, text: string, maxWidt
 
 function renderReportPages(report: AiReportResponse) {
   const pages: HTMLCanvasElement[] = []
-  let canvas: HTMLCanvasElement
-  let context: CanvasRenderingContext2D
+  let canvas!: HTMLCanvasElement
+  let context!: CanvasRenderingContext2D
   let y = REPORT_MARGIN
 
   const createPage = () => {
@@ -502,43 +481,91 @@ export default function SettingsPage() {
   const { allModules, modules: activeModules, toggleModule } = useModuleAccess()
   const today = new Date()
   const [email, setEmail] = useState("")
-  const [telegram, setTelegram] = useState("")
   const [savedEmail, setSavedEmail] = useState("")
-  const [savedTelegram, setSavedTelegram] = useState("")
+  const [emailEnabled, setEmailEnabled] = useState(false)
+  const [savedEmailEnabled, setSavedEmailEnabled] = useState(false)
+  const [notificationSettingsLoading, setNotificationSettingsLoading] = useState(true)
+  const [maxStatus, setMaxStatus] = useState<NotificationPreferencesResponse["maxStatus"]>("disconnected")
+  const [maxDisplayName, setMaxDisplayName] = useState<string | null>(null)
+  const [maxPendingUntil, setMaxPendingUntil] = useState<string | null>(null)
+  const [isMaxBusy, setIsMaxBusy] = useState(false)
+  const [availableEventTypes, setAvailableEventTypes] = useState<NotificationEventTypeOption[]>([])
+  const [emailEventTypes, setEmailEventTypes] = useState<string[]>([])
+  const [maxEventTypes, setMaxEventTypes] = useState<string[]>([])
+  const [savedEmailEventTypes, setSavedEmailEventTypes] = useState<string[]>([])
+  const [savedMaxEventTypes, setSavedMaxEventTypes] = useState<string[]>([])
+  const [isTypesSaving, setIsTypesSaving] = useState(false)
+  const [typesSaved, setTypesSaved] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
   const [error, setError] = useState("")
   const [reportPrompt, setReportPrompt] = useState("")
-  const [selectedTime, setSelectedTime] = useState("09:00")
-  const [selectedDay, setSelectedDay] = useState("")
-  const [selectedPeriod, setSelectedPeriod] = useState("daily")
   const [standardReportRange, setStandardReportRange] = useState<DateRange | undefined>({
     from: STANDARD_REPORT_MIN_DATE,
     to: today,
   })
-  const [telegramEnabled, setTelegramEnabled] = useState(false)
-  const [emailEnabled, setEmailEnabled] = useState(true)
-  const [isReportSaving, setIsReportSaving] = useState(false)
-  const [isReportSaved, setIsReportSaved] = useState(false)
   const [isReportGenerating, setIsReportGenerating] = useState(false)
   const [reportError, setReportError] = useState("")
   const [reportStatus, setReportStatus] = useState("")
 
-  // Load settings from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      try {
-        const settings: UserSettings = JSON.parse(stored)
-        setEmail(settings.email || "")
-        setTelegram(settings.telegram || "")
-        setSavedEmail(settings.email || "")
-        setSavedTelegram(settings.telegram || "")
-      } catch (e) {
-        console.error("Failed to parse settings:", e)
+  const loadNotificationSettings = useCallback(async (syncEmail = true) => {
+    try {
+      const response = await fetch("/api/settings/notifications", { cache: "no-store" })
+      const data = await response.json() as NotificationPreferencesResponse & { error?: string }
+      if (!response.ok) throw new Error(data.error || "Не удалось загрузить настройки уведомлений")
+
+      if (syncEmail) {
+        const availableKeys = data.availableEventTypes.map((item) => item.key)
+        const allowedKeys = new Set(availableKeys)
+        const selectedEmailTypes = data.emailEventTypes === null
+          ? availableKeys
+          : data.emailEventTypes.filter((key) => allowedKeys.has(key))
+        const selectedMaxTypes = data.maxEventTypes === null
+          ? availableKeys
+          : data.maxEventTypes.filter((key) => allowedKeys.has(key))
+
+        setEmail(data.email)
+        setSavedEmail(data.email)
+        setEmailEnabled(data.emailEnabled)
+        setSavedEmailEnabled(data.emailEnabled)
+        setAvailableEventTypes(data.availableEventTypes)
+        setEmailEventTypes(selectedEmailTypes)
+        setMaxEventTypes(selectedMaxTypes)
+        setSavedEmailEventTypes(selectedEmailTypes)
+        setSavedMaxEventTypes(selectedMaxTypes)
       }
+      setMaxStatus(data.maxStatus)
+      setMaxDisplayName(data.maxDisplayName)
+      setMaxPendingUntil(data.maxPendingUntil)
+      if (syncEmail) setError("")
+    } catch (loadError) {
+      if (syncEmail) {
+        setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить настройки уведомлений")
+      }
+    } finally {
+      if (syncEmail) setNotificationSettingsLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void loadNotificationSettings()
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [loadNotificationSettings])
+
+  useEffect(() => {
+    if (maxStatus !== "pending") return
+    const interval = window.setInterval(() => {
+      if (maxPendingUntil && new Date(maxPendingUntil).getTime() <= Date.now()) {
+        setMaxStatus("disconnected")
+        setMaxPendingUntil(null)
+        return
+      }
+      void loadNotificationSettings(false)
+    }, 3000)
+    return () => window.clearInterval(interval)
+  }, [loadNotificationSettings, maxPendingUntil, maxStatus])
 
   const validateEmail = (email: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -549,12 +576,12 @@ export default function SettingsPage() {
     e.preventDefault()
     setError("")
 
-    if (!email.trim()) {
+    if (emailEnabled && !email.trim()) {
       setError("Введите email")
       return
     }
 
-    if (!validateEmail(email)) {
+    if (email.trim() && !validateEmail(email)) {
       setError("Неверный формат email")
       return
     }
@@ -562,29 +589,20 @@ export default function SettingsPage() {
     setIsLoading(true)
 
     try {
-      // Save to localStorage
-      const settings: UserSettings = {
-        email: email.trim(),
-        telegram: telegram.trim()
-      }
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings))
-
-      // Send welcome email if this is a new email
-      if (email.trim() !== savedEmail) {
-        const response = await fetch("/api/settings/email", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email.trim() }),
-        })
-
-        if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || "Ошибка при отправке письма")
-        }
+      const normalizedEmail = email.trim().toLowerCase()
+      const response = await fetch("/api/settings/notifications", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail, emailEnabled }),
+      })
+      const data = await response.json() as { error?: string }
+      if (!response.ok) {
+        throw new Error(data.error || "Не удалось сохранить email")
       }
 
-      setSavedEmail(email.trim())
-      setSavedTelegram(telegram.trim())
+      setEmail(normalizedEmail)
+      setSavedEmail(normalizedEmail)
+      setSavedEmailEnabled(emailEnabled)
       setIsSaved(true)
       setTimeout(() => setIsSaved(false), 3000)
     } catch (err) {
@@ -594,14 +612,96 @@ export default function SettingsPage() {
     }
   }
 
-  const handleReportSave = () => {
-    setIsReportSaving(true)
-    // Имитация сохранения
-    setTimeout(() => {
-      setIsReportSaving(false)
-      setIsReportSaved(true)
-      setTimeout(() => setIsReportSaved(false), 3000)
-    }, 500)
+  const handleMaxConnect = async () => {
+    setError("")
+    setIsMaxBusy(true)
+    const popup = window.open("about:blank", "_blank")
+    if (popup) popup.opener = null
+
+    try {
+      const response = await fetch("/api/settings/notifications/max-link", { method: "POST" })
+      const data = await response.json() as {
+        url?: string
+        expiresAt?: string
+        error?: string
+      }
+      if (!response.ok) {
+        throw new Error(data.error || "Не удалось подключить MAX")
+      }
+
+      if (!data.url || !data.expiresAt) throw new Error("MAX вернул некорректную ссылку")
+
+      setMaxStatus("pending")
+      setMaxPendingUntil(data.expiresAt)
+      if (popup) popup.location.href = data.url
+      else window.location.href = data.url
+    } catch (maxError) {
+      popup?.close()
+      setError(maxError instanceof Error ? maxError.message : "Не удалось подключить MAX")
+    } finally {
+      setIsMaxBusy(false)
+    }
+  }
+
+  const handleMaxDisconnect = async () => {
+    setError("")
+    setIsMaxBusy(true)
+    try {
+      const response = await fetch("/api/settings/notifications/max", { method: "DELETE" })
+      const data = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(data.error || "Не удалось отключить MAX")
+      setMaxStatus("disconnected")
+      setMaxDisplayName(null)
+      setMaxPendingUntil(null)
+    } catch (maxError) {
+      setError(maxError instanceof Error ? maxError.message : "Не удалось отключить MAX")
+    } finally {
+      setIsMaxBusy(false)
+    }
+  }
+
+  const toggleEventType = (channel: "email" | "max", key: string) => {
+    const setter = channel === "email" ? setEmailEventTypes : setMaxEventTypes
+    setter((current) => current.includes(key)
+      ? current.filter((item) => item !== key)
+      : [...current, key])
+    setError("")
+  }
+
+  const setAllEventTypes = (channel: "email" | "max", selected: boolean) => {
+    const keys = selected ? availableEventTypes.map((item) => item.key) : []
+    if (channel === "email") setEmailEventTypes(keys)
+    else setMaxEventTypes(keys)
+    setError("")
+  }
+
+  const handleTypeSubmit = async () => {
+    setError("")
+    setIsTypesSaving(true)
+    try {
+      const allKeys = availableEventTypes.map((item) => item.key)
+      const emailSelection = emailEventTypes.length === allKeys.length ? null : emailEventTypes
+      const maxSelection = maxEventTypes.length === allKeys.length ? null : maxEventTypes
+      const response = await fetch("/api/settings/notifications/types", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          emailEventTypes: emailSelection,
+          maxEventTypes: maxSelection,
+        }),
+      })
+      const data = await response.json() as { error?: string }
+      if (!response.ok) throw new Error(data.error || "Не удалось сохранить типы уведомлений")
+
+      setSavedEmailEventTypes([...emailEventTypes])
+      setSavedMaxEventTypes([...maxEventTypes])
+      setTypesSaved(true)
+      window.setTimeout(() => setTypesSaved(false), 3000)
+    } catch (typeError) {
+      setError(typeError instanceof Error ? typeError.message : "Не удалось сохранить типы уведомлений")
+    } finally {
+      setIsTypesSaving(false)
+    }
   }
 
   const handleGenerateReport = async () => {
@@ -656,7 +756,21 @@ export default function SettingsPage() {
     }
   }
 
-  const hasChanges = email.trim() !== savedEmail || telegram.trim() !== savedTelegram
+  const hasChanges = email.trim().toLowerCase() !== savedEmail || emailEnabled !== savedEmailEnabled
+  const typeGroups = useMemo(() => {
+    const groups = new Map<string, { label: string; items: NotificationEventTypeOption[] }>()
+    for (const item of availableEventTypes) {
+      const group = groups.get(item.module) ?? { label: item.moduleLabel, items: [] }
+      group.items.push(item)
+      groups.set(item.module, group)
+    }
+    return [...groups.entries()].map(([module, group]) => ({ module, ...group }))
+  }, [availableEventTypes])
+  const typesHaveChanges = useMemo(() => {
+    const signature = (values: string[]) => [...values].sort().join("\u0000")
+    return signature(emailEventTypes) !== signature(savedEmailEventTypes)
+      || signature(maxEventTypes) !== signature(savedMaxEventTypes)
+  }, [emailEventTypes, maxEventTypes, savedEmailEventTypes, savedMaxEventTypes])
 
   return (
     <div className="max-w-4xl mx-auto p-6 pb-24">
@@ -678,7 +792,7 @@ export default function SettingsPage() {
               Отображение модулей
             </CardTitle>
             <CardDescription>
-              Выберите, какие модули отображать в интерфейсе. Отключённые модули будут скрыты из карты, аналитики и уведомлений.
+              Выберите, какие назначенные вам модули отображать в интерфейсе.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -716,7 +830,7 @@ export default function SettingsPage() {
               })}
             </div>
             <p className="text-xs text-muted-foreground mt-3">
-              При необходимости можно временно скрыть даже все модули. Это повлияет на карту, аналитику и уведомления.
+              Скрытие влияет только на интерфейс. Серверные уведомления приходят по всем назначенным вам модулям.
             </p>
           </CardContent>
         </Card>
@@ -826,207 +940,225 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Каналы для уведомлений */}
-          <div className="border-t pt-8">
-            <h3 className="text-lg font-semibold mb-3">Каналы для уведомлений</h3>
-            <div className="flex items-center gap-4">
-              <div className="flex flex-col items-center gap-1">
-                <Button
-                  variant={telegramEnabled ? "secondary" : "outline"}
-                  size="icon"
-                  className={telegramEnabled ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200" : ""}
-                  onClick={() => setTelegramEnabled(!telegramEnabled)}
-                  title="Telegram"
-                >
-                  <Send className="h-5 w-5" />
-                </Button>
-                <span className="text-xs text-muted-foreground">Telegram</span>
-              </div>
-              <div className="flex flex-col items-center gap-1">
-                <Button
-                  variant={emailEnabled ? "secondary" : "outline"}
-                  size="icon"
-                  className={emailEnabled ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200" : ""}
-                  onClick={() => setEmailEnabled(!emailEnabled)}
-                  title="Email"
-                >
-                  <Mail className="h-5 w-5" />
-                </Button>
-                <span className="text-xs text-muted-foreground">Email</span>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="text-lg font-semibold mb-3">Периодичность рассылки</h3>
-            <div className="flex flex-wrap items-center gap-4">
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  variant={selectedPeriod === "daily" ? "secondary" : "outline"}
-                  className={selectedPeriod === "daily" ? "bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
-                  onClick={() => setSelectedPeriod("daily")}
-                >
-                  Раз в день
-                </Button>
-                <Button
-                  variant={selectedPeriod === "weekly" ? "secondary" : "outline"}
-                  className={selectedPeriod === "weekly" ? "bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
-                  onClick={() => setSelectedPeriod("weekly")}
-                >
-                  Раз в неделю
-                </Button>
-                <Button
-                  variant={selectedPeriod === "monthly" ? "secondary" : "outline"}
-                  className={selectedPeriod === "monthly" ? "bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
-                  onClick={() => setSelectedPeriod("monthly")}
-                >
-                  Раз в месяц
-                </Button>
-                <Button
-                  variant={selectedPeriod === "yearly" ? "secondary" : "outline"}
-                  className={selectedPeriod === "yearly" ? "bg-green-200 text-green-800 dark:bg-green-900 dark:text-green-200" : ""}
-                  onClick={() => setSelectedPeriod("yearly")}
-                >
-                  Раз в год
-                </Button>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4 mt-4">
-              {selectedPeriod !== "daily" && (
-                <div className="flex items-center gap-2">
-                  <Label className="text-sm text-muted-foreground">День отправки:</Label>
-                  <Select value={selectedDay} onValueChange={setSelectedDay}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue placeholder="Выберите день" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {dayOptions.map((day) => (
-                        <SelectItem key={day.value} value={day.value}>
-                          {day.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground">Время отправки:</Label>
-                <Select value={selectedTime} onValueChange={setSelectedTime}>
-                  <SelectTrigger className="w-[120px]">
-                    <SelectValue placeholder="Время" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timeOptions.map((time) => (
-                      <SelectItem key={time} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </div>
-
-          {/* Кнопка сохранить для отчёта */}
-          <div className="flex justify-end">
-            <Button
-              onClick={handleReportSave}
-              disabled={isReportSaving}
-              className="gap-2"
-            >
-              {isReportSaving ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Сохранение...
-                </>
-              ) : isReportSaved ? (
-                <>
-                  <Check className="h-4 w-4" />
-                  Сохранено!
-                </>
-              ) : (
-                "Сохранить настройки отчёта"
-              )}
-            </Button>
-          </div>
         </CardContent>
       </Card>
 
-      {/* Email & Telegram Settings Card - теперь внизу */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <Mail className="h-5 w-5" />
-            Email для уведомлений
+            Уведомления о новых событиях
           </CardTitle>
           <CardDescription>
-            На этот адрес будут приходить уведомления о событиях на дорогах.
-            После сохранения мы отправим вам приветственное письмо.
+            События назначенных вам модулей отправляются сразу по включённым каналам.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleEmailSubmit} className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email адрес</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="your@email.com"
-                  value={email}
-                  onChange={(e) => {
-                    setEmail(e.target.value)
-                    setError("")
-                  }}
-                  aria-invalid={!!error}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="telegram">Telegram</Label>
-                <Input
-                  id="telegram"
-                  type="text"
-                  placeholder="@nickname"
-                  value={telegram}
-                  onChange={(e) => {
-                    setTelegram(e.target.value)
-                  }}
-                />
-              </div>
+        <CardContent className="space-y-6">
+          {notificationSettingsLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Загружаем настройки...
             </div>
-            {error && (
-              <p className="text-sm text-destructive">{error}</p>
-            )}
+          ) : (
+            <>
+              <form onSubmit={handleEmailSubmit} className="space-y-4 rounded-lg border p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="flex items-center gap-2 font-medium">
+                      <Mail className="h-4 w-4" />
+                      Email
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      При первом включении отправим тестовое письмо.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={emailEnabled}
+                    onCheckedChange={(checked) => {
+                      setEmailEnabled(checked)
+                      setError("")
+                    }}
+                    aria-label="Включить Email уведомления"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email адрес</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="your@email.com"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value)
+                      setError("")
+                    }}
+                    aria-invalid={!!error}
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  disabled={isLoading || !hasChanges}
+                  className="gap-2"
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Сохранение...
+                    </>
+                  ) : isSaved ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Сохранено
+                    </>
+                  ) : (
+                    "Сохранить Email"
+                  )}
+                </Button>
+              </form>
 
-            <div className="flex items-center gap-3">
-              <Button
-                type="submit"
-                disabled={isLoading || !hasChanges}
-                className="gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Сохранение...
-                  </>
-                ) : isSaved ? (
-                  <>
-                    <Check className="h-4 w-4" />
-                    Сохранено!
-                  </>
-                ) : (
-                  "Сохранить"
+              <div className="space-y-4 rounded-lg border p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2 font-medium">
+                      <MessageCircle className="h-4 w-4" />
+                      MAX
+                    </div>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {maxStatus === "connected"
+                        ? `Подключён${maxDisplayName ? `: ${maxDisplayName}` : ""}`
+                        : maxStatus === "pending"
+                          ? "Ожидаем запуска бота в MAX"
+                          : "Откройте бота и нажмите кнопку запуска"}
+                    </p>
+                  </div>
+                  {maxStatus === "connected" ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="gap-2"
+                      disabled={isMaxBusy}
+                      onClick={handleMaxDisconnect}
+                    >
+                      {isMaxBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Unplug className="h-4 w-4" />}
+                      Отключить
+                    </Button>
+                  ) : (
+                    <Button
+                      type="button"
+                      className="gap-2"
+                      disabled={isMaxBusy}
+                      onClick={handleMaxConnect}
+                    >
+                      {isMaxBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+                      {maxStatus === "pending" ? "Открыть MAX снова" : "Подключить MAX"}
+                    </Button>
+                  )}
+                </div>
+                {maxStatus === "pending" && maxPendingUntil && (
+                  <p className="text-xs text-muted-foreground">
+                    Ссылка действует до {new Date(maxPendingUntil).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}.
+                  </p>
                 )}
-              </Button>
+              </div>
 
-              {savedEmail && (
-                <span className="text-sm text-muted-foreground">
-                  Текущий email: {savedEmail}
-                </span>
-              )}
-            </div>
-          </form>
+              <div className="space-y-4 rounded-lg border p-4">
+                <div>
+                  <div className="flex items-center gap-2 font-medium">
+                    <Settings className="h-4 w-4" />
+                    Типы уведомлений
+                  </div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Для каждого события отдельно выберите каналы доставки. Настройка сохраняется даже для ещё не подключённого канала.
+                  </p>
+                </div>
+
+                {availableEventTypes.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    Для назначенных вам модулей типы уведомлений пока не настроены.
+                  </p>
+                ) : (
+                  <div className="overflow-x-auto rounded-md border">
+                    <div className="min-w-[520px]">
+                      <div className="grid grid-cols-[minmax(0,1fr)_96px_96px] items-center border-b bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground">
+                        <span>Тип события</span>
+                        <span className="text-center">Email</span>
+                        <span className="text-center">MAX</span>
+                      </div>
+                      {typeGroups.map((group) => (
+                        <div key={group.module}>
+                          <div className="border-b bg-muted/20 px-3 py-2 text-sm font-medium">
+                            {group.label}
+                          </div>
+                          {group.items.map((item) => (
+                            <div
+                              key={item.key}
+                              className="grid grid-cols-[minmax(0,1fr)_96px_96px] items-center border-b px-3 py-2.5 last:border-b-0"
+                            >
+                              <span className="pr-3 text-sm">{item.label}</span>
+                              <div className="flex justify-center">
+                                <Switch
+                                  checked={emailEventTypes.includes(item.key)}
+                                  onCheckedChange={() => toggleEventType("email", item.key)}
+                                  aria-label={`${item.label}: Email`}
+                                />
+                              </div>
+                              <div className="flex justify-center">
+                                <Switch
+                                  checked={maxEventTypes.includes(item.key)}
+                                  onCheckedChange={() => toggleEventType("max", item.key)}
+                                  aria-label={`${item.label}: MAX`}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {availableEventTypes.length > 0 && (
+                  <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => setAllEventTypes("email", true)}>
+                        Все Email
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setAllEventTypes("email", false)}>
+                        Снять Email
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" onClick={() => setAllEventTypes("max", true)}>
+                        Все MAX
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => setAllEventTypes("max", false)}>
+                        Снять MAX
+                      </Button>
+                    </div>
+                    <Button
+                      type="button"
+                      className="gap-2"
+                      disabled={isTypesSaving || !typesHaveChanges}
+                      onClick={handleTypeSubmit}
+                    >
+                      {isTypesSaving ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Сохранение...
+                        </>
+                      ) : typesSaved ? (
+                        <>
+                          <Check className="h-4 w-4" />
+                          Сохранено
+                        </>
+                      ) : (
+                        "Сохранить типы"
+                      )}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </CardContent>
       </Card>
 

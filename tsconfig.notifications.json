@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "app/settings/page.tsx",
+    "app/api/settings/email/route.ts",
+    "app/api/settings/notifications/**/*.ts",
+    "app/api/webhooks/max/route.ts",
+    "app/api/internal/notifications/dispatch/route.ts",
+    "lib/notifications/**/*.ts"
+  ],
+  "exclude": ["node_modules"]
+}
