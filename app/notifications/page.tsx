@@ -701,20 +701,16 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const [pageSize, setPageSize] = useState(25)
   const [expandedId, setExpandedId] = useState<string | null>(initialAlertId)
   const [episodeRefreshTick, setEpisodeRefreshTick] = useState(0)
-  const hasOpenLyingPersonEpisode = lyingPersonEpisodes.some(
-    (episode) => episode.status === "open"
-  )
-
   useEffect(() => {
-    // Legacy alert pages do not poll. Refresh only while a visible lying-person
-    // episode can still receive heartbeats or transition to closed.
-    if (!hasStops || !hasOpenLyingPersonEpisode) return
+    // Keep the stops feed fresh even when no episode is currently visible:
+    // the next poll may discover a newly opened lying-person episode.
+    if (!hasStops) return
     const timer = window.setInterval(
       () => setEpisodeRefreshTick((current) => current + 1),
       LYING_EPISODE_REFRESH_INTERVAL_MS
     )
     return () => window.clearInterval(timer)
-  }, [hasOpenLyingPersonEpisode, hasStops])
+  }, [hasStops])
 
   useEffect(() => {
     if (initialAlertId && !loading) {
