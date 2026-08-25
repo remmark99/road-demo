@@ -26,6 +26,27 @@ export interface AlertsResult {
     hasMore: boolean
 }
 
+export type LyingPersonEpisodeStatus = 'open' | 'closed'
+
+export interface LyingPersonEpisode {
+    id: string
+    alert_id: string
+    camera_id: string
+    camera_index: number
+    location_id: string | null
+    status: LyingPersonEpisodeStatus
+    started_at: string
+    last_seen_at: string
+    ended_at: string | null
+    observation_count: number
+    canonical_subject: Record<string, unknown>
+    canonical_bbox: Record<string, unknown>
+    first_image_url: string | null
+    latest_image_url: string | null
+    created_at: string
+    updated_at: string
+}
+
 export interface StopSafetyAlertMetadata {
     image_url?: string
     location_id?: string
@@ -90,6 +111,30 @@ export async function fetchAlerts(options: FetchAlertsOptions = {}): Promise<Ale
         total: count || 0,
         hasMore: (offset + limit) < (count || 0)
     }
+}
+
+export async function fetchLyingPersonEpisodes(
+    ids: readonly string[]
+): Promise<LyingPersonEpisode[]> {
+    const uniqueIds = Array.from(
+        new Set(ids.map((id) => id.trim()).filter(Boolean))
+    )
+
+    if (uniqueIds.length === 0) {
+        return []
+    }
+
+    const { data, error } = await supabase
+        .from('lying_person_episodes')
+        .select('id,alert_id,camera_id,camera_index,location_id,status,started_at,last_seen_at,ended_at,observation_count,canonical_subject,canonical_bbox,first_image_url,latest_image_url,created_at,updated_at')
+        .in('id', uniqueIds)
+
+    if (error) {
+        console.error('Error fetching lying person episodes:', error)
+        return []
+    }
+
+    return (data || []) as LyingPersonEpisode[]
 }
 
 export async function fetchAlertsByCamera(
