@@ -131,30 +131,31 @@ function SensorRow({ reading }: { reading: SensorReading }) {
     )
 }
 
-export function SensorPopover() {
+export function SensorPopover({ busStopId }: { busStopId?: number } = {}) {
     const [readings, setReadings] = useState<SensorReading[]>([])
     const [loading, setLoading] = useState(true)
 
     const loadData = useCallback(async () => {
-        const data = await fetchLatestMeasurements()
+        const data = await fetchLatestMeasurements(busStopId)
         setReadings(data)
         setLoading(false)
-    }, [])
+    }, [busStopId])
 
     useEffect(() => {
-        loadData()
+        const initialLoadTimer = window.setTimeout(() => void loadData(), 0)
 
         const unsubscribe = subscribeMeasurements(() => {
             loadData()
-        })
+        }, busStopId)
 
         const interval = setInterval(loadData, 15000)
 
         return () => {
+            window.clearTimeout(initialLoadTimer)
             unsubscribe()
             clearInterval(interval)
         }
-    }, [loadData])
+    }, [loadData, busStopId])
 
     const hasAnyWarning = readings.some(
         (r) =>

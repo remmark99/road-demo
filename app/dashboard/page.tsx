@@ -24,6 +24,7 @@ import {
   Trash2,
   Route,
   DoorClosed,
+  Gauge,
   ChevronRight,
   type LucideIcon,
 } from "lucide-react"
@@ -39,6 +40,7 @@ import { StopDistrictPlanAnalytics } from "@/components/dashboard/stop-district-
 import { StopKpiCurrentAnalytics } from "@/components/dashboard/stop-kpi-current-analytics"
 import { StopLyingPersonAnalytics } from "@/components/dashboard/stop-lying-person-analytics"
 import { StopConditionCurrentAnalytics } from "@/components/dashboard/stop-condition-current-analytics"
+import { StopSensorAnalytics } from "@/components/dashboard/stop-sensor-analytics"
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
 import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
 import { ConditionAnalytics } from "@/components/dashboard/condition-analytics"
@@ -68,6 +70,7 @@ type DashboardView =
   | "stop_passenger"
   | "stop_vandalism"
   | "stop_condition"
+  | "stop_sensors"
   | "shore_security"
   | "shore_safety"
   | "shore_emergency"
@@ -139,6 +142,13 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     stopModes: {
       current: StopKpiCurrentAnalytics,
     },
+  },
+  {
+    id: "stop_sensors",
+    label: "Датчики",
+    icon: Gauge,
+    module: "stops",
+    component: StopSensorAnalytics,
   },
   {
     id: "stop_districts",
@@ -241,7 +251,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city"]
-const STOPS_DASHBOARDS = ["stop_kpi", "stop_passenger", "stop_security", "stop_condition", "stop_districts", "stop_vandalism"]
+const STOPS_DASHBOARDS = ["stop_kpi", "stop_sensors", "stop_passenger", "stop_security", "stop_condition", "stop_districts", "stop_vandalism"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]
 const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]
