@@ -62,19 +62,18 @@ export async function fetchLatestMeasurements(busStopId?: number): Promise<Senso
     const { data, error } = await query
 
     if (error || !data || data.length === 0) {
-        // Fallback: If stop_sensor_states isn't populated yet, fallback to legacy measurements table
         return fetchLatestMeasurementsFallback()
     }
 
-    // Map rows into SensorReading structures grouped by element
     const rows = data as StopSensorStateRow[]
-    
-    const dio1 = rows.find(r => r.element === 1 && r.category === 'digital input') ?? rows.find(r => r.element === 1)
-    const temp13 = rows.find(r => r.element === 13 && r.category === 'temperature')
-    const hum13 = rows.find(r => r.element === 13 && r.category === 'humidity')
-    const temp14 = rows.find(r => r.element === 14 && r.category === 'temperature') ?? rows.find(r => r.element === 14)
+    const dio1 = rows.find((row) => row.element === 1 && row.category === 'digital input')
+        ?? rows.find((row) => row.element === 1)
+    const temp13 = rows.find((row) => row.element === 13 && row.category === 'temperature')
+    const hum13 = rows.find((row) => row.element === 13 && row.category === 'humidity')
+    const temp14 = rows.find((row) => row.element === 14 && row.category === 'temperature')
+        ?? rows.find((row) => row.element === 14)
 
-    const readings: SensorReading[] = [
+    return [
         {
             element: 1,
             label: SENSOR_LABELS[1],
@@ -115,13 +114,17 @@ export async function fetchLatestMeasurements(busStopId?: number): Promise<Senso
             digitalUpdatedAt: null,
         },
     ]
-
-    return readings
 }
 
-/** Legacy fallback query for measurements table */
+/**
+ * Fetch the latest measurements for all sensors.
+ * Queries per element+category to guarantee we always get the latest of each.
+ */
 async function fetchLatestMeasurementsFallback(): Promise<SensorReading[]> {
-    async function fetchLatestForElementCategory(element: number, category: string): Promise<Measurement | null> {
+    async function fetchLatestForElementCategory(
+        element: number,
+        category: string,
+    ): Promise<Measurement | null> {
         const { data } = await supabase
             .from('measurements')
             .select('*')
@@ -200,7 +203,7 @@ export function subscribeMeasurements(onUpdate: () => void, busStopId?: number) 
                 event: '*',
                 schema: 'public',
                 table: 'stop_sensor_states',
-                filter: filter,
+                filter,
             },
             () => {
                 onUpdate()

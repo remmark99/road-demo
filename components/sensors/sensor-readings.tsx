@@ -142,7 +142,7 @@ export function SensorPopover({ busStopId }: { busStopId?: number } = {}) {
     }, [busStopId])
 
     useEffect(() => {
-        loadData()
+        const initialLoadTimer = window.setTimeout(() => void loadData(), 0)
 
         const unsubscribe = subscribeMeasurements(() => {
             loadData()
@@ -151,11 +151,11 @@ export function SensorPopover({ busStopId }: { busStopId?: number } = {}) {
         const interval = setInterval(loadData, 15000)
 
         return () => {
+            window.clearTimeout(initialLoadTimer)
             unsubscribe()
             clearInterval(interval)
         }
     }, [loadData, busStopId])
-
 
     const hasAnyWarning = readings.some(
         (r) =>
