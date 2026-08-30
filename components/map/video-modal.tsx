@@ -73,9 +73,9 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
       if (Hls.isSupported()) {
         const hls = new Hls({
           enableWorker: true,
-          lowLatencyMode: true,
-          manifestLoadingTimeOut: 5000,
-          manifestLoadingMaxRetry: 2,
+          lowLatencyMode: false,
+          manifestLoadingTimeOut: 10000,
+          manifestLoadingMaxRetry: 4,
         })
 
         hlsRef.current = hls

@@ -50,7 +50,8 @@ export interface StopSensorStateRow {
 }
 
 /**
- * Fetch the latest measurement for a specific element and category.
+ * Fetch the latest measurements for all sensors, querying the UPSERTed stop_sensor_states table.
+ * If busStopId is provided, filters by bus_stop_id.
  */
 export async function fetchLatestMeasurements(busStopId?: number): Promise<SensorReading[]> {
     let query = supabase.from('stop_sensor_states').select('*')
@@ -142,7 +143,7 @@ async function fetchLatestMeasurementsFallback(): Promise<SensorReading[]> {
         fetchLatestForElementCategory(14, 'temperature'),
     ])
 
-    const readings: SensorReading[] = [
+    return [
         {
             element: 1,
             label: SENSOR_LABELS[1],
@@ -183,14 +184,12 @@ async function fetchLatestMeasurementsFallback(): Promise<SensorReading[]> {
             digitalUpdatedAt: null,
         },
     ]
-
-    return readings
 }
 
 export { SENSOR_DESCRIPTIONS }
 
 /**
- * Subscribe to realtime inserts on the measurements table.
+ * Subscribe to realtime changes on the stop_sensor_states table (and fallback to measurements).
  * Returns an unsubscribe function.
  */
 export function subscribeMeasurements(onUpdate: () => void, busStopId?: number) {

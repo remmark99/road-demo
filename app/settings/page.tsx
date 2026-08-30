@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
-import { Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon, FileDown, MessageCircle, ExternalLink, Unplug } from "lucide-react"
+import { Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon, FileDown, MessageCircle, ExternalLink, Unplug, ChevronDown } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
 import type { NotificationEventTypeOption } from "@/lib/notifications/catalog"
 import type { NotificationPreferencesResponse } from "@/lib/notifications/types"
@@ -494,6 +494,7 @@ export default function SettingsPage() {
   const [maxEventTypes, setMaxEventTypes] = useState<string[]>([])
   const [savedEmailEventTypes, setSavedEmailEventTypes] = useState<string[]>([])
   const [savedMaxEventTypes, setSavedMaxEventTypes] = useState<string[]>([])
+  const [openTypeModules, setOpenTypeModules] = useState<Set<string>>(() => new Set(["stops"]))
   const [isTypesSaving, setIsTypesSaving] = useState(false)
   const [typesSaved, setTypesSaved] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
@@ -673,6 +674,15 @@ export default function SettingsPage() {
     if (channel === "email") setEmailEventTypes(keys)
     else setMaxEventTypes(keys)
     setError("")
+  }
+
+  const toggleTypeModule = (module: string) => {
+    setOpenTypeModules((current) => {
+      const next = new Set(current)
+      if (next.has(module)) next.delete(module)
+      else next.add(module)
+      return next
+    })
   }
 
   const handleTypeSubmit = async () => {
@@ -1086,31 +1096,45 @@ export default function SettingsPage() {
                       </div>
                       {typeGroups.map((group) => (
                         <div key={group.module}>
-                          <div className="border-b bg-muted/20 px-3 py-2 text-sm font-medium">
-                            {group.label}
-                          </div>
-                          {group.items.map((item) => (
-                            <div
-                              key={item.key}
-                              className="grid grid-cols-[minmax(0,1fr)_96px_96px] items-center border-b px-3 py-2.5 last:border-b-0"
-                            >
-                              <span className="pr-3 text-sm">{item.label}</span>
-                              <div className="flex justify-center">
-                                <Switch
-                                  checked={emailEventTypes.includes(item.key)}
-                                  onCheckedChange={() => toggleEventType("email", item.key)}
-                                  aria-label={`${item.label}: Email`}
-                                />
-                              </div>
-                              <div className="flex justify-center">
-                                <Switch
-                                  checked={maxEventTypes.includes(item.key)}
-                                  onCheckedChange={() => toggleEventType("max", item.key)}
-                                  aria-label={`${item.label}: MAX`}
-                                />
-                              </div>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between border-b bg-muted/20 px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-muted/40"
+                            aria-expanded={openTypeModules.has(group.module)}
+                            aria-controls={`notification-types-${group.module}`}
+                            onClick={() => toggleTypeModule(group.module)}
+                          >
+                            <span>{group.label}</span>
+                            <ChevronDown
+                              className={`h-4 w-4 text-muted-foreground transition-transform ${openTypeModules.has(group.module) ? "rotate-180" : ""}`}
+                              aria-hidden="true"
+                            />
+                          </button>
+                          {openTypeModules.has(group.module) && (
+                            <div id={`notification-types-${group.module}`}>
+                              {group.items.map((item) => (
+                                <div
+                                  key={item.key}
+                                  className="grid grid-cols-[minmax(0,1fr)_96px_96px] items-center border-b px-3 py-2.5 last:border-b-0"
+                                >
+                                  <span className="pr-3 text-sm">{item.label}</span>
+                                  <div className="flex justify-center">
+                                    <Switch
+                                      checked={emailEventTypes.includes(item.key)}
+                                      onCheckedChange={() => toggleEventType("email", item.key)}
+                                      aria-label={`${item.label}: Email`}
+                                    />
+                                  </div>
+                                  <div className="flex justify-center">
+                                    <Switch
+                                      checked={maxEventTypes.includes(item.key)}
+                                      onCheckedChange={() => toggleEventType("max", item.key)}
+                                      aria-label={`${item.label}: MAX`}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
                       ))}
                     </div>
