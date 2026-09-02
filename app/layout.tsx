@@ -6,6 +6,7 @@ import './globals.css'
 import { Toaster } from "@/components/ui/sonner"
 import { ModuleProvider } from "@/components/providers/module-context"
 import { CityProvider } from "@/components/providers/city-context"
+import { SupportWidget } from "@/components/support-widget"
 
 export const metadata: Metadata = {
   title: {
@@ -109,6 +110,7 @@ export default function RootLayout({
             {children}
           </ModuleProvider>
         </CityProvider>
+        <SupportWidget />
         <Toaster position="bottom-right" />
         <Analytics />
 

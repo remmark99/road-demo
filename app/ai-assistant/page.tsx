@@ -36,7 +36,7 @@ export default function AIAssistantPage() {
       <Navigation />
 
       <div className="pt-14">
-        <div className="flex h-[calc(100dvh-3.5rem)] min-h-[720px] w-full flex-col px-4 py-3 md:px-6">
+        <div className="flex h-[calc(100dvh-3.5rem)] min-h-[720px] w-full flex-col px-4 py-3 pb-16 md:px-6">
           <div className="mb-3 flex flex-none flex-col gap-3 rounded-lg border border-border/70 bg-card/70 px-4 py-3 shadow-sm md:flex-row md:items-center md:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">

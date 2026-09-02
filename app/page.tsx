@@ -44,7 +44,7 @@ export default function MapPage() {
         </div>
 
         {/* Timeline */}
-        <div className="p-4 border-t border-border">
+        <div className="p-4 pr-20 border-t border-border">
           <TimelineSlider onTimeChange={handleTimeChange} />
         </div>
       </div>
