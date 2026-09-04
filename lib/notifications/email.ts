@@ -82,3 +82,44 @@ export async function sendTestEmail(to: string) {
 export async function sendEventEmail(to: string, payload: NotificationEventPayload) {
   await sendMail({ to, ...renderEmailEvent(payload) })
 }
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+export async function sendSupportRequestEmail(input: {
+  topicLabel: string
+  message: string
+  reporterEmail?: string | null
+  pageUrl?: string | null
+}) {
+  const config = getSmtpConfig()
+  const to = process.env.SUPPORT_INBOX_EMAIL || config.from
+
+  const metaLines = [
+    `Тема: ${input.topicLabel}`,
+    `От: ${input.reporterEmail || "не авторизован"}`,
+    input.pageUrl ? `Страница: ${input.pageUrl}` : null,
+    `Время: ${new Date().toLocaleString("ru-RU", { timeZone: "Asia/Yekaterinburg" })}`,
+  ].filter((line): line is string => Boolean(line))
+
+  await sendMail({
+    to,
+    subject: `[Поддержка] ${input.topicLabel}`,
+    text: `${metaLines.join("\n")}\n\n${input.message}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;color:#172033">
+        <h1 style="font-size:20px;color:#0f766e">Новое обращение в поддержку</h1>
+        <table style="font-size:13px;color:#475569;margin-bottom:16px">
+          ${metaLines.map((line) => `<tr><td style="padding:2px 8px 2px 0">${escapeHtml(line)}</td></tr>`).join("")}
+        </table>
+        <div style="white-space:pre-wrap;font-size:14px;border-top:1px solid #e2e8f0;padding-top:12px">${escapeHtml(input.message)}</div>
+      </div>
+    `,
+  })
+}
