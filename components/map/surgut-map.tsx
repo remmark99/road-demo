@@ -34,36 +34,12 @@ const statusColors: Record<RoadStatus, string> = {
   unknown: "#6b7280"
 }
 
-const getMapStyle = (isDark: boolean) => ({
-  version: 8 as const,
-  sources: {
-    osm: {
-      type: "raster" as const,
-      tiles: isDark
-        ? [
-          "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-          "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-          "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png"
-        ]
-        : [
-          "https://a.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-          "https://b.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
-          "https://c.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
-        ],
-      tileSize: 256,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-    }
-  },
-  layers: [
-    {
-      id: "osm",
-      type: "raster" as const,
-      source: "osm",
-      minzoom: 0,
-      maxzoom: 19
-    }
-  ]
-})
+// OpenFreeMap serves the Positron / Dark Matter styles without an API key.
+// CARTO's raster basemaps now watermark unauthenticated tiles.
+const getMapStyle = (isDark: boolean) =>
+  isDark
+    ? "https://tiles.openfreemap.org/styles/dark"
+    : "https://tiles.openfreemap.org/styles/positron"
 
 // Generate FOV polygon coordinates using proper geodesic math
 function generateFovPolygon(
