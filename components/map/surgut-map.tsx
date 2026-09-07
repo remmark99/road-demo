@@ -6,6 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
 import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
+import { ACTIVITY_STATUS_LABELS, type StopActivityStatus } from "@/lib/api/stop-activity"
 import { fetchBusStopHeatmapData, fetchBusStopOccupancyHeatmapData, type BusStopHeatmapResult, type BusStopOccupancyHeatmapResult } from "@/lib/api/bus-stop-heatmap"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
 import { fetchAnchorsGeoJSON } from "@/lib/api/anchors"
@@ -265,7 +266,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
   // Filter States
   const [cameraFilters, setCameraFilters] = useState({ online: true, offline: false })
-  const [busStopFilters, setBusStopFilters] = useState({ online: true, offline: false, incidents: true, unequipped: true })
+  const [busStopFilters, setBusStopFilters] = useState({ online: true, partial: true, offline: false, incidents: true, unequipped: true })
   const [showClusters, setShowClusters] = useState(true)
   const [showHeatmap, setShowHeatmap] = useState(false)
   
@@ -481,11 +482,12 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       "circle-color": [
         "case",
         ["==", ["has", "has_equipment"], false], "#3b82f6",
-        ["all", ["==", ["get", "has_equipment"], false], ["==", ["get", "is_partly_equipped"], false]], "#3b82f6",
-        ["==", ["get", "is_online"], false], "#9ca3af",
+        ["==", ["get", "has_equipment"], false], "#3b82f6",
         ["==", ["get", "glass_broken"], true], "#ef4444",
-        ["==", ["get", "heater_working"], false], "#f59e0b",
-        "#22c55e"
+        ["==", ["get", "heater_working"], false], "#f97316",
+        ["==", ["get", "activity_status"], "active"], "#22c55e",
+        ["==", ["get", "activity_status"], "partial"], "#eab308",
+        "#9ca3af"
       ] as any,
       "circle-stroke-width": 2,
       "circle-stroke-color": "#ffffff",
@@ -621,7 +623,17 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
           let html = `<div class="p-2 min-w-48"><div class="font-bold mb-2 text-sm border-b pb-1">Остановки (${leaves.length}):</div><div class="space-y-1">`
           leaves.forEach((f: any, index: number) => {
             const props = f.properties
-            const colorClass = props.is_online ? (props.glass_broken ? 'bg-red-500' : 'bg-green-500') : (props.has_equipment === false ? 'bg-blue-500' : 'bg-gray-400')
+            const colorClass = props.has_equipment === false
+              ? 'bg-blue-500'
+              : props.glass_broken
+                ? 'bg-red-500'
+                : props.heater_working === false
+                  ? 'bg-orange-500'
+                  : props.activity_status === 'active'
+                    ? 'bg-green-500'
+                    : props.activity_status === 'partial'
+                      ? 'bg-yellow-500'
+                      : 'bg-gray-400'
             html += `<div class="bus-stop-cluster-row flex items-center gap-2 text-xs p-1.5 hover:bg-muted cursor-pointer rounded" data-index="\${index}">
                <div class="w-2 h-2 rounded-full \${colorClass}"></div>
                <span class="truncate max-w-[150px] font-medium">\${props.name || 'Остановка'}</span>
@@ -685,11 +697,12 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
               .setLngLat((e as unknown as { lngLat: any }).lngLat)
               .setHTML(
                 `<div class="p-2 text-sm">
-                <div class="font-semibold flex items-center gap-1.5 mb-1 ${props.is_online ? (props.glass_broken ? 'text-red-500' : 'text-green-500') : 'text-[#3b82f6]'}">
+                <div class="font-semibold flex items-center gap-1.5 mb-1 ${props.has_equipment === false ? 'text-[#3b82f6]' : props.glass_broken ? 'text-red-500' : props.activity_status === 'active' ? 'text-green-500' : props.activity_status === 'partial' ? 'text-yellow-500' : 'text-gray-400'}">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
                   ${props.name || 'Остановка'}
                 </div>
                 ${props.address ? `<div class="text-muted-foreground text-xs">${props.address}</div>` : ''}
+                <div class="text-muted-foreground text-xs mt-1">${props.has_equipment === false ? 'Без оборудования' : `${ACTIVITY_STATUS_LABELS[props.activity_status as StopActivityStatus] ?? 'Неактивна'} — ${props.sensors_online ? 'датчики в сети' : 'датчики не в сети'}, ${props.cameras_online ? `камеры в сети (${props.online_camera_count})` : 'камеры не в сети'}`}</div>
               </div>`
               )
               .addTo(map.current!)
@@ -1927,7 +1940,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       const filteredFeatures = busStopsData.features.filter(f => {
         const sd: any = f.properties.sensor_data || {}
 
-        if (!sd.has_equipment && !sd.is_partly_equipped) {
+        if (!sd.has_equipment) {
           return busStopFilters.unequipped
         }
 
@@ -1935,11 +1948,9 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
           return busStopFilters.incidents
         }
 
-        if (sd.is_online) {
-          return busStopFilters.online
-        } else {
-          return busStopFilters.offline
-        }
+        if (sd.activity_status === "active") return busStopFilters.online
+        if (sd.activity_status === "partial") return busStopFilters.partial
+        return busStopFilters.offline
       })
 
       // Flatten sensor_data for MapLibre expressions, and calculate camera count
@@ -2553,11 +2564,15 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                 <div className="font-medium text-sm border-b pb-1 mb-2">Остановки (🚌)</div>
                 <div className="flex items-center space-x-2">
                   <Checkbox id="bus-online" checked={busStopFilters.online} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, online: !!checked }))} />
-                  <Label htmlFor="bus-online" className="text-sm cursor-pointer">В сети</Label>
+                  <Label htmlFor="bus-online" className="text-sm cursor-pointer">Активные</Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="bus-partial" checked={busStopFilters.partial} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, partial: !!checked }))} />
+                  <Label htmlFor="bus-partial" className="text-sm cursor-pointer">Частично активные</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox id="bus-offline" checked={busStopFilters.offline} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, offline: !!checked }))} />
-                  <Label htmlFor="bus-offline" className="text-sm cursor-pointer">Не в сети</Label>
+                  <Label htmlFor="bus-offline" className="text-sm cursor-pointer">Неактивные</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox id="bus-incidents" checked={busStopFilters.incidents} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, incidents: !!checked }))} />

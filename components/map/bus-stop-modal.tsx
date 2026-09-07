@@ -5,17 +5,10 @@ import { Separator } from "@/components/ui/separator"
 import { Wifi, WifiOff, Thermometer, Droplets, Zap, AlertTriangle, ShieldAlert, BusFront, Hammer } from "lucide-react"
 import { fetchLatestMeasurements, subscribeMeasurements, type SensorReading } from "@/lib/api/measurements"
 import { fetchControllerAlerts, type ControllerAlert } from "@/lib/api/controller-alerts"
+import type { BusStopSensorData } from "@/lib/api/bus-stops"
+import { ACTIVITY_STATUS_LABELS, resolveActivityStatus } from "@/lib/api/stop-activity"
 
-export interface BusStopSensorData {
-    is_online: boolean
-    has_equipment: boolean
-    is_partly_equipped: boolean
-    temperature_in?: number
-    temperature_out?: number
-    humidity?: number
-    heater_working?: boolean
-    glass_broken?: boolean
-}
+export type { BusStopSensorData }
 
 export interface SelectedBusStop {
     id: number
@@ -63,7 +56,7 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
             try {
                 const [readings, alertsResult] = await Promise.all([
                     fetchLatestMeasurements(busStop?.id),
-                    fetchControllerAlerts({ limit: 10 }),
+                    fetchControllerAlerts({ busStopId: busStop?.id, limit: 10 }),
                 ])
                 if (isMounted) {
                     setRealReadings(readings)
@@ -105,8 +98,13 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
             r.digitalAlarm !== null
     )
 
-    const hasEquipment = hasRealReadings || Boolean(busStop.sensor_data?.has_equipment || busStop.sensor_data?.is_partly_equipped)
-    const isOnline = hasRealReadings || Boolean(busStop.sensor_data?.is_online)
+    // Датчики считаются рабочими, если контроллер прислал свежие показания;
+    // камеры — если хотя бы одна привязанная к остановке камера в сети.
+    const sensorsOnline = hasRealReadings || Boolean(busStop.sensor_data?.sensors_online)
+    const camerasOnline = Boolean(busStop.sensor_data?.cameras_online)
+    const onlineCameraCount = busStop.sensor_data?.online_camera_count ?? 0
+    const activityStatus = resolveActivityStatus(sensorsOnline, camerasOnline)
+    const hasEquipment = hasRealReadings || camerasOnline || Boolean(busStop.sensor_data?.has_equipment)
 
     // Real metric values (no fallbacks to fake random values)
     const tempOut = dht13?.temperature ?? undefined
@@ -142,13 +140,17 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                             <Badge variant="secondary" className="ml-auto text-blue-500 bg-blue-500/10 border-blue-500/20">
                                 Без оборудования
                             </Badge>
-                        ) : isOnline ? (
+                        ) : activityStatus === "active" ? (
                             <Badge variant="default" className="ml-auto bg-green-500 hover:bg-green-600">
-                                <Wifi className="h-3 w-3 mr-1" /> В сети
+                                <Wifi className="h-3 w-3 mr-1" /> {ACTIVITY_STATUS_LABELS.active}
+                            </Badge>
+                        ) : activityStatus === "partial" ? (
+                            <Badge variant="default" className="ml-auto bg-yellow-500 hover:bg-yellow-600 text-black">
+                                <Wifi className="h-3 w-3 mr-1" /> {ACTIVITY_STATUS_LABELS.partial}
                             </Badge>
                         ) : (
                             <Badge variant="secondary" className="ml-auto">
-                                <WifiOff className="h-3 w-3 mr-1" /> Не в сети
+                                <WifiOff className="h-3 w-3 mr-1" /> {ACTIVITY_STATUS_LABELS.inactive}
                             </Badge>
                         )}
                     </DialogDescription>
@@ -165,8 +167,18 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                         </div>
                     ) : (
                         <div className="space-y-6">
+                            {/* Какие именно источники дают остановке её статус */}
+                            <div className="flex flex-wrap gap-2 text-xs">
+                                <span className={`px-2 py-1 rounded-md border ${sensorsOnline ? "text-green-500 border-green-500/30 bg-green-500/10" : "text-muted-foreground border-border bg-muted/50"}`}>
+                                    Датчики: {sensorsOnline ? "в сети" : "не в сети"}
+                                </span>
+                                <span className={`px-2 py-1 rounded-md border ${camerasOnline ? "text-green-500 border-green-500/30 bg-green-500/10" : "text-muted-foreground border-border bg-muted/50"}`}>
+                                    Камеры: {camerasOnline ? `в сети (${onlineCameraCount})` : "не в сети"}
+                                </span>
+                            </div>
+
                             {/* Critical Alerts Banner: ONLY rendered if there are real active problems */}
-                            {isOnline && hasAnyRealProblems && (
+                            {sensorsOnline && hasAnyRealProblems && (
                                 <div className="p-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 space-y-2">
                                     <div className="font-semibold flex items-center gap-2">
                                         <AlertTriangle className="h-4 w-4" />
@@ -186,37 +198,37 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                                     <Thermometer className="h-5 w-5 text-sky-500 mb-2" />
                                     <div className="text-xs text-muted-foreground">Т. снаружи</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && tempOut !== undefined ? `${tempOut.toFixed(1)}°C` : '—'}
+                                        {sensorsOnline && tempOut !== undefined ? `${tempOut.toFixed(1)}°C` : '—'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
                                     <Thermometer className="h-5 w-5 text-orange-500 mb-2" />
                                     <div className="text-xs text-muted-foreground">Т. внутри</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && tempIn !== undefined ? `${tempIn.toFixed(1)}°C` : '—'}
+                                        {sensorsOnline && tempIn !== undefined ? `${tempIn.toFixed(1)}°C` : '—'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
                                     <Droplets className="h-5 w-5 text-blue-400 mb-2" />
                                     <div className="text-xs text-muted-foreground">Влажность</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && humidity !== undefined ? `${humidity.toFixed(1)}%` : '—'}
+                                        {sensorsOnline && humidity !== undefined ? `${humidity.toFixed(1)}%` : '—'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
-                                    <Zap className={`h-5 w-5 mb-2 ${isOnline && dio1?.digitalState ? 'text-amber-400' : 'text-muted-foreground'}`} />
+                                    <Zap className={`h-5 w-5 mb-2 ${sensorsOnline && dio1?.digitalState ? 'text-amber-400' : 'text-muted-foreground'}`} />
                                     <div className="text-xs text-muted-foreground">Обогрев</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline && dio1?.digitalState !== null && dio1?.digitalState !== undefined
+                                        {sensorsOnline && dio1?.digitalState !== null && dio1?.digitalState !== undefined
                                             ? (dio1.digitalState ? 'Включен' : 'Отключен')
                                             : '—'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
-                                    <Hammer className={`h-5 w-5 mb-2 ${isOnline ? (glassBrokenAlarm ? 'text-red-500' : 'text-emerald-500') : 'text-muted-foreground'}`} />
+                                    <Hammer className={`h-5 w-5 mb-2 ${sensorsOnline ? (glassBrokenAlarm ? 'text-red-500' : 'text-emerald-500') : 'text-muted-foreground'}`} />
                                     <div className="text-xs text-muted-foreground">Датчик разбития</div>
                                     <div className="font-medium mt-0.5">
-                                        {isOnline ? (glassBrokenAlarm ? 'Тревога' : 'Норма') : '—'}
+                                        {sensorsOnline ? (glassBrokenAlarm ? 'Тревога' : 'Норма') : '—'}
                                     </div>
                                 </div>
                             </div>
@@ -230,7 +242,7 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                                     Журнал событий
                                 </h3>
                                 <div className="space-y-2">
-                                    {!isOnline ? (
+                                    {!sensorsOnline ? (
                                         <div className="text-sm text-muted-foreground text-center py-4 bg-muted/50 rounded-lg">
                                             История недоступна (устройство оффлайн)
                                         </div>

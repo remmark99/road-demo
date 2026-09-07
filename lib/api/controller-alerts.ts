@@ -12,12 +12,15 @@ export interface ControllerAlert {
     prev_alarm: string | null
     message: string
     clip_path?: string | null
+    bus_stop_id?: number | null
 }
 
 export interface FetchControllerAlertsOptions {
     elements?: number[]
     alarms?: string[]
     categories?: string[]
+    /** Restrict to the stop whose controller raised the alarm. */
+    busStopId?: number
     limit?: number
     offset?: number
 }
@@ -63,27 +66,42 @@ export const CATEGORY_LABELS: Record<string, string> = {
 export async function fetchControllerAlerts(
     options: FetchControllerAlertsOptions = {}
 ): Promise<ControllerAlertsResult> {
-    const { elements, alarms, categories, limit = 25, offset = 0 } = options
+    const { elements, alarms, categories, busStopId, limit = 25, offset = 0 } = options
 
-    let query = supabase
-        .from('controller_alerts')
-        .select('*', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .range(offset, offset + limit - 1)
+    const build = (withBusStopId: boolean) => {
+        let query = supabase
+            .from('controller_alerts')
+            .select('*', { count: 'exact' })
+            .order('created_at', { ascending: false })
+            .range(offset, offset + limit - 1)
 
-    if (elements && elements.length > 0) {
-        query = query.in('element', elements)
+        if (elements && elements.length > 0) {
+            query = query.in('element', elements)
+        }
+
+        if (alarms && alarms.length > 0) {
+            query = query.in('alarm', alarms)
+        }
+
+        if (categories && categories.length > 0) {
+            query = query.in('category', categories)
+        }
+
+        if (withBusStopId && busStopId !== undefined) {
+            query = query.eq('bus_stop_id', busStopId)
+        }
+
+        return query
     }
 
-    if (alarms && alarms.length > 0) {
-        query = query.in('alarm', alarms)
-    }
+    let { data, error, count } = await build(true)
 
-    if (categories && categories.length > 0) {
-        query = query.in('category', categories)
+    // `bus_stop_id` arrives with sql/controller_alerts_bus_stop_migration.sql. Before
+    // it is applied, drop the filter rather than showing the caller nothing at all.
+    if (error && busStopId !== undefined && (error.code === '42703' || error.message?.includes('bus_stop_id'))) {
+        console.warn("Колонка 'bus_stop_id' не найдена в controller_alerts. Делаю fallback без фильтра по остановке.")
+        ;({ data, error, count } = await build(false))
     }
-
-    const { data, error, count } = await query
 
     if (error) {
         console.error('Error fetching controller alerts:', error)

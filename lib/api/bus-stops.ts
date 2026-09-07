@@ -1,7 +1,25 @@
+import {
+    resolveActivityStatus,
+    type StopActivityEntry,
+    type StopActivityStatus,
+    fetchStopActivity,
+} from './stop-activity'
+
 export interface BusStopSensorData {
-    is_online: boolean
+    /** active = датчики и камеры, partial = что-то одно, inactive = ничего. */
+    activity_status: StopActivityStatus
+    sensors_online: boolean
+    cameras_online: boolean
+    online_camera_count: number
+    total_camera_count: number
+    /** Остановка вообще оснащена (есть контроллер и/или камеры). */
     has_equipment: boolean
+    /** Совместимость: активна хотя бы частично. */
+    is_online: boolean
+    /** Совместимость: работает ровно один из двух источников. */
     is_partly_equipped: boolean
+    last_ping_at?: string | null
+    last_sensor_at?: string | null
     temperature_in?: number
     temperature_out?: number
     humidity?: number
@@ -30,79 +48,73 @@ export interface BusStopsGeoJSON {
     }[]
 }
 
+const OFFLINE_SENSOR_DATA: BusStopSensorData = {
+    activity_status: 'inactive',
+    sensors_online: false,
+    cameras_online: false,
+    online_camera_count: 0,
+    total_camera_count: 0,
+    has_equipment: false,
+    is_online: false,
+    is_partly_equipped: false,
+    last_ping_at: null,
+    last_sensor_at: null,
+}
+
 let cachedGeoJSON: BusStopsGeoJSON | null = null
 
+export function toSensorData(entry: StopActivityEntry | undefined): BusStopSensorData {
+    if (!entry) return { ...OFFLINE_SENSOR_DATA }
+
+    const status = entry.activity_status
+        ?? resolveActivityStatus(entry.sensors_online, entry.cameras_online)
+
+    return {
+        activity_status: status,
+        sensors_online: entry.sensors_online,
+        cameras_online: entry.cameras_online,
+        online_camera_count: entry.online_camera_count,
+        total_camera_count: entry.total_camera_count,
+        has_equipment: entry.has_equipment,
+        is_online: status !== 'inactive',
+        is_partly_equipped: status === 'partial',
+        last_ping_at: entry.last_ping_at,
+        last_sensor_at: entry.last_sensor_at,
+        heater_working: entry.heater_working,
+        glass_broken: entry.glass_broken,
+    }
+}
+
 /**
- * Fetch bus stops GeoJSON from the cached API route.
- * Injects mock sensor data into the properties for the demo.
+ * Fetch bus stops GeoJSON from the cached API route and merge in the live
+ * activity status computed from `stop_sensor_states` / `bus_stops.controller_status`
+ * and the cameras bound to each stop. No mock data is injected.
  */
 export async function fetchBusStopsGeoJSON(): Promise<BusStopsGeoJSON> {
-    if (cachedGeoJSON) return cachedGeoJSON
-
     try {
-        const res = await fetch('/api/bus-stops')
-        if (!res.ok) throw new Error(`Failed to fetch bus stops: ${res.status}`)
-        const data: BusStopsGeoJSON = await res.json()
+        let geoJSON = cachedGeoJSON
 
-        // Inject mock sensor data
-        data.features = data.features.map((feature, index) => {
-            // Deterministic mock generation based on ID/index so it's stable
-            const deterministicRandom = (index * 137 + 1) % 100 / 100 // 0 to 0.99
+        if (!geoJSON) {
+            const res = await fetch('/api/bus-stops')
+            if (!res.ok) throw new Error(`Failed to fetch bus stops: ${res.status}`)
+            geoJSON = await res.json() as BusStopsGeoJSON
+            cachedGeoJSON = geoJSON
+        }
 
-            let has_equipment = false
-            let is_partly_equipped = false
-            let is_online = false
-            let temperature_in: number | undefined
-            let temperature_out: number | undefined
-            let humidity: number | undefined
-            let heater_working: boolean | undefined
-            let glass_broken: boolean | undefined
+        // Activity is volatile, so it is re-read on every call while the
+        // geometry itself stays cached.
+        const activity = await fetchStopActivity()
 
-            if (deterministicRandom < 0.4) {
-                // 40% fully equipped and online
-                has_equipment = true
-                is_online = true
-                temperature_in = 15 + Math.round(Math.random() * 5)
-                temperature_out = -10 + Math.round(Math.random() * 8)
-                humidity = 40 + Math.round(Math.random() * 20)
-                heater_working = true
-                glass_broken = Math.random() < 0.05 // 5% chance of broken glass
-                if (Math.random() < 0.05) heater_working = false // 5% chance of heater failure
-            } else if (deterministicRandom < 0.6) {
-                // 20% partly equipped and online
-                is_partly_equipped = true
-                is_online = true
-                temperature_out = -10 + Math.round(Math.random() * 8)
-                heater_working = true
-            } else if (deterministicRandom < 0.7) {
-                // 10% equipped but offline
-                has_equipment = true
-                is_online = false
-            } else {
-                // 30% not equipped
-                // default values
-            }
-
-            return {
+        return {
+            ...geoJSON,
+            features: geoJSON.features.map((feature) => ({
                 ...feature,
                 properties: {
                     ...feature.properties,
-                    sensor_data: {
-                        is_online,
-                        has_equipment,
-                        is_partly_equipped,
-                        temperature_in,
-                        temperature_out,
-                        humidity,
-                        heater_working,
-                        glass_broken
-                    }
-                }
-            }
-        })
-
-        cachedGeoJSON = data
-        return cachedGeoJSON
+                    sensor_data: toSensorData(activity.stops[String(feature.properties.id)]),
+                },
+            })),
+        }
     } catch (error) {
         console.error('Error fetching bus stops GeoJSON:', error)
         return { type: 'FeatureCollection', features: [] }

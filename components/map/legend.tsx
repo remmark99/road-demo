@@ -166,19 +166,23 @@ export function Legend() {
               <div className="space-y-1.5 p-1">
                 <div className="flex items-center gap-2 text-xs">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#22c55e]" />
-                  <span className="text-muted-foreground">В сети (Оборудовано)</span>
+                  <span className="text-muted-foreground">Активна (датчики + камеры)</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#eab308]" />
+                  <span className="text-muted-foreground">Частично активна (что-то одно)</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#9ca3af]" />
+                  <span className="text-muted-foreground">Неактивна</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" />
                   <span className="text-muted-foreground">Вандализм (разбито стекло)</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#f97316]" />
                   <span className="text-muted-foreground">Отказ обогревателя</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#9ca3af]" />
-                  <span className="text-muted-foreground">Не в сети</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#3b82f6]" />

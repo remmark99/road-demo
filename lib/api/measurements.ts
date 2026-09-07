@@ -62,6 +62,9 @@ export async function fetchLatestMeasurements(busStopId?: number): Promise<Senso
     const { data, error } = await query
 
     if (error || !data || data.length === 0) {
+        // The legacy `measurements` table has no bus_stop_id, so falling back to it
+        // for a specific stop would return another stop's readings.
+        if (busStopId !== undefined) return []
         return fetchLatestMeasurementsFallback()
     }
 
