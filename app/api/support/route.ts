@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { createNotificationAdminClient } from "@/lib/notifications/admin"
 import { getAuthenticatedUser, jsonError } from "@/lib/notifications/http"
 import { sendSupportRequestEmail } from "@/lib/notifications/email"
 import { NotificationDeliveryError } from "@/lib/notifications/errors"
@@ -12,6 +13,29 @@ const MAX_MESSAGE_LENGTH = 4000
 interface SupportRequestBody {
   topic?: unknown
   message?: unknown
+}
+
+/** Optional ФИО and phone from the profile — never fails the request. */
+async function readReporterContact(userId: string) {
+  try {
+    const admin = createNotificationAdminClient()
+    const { data, error } = await admin
+      .from("profiles")
+      .select("full_name,phone")
+      .eq("id", userId)
+      .maybeSingle()
+
+    if (error) {
+      // 42703: contact columns not migrated yet — send the request without them.
+      if (error.code !== "42703") console.error("Support reporter lookup error", error)
+      return null
+    }
+
+    return { fullName: data?.full_name ?? null, phone: data?.phone ?? null }
+  } catch (error) {
+    console.error("Support reporter lookup error", error)
+    return null
+  }
 }
 
 export async function POST(request: Request) {
@@ -37,12 +61,15 @@ export async function POST(request: Request) {
 
   const user = await getAuthenticatedUser()
   const pageUrl = request.headers.get("referer")
+  const contact = user ? await readReporterContact(user.id) : null
 
   try {
     await sendSupportRequestEmail({
       topicLabel: getSupportTopicLabel(topic),
       message,
       reporterEmail: user?.email,
+      reporterName: contact?.fullName,
+      reporterPhone: contact?.phone,
       pageUrl,
     })
   } catch (error) {

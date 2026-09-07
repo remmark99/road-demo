@@ -12,8 +12,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
-import { Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon, FileDown, MessageCircle, ExternalLink, Unplug, ChevronDown } from "lucide-react"
+import { Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon, FileDown, MessageCircle, ExternalLink, Unplug, ChevronDown, UserRound } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
+import { isValidPhone, MAX_FULL_NAME_LENGTH, MAX_PHONE_LENGTH } from "@/lib/profile/contact"
 import type { NotificationEventTypeOption } from "@/lib/notifications/catalog"
 import type { NotificationPreferencesResponse } from "@/lib/notifications/types"
 
@@ -478,8 +479,16 @@ async function downloadReportPdf(report: AiReportResponse) {
 }
 
 export default function SettingsPage() {
-  const { allModules, modules: activeModules, toggleModule } = useModuleAccess()
+  const { allModules, modules: activeModules, toggleModule, refreshProfile } = useModuleAccess()
   const today = new Date()
+  const [fullName, setFullName] = useState("")
+  const [phone, setPhone] = useState("")
+  const [savedFullName, setSavedFullName] = useState("")
+  const [savedPhone, setSavedPhone] = useState("")
+  const [profileLoading, setProfileLoading] = useState(true)
+  const [isProfileSaving, setIsProfileSaving] = useState(false)
+  const [isProfileSaved, setIsProfileSaved] = useState(false)
+  const [profileError, setProfileError] = useState("")
   const [email, setEmail] = useState("")
   const [savedEmail, setSavedEmail] = useState("")
   const [emailEnabled, setEmailEnabled] = useState(false)
@@ -567,6 +576,86 @@ export default function SettingsPage() {
     }, 3000)
     return () => window.clearInterval(interval)
   }, [loadNotificationSettings, maxPendingUntil, maxStatus])
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadProfile = async () => {
+      try {
+        const response = await fetch("/api/settings/profile", { cache: "no-store" })
+        const data = await response.json() as {
+          fullName?: string | null
+          phone?: string | null
+          error?: string
+        }
+        if (!response.ok) throw new Error(data.error || "Не удалось загрузить профиль")
+        if (cancelled) return
+
+        setFullName(data.fullName ?? "")
+        setPhone(data.phone ?? "")
+        setSavedFullName(data.fullName ?? "")
+        setSavedPhone(data.phone ?? "")
+        setProfileError("")
+      } catch (loadError) {
+        if (!cancelled) {
+          setProfileError(loadError instanceof Error ? loadError.message : "Не удалось загрузить профиль")
+        }
+      } finally {
+        if (!cancelled) setProfileLoading(false)
+      }
+    }
+
+    void loadProfile()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const isProfileDirty = fullName.trim() !== savedFullName || phone.trim() !== savedPhone
+
+  const handleProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setProfileError("")
+
+    const nextFullName = fullName.trim().replace(/\s+/g, " ")
+    const nextPhone = phone.trim().replace(/\s+/g, " ")
+
+    if (nextPhone && !isValidPhone(nextPhone)) {
+      setProfileError("Неверный формат телефона")
+      return
+    }
+
+    setIsProfileSaving(true)
+
+    try {
+      const response = await fetch("/api/settings/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName: nextFullName, phone: nextPhone }),
+      })
+      const data = await response.json() as {
+        fullName?: string | null
+        phone?: string | null
+        error?: string
+      }
+      if (!response.ok) {
+        throw new Error(data.error || "Не удалось сохранить профиль")
+      }
+
+      setFullName(data.fullName ?? "")
+      setPhone(data.phone ?? "")
+      setSavedFullName(data.fullName ?? "")
+      setSavedPhone(data.phone ?? "")
+      setIsProfileSaved(true)
+      setTimeout(() => setIsProfileSaved(false), 3000)
+      await refreshProfile()
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : "Произошла ошибка")
+    } finally {
+      setIsProfileSaving(false)
+    }
+  }
 
   const validateEmail = (email: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -793,6 +882,75 @@ export default function SettingsPage() {
           Управление уведомлениями и персональными настройками
         </p>
       </div>
+      {/* Profile Card */}
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <UserRound className="h-5 w-5 text-primary" />
+            Профиль
+          </CardTitle>
+          <CardDescription>
+            ФИО отображается в шапке вместо email. ФИО и телефон прикладываются к обращениям
+            в техподдержку — оба поля необязательны.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleProfileSubmit} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="profile-full-name">ФИО</Label>
+                <Input
+                  id="profile-full-name"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Иванов Иван Иванович"
+                  maxLength={MAX_FULL_NAME_LENGTH}
+                  autoComplete="name"
+                  disabled={profileLoading}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="profile-phone">Телефон</Label>
+                <Input
+                  id="profile-phone"
+                  type="tel"
+                  inputMode="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+7 900 000-00-00"
+                  maxLength={MAX_PHONE_LENGTH}
+                  autoComplete="tel"
+                  disabled={profileLoading}
+                />
+              </div>
+            </div>
+
+            {profileError && (
+              <p className="text-sm text-destructive">{profileError}</p>
+            )}
+
+            <div className="flex items-center gap-3">
+              <Button type="submit" disabled={profileLoading || isProfileSaving || !isProfileDirty}>
+                {isProfileSaving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Сохранение...
+                  </>
+                ) : (
+                  "Сохранить"
+                )}
+              </Button>
+              {isProfileSaved && (
+                <span className="flex items-center gap-1.5 text-sm text-primary">
+                  <Check className="h-4 w-4" />
+                  Сохранено
+                </span>
+              )}
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+
       {/* Module Visibility Toggles */}
       {allModules.length > 0 && (
         <Card className="mb-6">

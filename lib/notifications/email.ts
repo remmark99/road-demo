@@ -96,6 +96,8 @@ export async function sendSupportRequestEmail(input: {
   topicLabel: string
   message: string
   reporterEmail?: string | null
+  reporterName?: string | null
+  reporterPhone?: string | null
   pageUrl?: string | null
 }) {
   const config = getSmtpConfig()
@@ -103,7 +105,9 @@ export async function sendSupportRequestEmail(input: {
 
   const metaLines = [
     `Тема: ${input.topicLabel}`,
+    input.reporterName ? `ФИО: ${input.reporterName}` : null,
     `От: ${input.reporterEmail || "не авторизован"}`,
+    input.reporterPhone ? `Телефон: ${input.reporterPhone}` : null,
     input.pageUrl ? `Страница: ${input.pageUrl}` : null,
     `Время: ${new Date().toLocaleString("ru-RU", { timeZone: "Asia/Yekaterinburg" })}`,
   ].filter((line): line is string => Boolean(line))

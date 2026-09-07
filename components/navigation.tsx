@@ -53,6 +53,7 @@ import { cn } from "@/lib/utils"
 import { LogoIcon } from "@/components/logo"
 import type { User as SupabaseUser } from "@supabase/supabase-js"
 import { useModuleAccess } from "@/components/providers/module-context"
+import { getDisplayName, getShortDisplayName } from "@/lib/profile/contact"
 import { useCity, CITIES } from "@/components/providers/city-context"
 
 const navItems = [
@@ -77,8 +78,11 @@ export function Navigation() {
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { role, allModules, modules: activeModules, toggleModule } = useModuleAccess()
+  const { role, fullName, allModules, modules: activeModules, toggleModule } = useModuleAccess()
   const { city, setCity } = useCity()
+
+  const displayName = getDisplayName(fullName, user?.email)
+  const shortDisplayName = getShortDisplayName(fullName, user?.email)
 
   useEffect(() => {
     const supabase = createClient()
@@ -220,7 +224,14 @@ export function Navigation() {
                     <div className="border-t border-border px-4 py-3 bg-muted/10">
                       <div className="flex items-center gap-2 text-sm text-foreground mb-3 font-medium">
                         <User className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <span className="truncate">{user.email}</span>
+                        <div className="min-w-0">
+                          <div className="truncate">{displayName}</div>
+                          {fullName && (
+                            <div className="truncate text-xs font-normal text-muted-foreground">
+                              {user.email}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <Button
                         variant="destructive"
@@ -422,18 +433,22 @@ export function Navigation() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="gap-2 px-2 hover:bg-muted">
                     <User className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium hidden xl:inline-block max-w-[120px] truncate">
-                      {user.email?.split("@")[0]}
+                    <span className="text-sm font-medium hidden xl:inline-block max-w-[160px] truncate">
+                      {shortDisplayName}
                     </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel className="font-normal">
                     <div className="flex flex-col space-y-1">
-                      <p className="text-sm font-medium leading-none">Профиль</p>
-                      <p className="text-xs leading-none text-muted-foreground">
-                        {user.email}
+                      <p className="text-sm font-medium leading-none truncate">
+                        {displayName}
                       </p>
+                      {fullName && (
+                        <p className="text-xs leading-none text-muted-foreground truncate">
+                          {user.email}
+                        </p>
+                      )}
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
