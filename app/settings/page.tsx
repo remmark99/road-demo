@@ -895,7 +895,8 @@ export default function SettingsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleProfileSubmit} className="space-y-4">
+          {/* ym-hide-content: ПДн не должны попадать в записи Яндекс.Вебвизора */}
+          <form onSubmit={handleProfileSubmit} className="space-y-4 ym-hide-content">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="profile-full-name">ФИО</Label>

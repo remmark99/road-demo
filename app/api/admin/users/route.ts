@@ -69,6 +69,11 @@ const verifyAdmin = async () => {
 // GET all users (profiles)
 export async function GET() {
     try {
+        const adminUser = await verifyAdmin()
+        if (!adminUser) {
+            return NextResponse.json({ error: 'Нет доступа (требуются права admin)' }, { status: 403 })
+        }
+
         const adminClient = getAdminSupabase()
 
         // 1. For safety in demo without strict DB schema, we fetch profiles.

@@ -488,6 +488,47 @@ function versionEpisodeImage(imageUrl: string, updatedAt: string) {
   return `${imageUrl}${separator}v=${encodeURIComponent(updatedAt)}`
 }
 
+/**
+ * Рамка для медиа с неизвестными пропорциями: кадр вписывается целиком
+ * (object-contain), свободное место заполняет размытая копия кадра.
+ */
+function MediaFrame({
+  className = "h-[240px] sm:h-[300px]",
+  children,
+}: {
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div
+      className={`relative flex items-center justify-center overflow-hidden rounded-lg bg-muted ${className}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+function MediaPhoto({ src, alt }: { src: string; alt: string }) {
+  return (
+    <>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        aria-hidden
+        className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-xl"
+      />
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        className="relative h-full w-full object-contain"
+        onClick={(event) => event.stopPropagation()}
+      />
+    </>
+  )
+}
+
 function getStopCameraIndexCandidates(cameraIndex: number | null) {
   if (cameraIndex === null) return []
 
@@ -1415,29 +1456,26 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                                 <div className="text-xs font-medium text-muted-foreground">
                                   {label}
                                 </div>
-                                <div className="aspect-video overflow-hidden rounded-lg bg-muted">
+                                <MediaFrame className="h-[180px] lg:h-[200px]">
                                   {imageUrl ? (
-                                    /* eslint-disable-next-line @next/next/no-img-element */
-                                    <img
+                                    <MediaPhoto
                                       src={versionEpisodeImage(
                                         imageUrl,
                                         episode.updated_at
                                       )}
                                       alt={`${config.label}: ${label.toLowerCase()}`}
-                                      className="h-full w-full object-cover"
-                                      onClick={(event) => event.stopPropagation()}
                                     />
                                   ) : (
                                     <div className="flex h-full w-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
                                       Фото недоступно
                                     </div>
                                   )}
-                                </div>
+                                </MediaFrame>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <div className="aspect-video bg-muted rounded-lg overflow-hidden">
+                          <MediaFrame>
                             {alert.clip_path ? (
                               (() => {
                                 const isImage =
@@ -1446,16 +1484,13 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                                     .toLowerCase()
                                     .match(/\.(jpg|jpeg|png)$/)
                                 return isImage ? (
-                                  /* eslint-disable-next-line @next/next/no-img-element */
-                                  <img
+                                  <MediaPhoto
                                     src={alert.clip_path}
                                     alt={config.label}
-                                    className="w-full h-full object-cover"
-                                    onClick={(e) => e.stopPropagation()}
                                   />
                                 ) : (
                                   <video
-                                    className="w-full h-full object-cover"
+                                    className="w-full h-full object-contain"
                                     controls
                                     preload="metadata"
                                     onClick={(e) => e.stopPropagation()}
@@ -1474,7 +1509,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                                 </p>
                               </div>
                             )}
-                          </div>
+                          </MediaFrame>
                         )}
 
                         <div className="space-y-3 text-sm">
@@ -1913,18 +1948,15 @@ function ControllerAlertsTab() {
                   {isExpanded && hasMedia && alert.clip_path && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="aspect-video bg-muted rounded-lg overflow-hidden flex items-center justify-center">
+                        <MediaFrame>
                           {alert.clip_path.toLowerCase().match(/\.(jpg|jpeg|png|webp)$/) ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img
+                            <MediaPhoto
                               src={alert.clip_path}
                               alt={categoryLabel}
-                              className="w-full h-full object-cover"
-                              onClick={(e) => e.stopPropagation()}
                             />
                           ) : (
                             <video
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-contain"
                               controls
                               preload="metadata"
                               onClick={(e) => e.stopPropagation()}
@@ -1932,7 +1964,7 @@ function ControllerAlertsTab() {
                               <source src={alert.clip_path} type="video/mp4" />
                             </video>
                           )}
-                        </div>
+                        </MediaFrame>
 
                         <div className="space-y-3 text-sm">
                           <div>

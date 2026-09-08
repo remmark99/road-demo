@@ -224,7 +224,7 @@ export function Navigation() {
                     <div className="border-t border-border px-4 py-3 bg-muted/10">
                       <div className="flex items-center gap-2 text-sm text-foreground mb-3 font-medium">
                         <User className="h-4 w-4 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0">
+                        <div className="ym-hide-content min-w-0">
                           <div className="truncate">{displayName}</div>
                           {fullName && (
                             <div className="truncate text-xs font-normal text-muted-foreground">
@@ -433,14 +433,14 @@ export function Navigation() {
                 <DropdownMenuTrigger asChild>
                   <Button variant="ghost" className="gap-2 px-2 hover:bg-muted">
                     <User className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium hidden xl:inline-block max-w-[160px] truncate">
+                    <span className="ym-hide-content text-sm font-medium hidden xl:inline-block max-w-[160px] truncate">
                       {shortDisplayName}
                     </span>
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col space-y-1">
+                    <div className="ym-hide-content flex flex-col space-y-1">
                       <p className="text-sm font-medium leading-none truncate">
                         {displayName}
                       </p>

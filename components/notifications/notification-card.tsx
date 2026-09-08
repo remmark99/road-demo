@@ -140,7 +140,7 @@ export function NotificationCard({ alert, isExpanded, onToggle }: NotificationCa
             <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
               {alert.clip_path ? (
                 <video
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                   controls
                   preload="metadata"
                 >
