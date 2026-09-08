@@ -12,6 +12,8 @@ export interface BusStopSensorData {
     cameras_online: boolean
     online_camera_count: number
     total_camera_count: number
+    /** У остановки есть контроллер (датчики). */
+    has_controller: boolean
     /** Остановка вообще оснащена (есть контроллер и/или камеры). */
     has_equipment: boolean
     /** Совместимость: активна хотя бы частично. */
@@ -54,6 +56,7 @@ const OFFLINE_SENSOR_DATA: BusStopSensorData = {
     cameras_online: false,
     online_camera_count: 0,
     total_camera_count: 0,
+    has_controller: false,
     has_equipment: false,
     is_online: false,
     is_partly_equipped: false,
@@ -75,6 +78,7 @@ export function toSensorData(entry: StopActivityEntry | undefined): BusStopSenso
         cameras_online: entry.cameras_online,
         online_camera_count: entry.online_camera_count,
         total_camera_count: entry.total_camera_count,
+        has_controller: entry.has_controller,
         has_equipment: entry.has_equipment,
         is_online: status !== 'inactive',
         is_partly_equipped: status === 'partial',

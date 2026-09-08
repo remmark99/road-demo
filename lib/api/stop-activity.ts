@@ -23,6 +23,8 @@ export interface StopActivityEntry {
     cameras_online: boolean
     online_camera_count: number
     total_camera_count: number
+    /** Stop has a controller (sensors) attached at all. */
+    has_controller: boolean
     /** Stop has a controller and/or cameras attached at all. */
     has_equipment: boolean
     activity_status: StopActivityStatus
@@ -176,6 +178,7 @@ export function buildStopActivity({
             cameras_online: camerasOnline,
             online_camera_count: onlineCameraCount,
             total_camera_count: totalCameraCount,
+            has_controller: hasController,
             has_equipment: hasController || totalCameraCount > 0,
             activity_status: resolveActivityStatus(sensorsOnline, camerasOnline),
             last_ping_at: lastPingAt,
