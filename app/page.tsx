@@ -7,13 +7,14 @@ import { Legend } from "@/components/map/legend"
 import { BusStopsStats } from "@/components/map/bus-stops-stats"
 import { Navigation } from "@/components/navigation"
 import { useModuleAccess } from "@/components/providers/module-context"
-import type { RoadStatus } from "@/lib/types"
+import type { MapFocusTarget, RoadStatus } from "@/lib/types"
 
 export default function MapPage() {
   const { hasModule, loading: modulesLoading } = useModuleAccess()
   const [selectedTime, setSelectedTime] = useState<Date>(new Date())
   const [statusOverride, setStatusOverride] = useState<Record<string, RoadStatus>>({})
   const [hoveredSegmentId, setHoveredSegmentId] = useState<string | null>(null)
+  const [focusTarget, setFocusTarget] = useState<MapFocusTarget | null>(null)
 
   const handleTimeChange = useCallback((time: Date, statuses: Record<string, RoadStatus>) => {
     setSelectedTime(time)
@@ -33,12 +34,13 @@ export default function MapPage() {
               statusOverride={statusOverride}
               hoveredSegmentId={hoveredSegmentId}
               onHoverSegment={setHoveredSegmentId}
+              focusTarget={focusTarget}
             />
           </div>
 
           {/* Sidebar */}
           <div className="w-80 p-4 border-l border-border overflow-y-auto flex-shrink-0">
-            {hasModule('stops') && <BusStopsStats />}
+            {hasModule('stops') && <BusStopsStats onFocusStop={setFocusTarget} />}
             <Legend />
           </div>
         </div>

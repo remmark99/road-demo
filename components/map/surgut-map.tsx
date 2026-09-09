@@ -12,7 +12,7 @@ import { fetchParksGeoJSON } from "@/lib/api/parks"
 import { fetchAnchorsGeoJSON } from "@/lib/api/anchors"
 import { fetchTkoSitesGeoJSON } from "@/lib/api/tko-sites"
 import { SHORELINE_GEOJSON } from "@/lib/mock/shoreline"
-import type { Camera, RoadStatus, AnchorsGeoJSON, TkoSitesGeoJSON } from "@/lib/types"
+import type { Camera, RoadStatus, AnchorsGeoJSON, TkoSitesGeoJSON, MapFocusTarget } from "@/lib/types"
 
 import { VideoModal } from "./video-modal"
 import { BusStopModal, type SelectedBusStop } from "./bus-stop-modal"
@@ -165,6 +165,8 @@ interface SurgutMapProps {
   statusOverride?: Record<string, RoadStatus>
   hoveredSegmentId?: string | null
   onHoverSegment?: (segmentId: string | null) => void
+  /** Остановка, к которой нужно приблизиться (выбор в боковой панели). */
+  focusTarget?: MapFocusTarget | null
 }
 
 // Build MapLibre expressions for road styling based on highway type
@@ -209,7 +211,7 @@ function getSimulatedStatusAtTime(osmId: number, time: Date): RoadStatus {
   return "dirty";
 }
 
-export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHoverSegment }: SurgutMapProps) {
+export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHoverSegment, focusTarget }: SurgutMapProps) {
 
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
@@ -1615,6 +1617,45 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       essential: true,
     })
   }, [city, mapLoaded])
+
+  // Fly to a stop picked in the sidebar (списки камер / датчиков)
+  useEffect(() => {
+    if (!map.current || !mapLoaded || !focusTarget) return
+
+    // Остановка может быть скрыта фильтром — тогда зумиться было бы не к чему.
+    const feature = busStopsData?.features.find(f => f.properties.id === focusTarget.stopId)
+    const sd = feature?.properties.sensor_data
+    const filterKey: keyof typeof busStopFilters | null = !sd
+      ? null
+      : !sd.has_equipment
+        ? "unequipped"
+        : (sd.heater_working === false || sd.glass_broken)
+          ? "incidents"
+          : sd.activity_status === "active"
+            ? "online"
+            : sd.activity_status === "partial"
+              ? "partial"
+              : "offline"
+
+    if (filterKey) {
+      setBusStopFilters(prev => (prev[filterKey] ? prev : { ...prev, [filterKey]: true }))
+    }
+
+    map.current.flyTo({
+      center: [focusTarget.lng, focusTarget.lat],
+      // Выше clusterMaxZoom, чтобы остановка не осталась внутри кластера.
+      zoom: Math.max(map.current.getZoom(), 17.5),
+      duration: 1200,
+      essential: true,
+    })
+
+    // Из списка камер сразу раскрываем камеры остановки.
+    setSpiderifiedStop(
+      focusTarget.spiderify
+        ? { id: focusTarget.stopId, lat: focusTarget.lat, lng: focusTarget.lng }
+        : null,
+    )
+  }, [focusTarget, mapLoaded, busStopsData])
 
 
 

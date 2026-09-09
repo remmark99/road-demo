@@ -1,14 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { fetchCameras } from "@/lib/api/cameras"
 import { HIGHWAY_CONFIG } from "@/lib/api/roads"
-import type { Camera } from "@/lib/types"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Camera as CameraIcon, Route, MapPin, Snowflake } from "lucide-react"
+import { Route, MapPin, Snowflake } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -27,22 +22,7 @@ const LEGEND_HIGHWAYS = [
 ]
 
 export function Legend() {
-  const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
-  const [cameras, setCameras] = useState<Camera[] | null>(null)
-
-  useEffect(() => {
-    if (modulesLoading) return
-
-    fetchCameras(modules).then(res => {
-      setCameras(res)
-    })
-  }, [modules, modulesLoading])
-
-  const camerasLoading = modulesLoading || cameras === null
-  const cameraList = cameras ?? []
-  const onlineCameraList = cameraList.filter(c => c.status === "online")
-  const onlineCameras = onlineCameraList.length
-  const shouldScrollCameraList = onlineCameras > 5
+  const { hasModule, loading: modulesLoading } = useModuleAccess()
 
   if (modulesLoading) {
     return (
@@ -60,17 +40,6 @@ export function Legend() {
               <div className="flex items-center gap-2"><Skeleton className="h-2 w-6 rounded-full" /><Skeleton className="h-4 w-16" /></div>
               <div className="flex items-center gap-2"><Skeleton className="h-2 w-6 rounded-full" /><Skeleton className="h-4 w-24" /></div>
               <div className="flex items-center gap-2"><Skeleton className="h-2 w-6 rounded-full" /><Skeleton className="h-4 w-20" /></div>
-            </div>
-          </div>
-          <Separator />
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Skeleton className="h-5 w-24" />
-              <Skeleton className="h-5 w-8 rounded-full" />
-            </div>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2"><Skeleton className="h-2 w-2 rounded-full" /><Skeleton className="h-4 w-32" /></div>
-              <div className="flex items-center gap-2"><Skeleton className="h-2 w-2 rounded-full" /><Skeleton className="h-4 w-28" /></div>
             </div>
           </div>
           <Separator />
@@ -115,45 +84,9 @@ export function Legend() {
                 ))}
               </div>
             </div>
-            <Separator />
+            {hasModule('stops') && <Separator />}
           </>
         )}
-
-        <div>
-          <div className="text-sm font-medium mb-2 flex items-center gap-2">
-            <CameraIcon className="h-4 w-4 text-muted-foreground" />
-            Камеры
-            <Badge variant="outline" className="ml-auto text-xs">
-              {camerasLoading ? (
-                <Skeleton className="h-4 w-6" />
-              ) : (
-                `${onlineCameras}/${cameraList.length}`
-              )}
-            </Badge>
-          </div>
-          <ScrollArea className={shouldScrollCameraList ? "h-40 pr-3" : "pr-3"}>
-            <div className="space-y-1.5 min-h-[1.5rem]">
-              {camerasLoading || modulesLoading ? (
-                <div className="space-y-2 py-1">
-                  <Skeleton className="h-4 w-full" />
-                  <Skeleton className="h-4 w-[85%]" />
-                  <Skeleton className="h-4 w-[60%]" />
-                </div>
-              ) : onlineCameraList.length === 0 ? (
-                <div className="text-xs text-muted-foreground py-1">Нет доступных камер</div>
-              ) : (
-                onlineCameraList.map(camera => (
-                  <div key={camera.id} className="flex items-center gap-2 text-sm">
-                    <div className="h-2 w-2 rounded-full bg-road-clean flex-shrink-0" />
-                    <span className="text-muted-foreground truncate">{camera.name}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </ScrollArea>
-        </div>
-
-        {(hasModule('stops') || hasModule('roads')) && <Separator />}
 
         {/* Bus Stops legend */}
         {hasModule('stops') && (
@@ -206,7 +139,7 @@ export function Legend() {
                 </div>
               </div>
             </div>
-            <Separator />
+            {hasModule('roads') && <Separator />}
           </>
         )}
 
