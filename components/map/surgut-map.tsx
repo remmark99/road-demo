@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useMapPreference } from "@/lib/hooks/use-map-preference"
 import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
@@ -217,21 +218,13 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const map = useRef<maplibregl.Map | null>(null)
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
   const [selectedBusStop, setSelectedBusStop] = useState<SelectedBusStop | null>(null)
-  const [spiderifiedStop, setSpiderifiedStop] = useState<{ id: number; lat: number; lng: number } | null>(null)
-  const spiderifiedStopRef = useRef<{ id: number; lat: number; lng: number } | null>(null)
-
-  // Sync state to ref for callbacks
-  useEffect(() => {
-    spiderifiedStopRef.current = spiderifiedStop
-  }, [spiderifiedStop])
-
   const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
   const { city } = useCity()
   const [isDark, setIsDark] = useState(true)
   const lastThemeRef = useRef(isDark)
   const [cameras, setCameras] = useState<Camera[]>([])
   const [hoveredCamera, setHoveredCamera] = useState<Camera | null>(null)
-  const [showAllFov, setShowAllFov] = useState(false)
+  const [showAllFov, setShowAllFov] = useMapPreference("showAllFov", false)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
   const [busStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
@@ -239,21 +232,21 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [anchorsData, setAnchorsData] = useState<AnchorsGeoJSON | null>(null)
   const [tkoSitesData, setTkoSitesData] = useState<TkoSitesGeoJSON | null>(null)
   const [heatmapData, setHeatmapData] = useState<BusStopHeatmapResult | null>(null)
-  const [heatmapMode, setHeatmapMode] = useState<"safety" | "occupancy">("safety")
+  const [heatmapMode, setHeatmapMode] = useMapPreference<"safety" | "occupancy">("heatmapMode", "safety")
   const [occupancyData, setOccupancyData] = useState<BusStopOccupancyHeatmapResult | null>(null)
 
   // Filter States
-  const [cameraFilters, setCameraFilters] = useState({ online: true, offline: false })
-  const [busStopFilters, setBusStopFilters] = useState({ online: true, partial: true, offline: false, incidents: true, unequipped: true })
-  const [showClusters, setShowClusters] = useState(true)
-  const [showHeatmap, setShowHeatmap] = useState(false)
+  const [cameraFilters, setCameraFilters] = useMapPreference("cameraFilters", { online: true, offline: false })
+  const [busStopFilters, setBusStopFilters] = useMapPreference("busStopFilters", { online: true, partial: true, offline: false, incidents: true, unequipped: true })
+  const [showClusters, setShowClusters] = useMapPreference("showClusters", true)
+  const [showHeatmap, setShowHeatmap] = useMapPreference("showHeatmap", false)
   
   // Heatmap advanced filters
-  const [heatmapTimeWindow, setHeatmapTimeWindow] = useState<number>(24)
-  const [heatmapAlertTypes, setHeatmapAlertTypes] = useState<StopSafetyAlertType[]>([...STOP_SAFETY_ALERT_TYPES])
+  const [heatmapTimeWindow, setHeatmapTimeWindow] = useMapPreference<number>("heatmapTimeWindow", 24)
+  const [heatmapAlertTypes, setHeatmapAlertTypes] = useMapPreference<StopSafetyAlertType[]>("heatmapAlertTypes", [...STOP_SAFETY_ALERT_TYPES])
 
-  const [selectedContractor, setSelectedContractor] = useState<string>("all")
-  const [showTkoCoverage, setShowTkoCoverage] = useState(false)
+  const [selectedContractor, setSelectedContractor] = useMapPreference<string>("selectedContractor", "all")
+  const [showTkoCoverage, setShowTkoCoverage] = useMapPreference("showTkoCoverage", false)
 
   // Add roads as a single GeoJSON source with styled layers
   const addRoads = useCallback(() => {
@@ -626,8 +619,10 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
           rows.forEach((row, i) => {
             row.addEventListener('click', () => {
               const props = leaves[i].properties as any
+              clusterPopup.remove()
+              setSelectedCamera(null)
               setSelectedBusStop({
-                id: props.id,
+                id: Number(props.id),
                 name: props.name,
                 description: props.description,
                 address: props.address,
@@ -638,7 +633,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
             })
           })
 
-          new maplibregl.Popup({ closeOnClick: true, maxWidth: '250px' })
+          const clusterPopup = new maplibregl.Popup({ closeOnClick: true, maxWidth: '250px' })
             .setDOMContent(popupContent)
             .setLngLat((features[0].geometry as any).coordinates)
             .addTo(map.current!)
@@ -661,7 +656,8 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
     const popup = new maplibregl.Popup({
       closeButton: false,
-      closeOnClick: false,
+      closeOnClick: true,
+      closeOnMove: true,
       offset: 10,
     })
 
@@ -696,40 +692,15 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
           const feature = e.features?.[0]
           if (feature) {
             const props = feature.properties as any
-            const lng = (feature.geometry as any).coordinates[0]
-            const lat = (feature.geometry as any).coordinates[1]
-
-            // Check if this stop has any cameras
-            const hasCams = props.cameraCount > 0
-
-            if (hasCams) {
-              if (spiderifiedStopRef.current?.id === props.id) {
-                // Already spiderified, user clicked it again -> open Modal
-                setSelectedBusStop({
-                  id: props.id,
-                  name: props.name,
-                  description: props.description,
-                  address: props.address,
-                  sensor_data: {
-                    ...props
-                  }
-                })
-              } else {
-                // Open spiderify
-                setSpiderifiedStop({ id: props.id, lat, lng })
-              }
-            } else {
-              // No cameras, open Modal immediately
-              setSelectedBusStop({
-                id: props.id,
-                name: props.name,
-                description: props.description,
-                address: props.address,
-                sensor_data: {
-                  ...props
-                }
-              })
-            }
+            popup.remove()
+            setSelectedCamera(null)
+            setSelectedBusStop({
+              id: Number(props.id),
+              name: props.name,
+              description: props.description,
+              address: props.address,
+              sensor_data: { ...props }
+            })
           }
         })
       })
@@ -807,24 +778,12 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       "circle-stroke-color": "#ffffff",
     }
 
-    const spiderPaintConfig = {
-      "circle-radius": 12,
-      "circle-color": [
-        "case",
-        ["==", ["get", "status"], "online"], "#0ea5e9", // distinct color for bus stop cams
-        "#9ca3af"
-      ] as any,
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#ffffff",
-    }
-
     const symbolLayout = {
       "icon-image": "cam-icon",
       "icon-allow-overlap": true,
       "visibility": "visible"
-    } as any
+    } as const
 
-    // Unclustered cameras (Circle)
     map.current.addLayer({
       id: layerId,
       type: "circle",
@@ -859,73 +818,6 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       layout: { ...symbolLayout, "visibility": "none" }
     })
 
-    // --- SPIDERIFY LAYERS ---
-    if (!map.current.getSource("spider-lines")) {
-      map.current.addSource("spider-lines", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] }
-      })
-      map.current.addLayer({
-        id: "spider-lines-layer",
-        type: "line",
-        source: "spider-lines",
-        paint: {
-          "line-color": "#0ea5e9",
-          "line-width": 2,
-          "line-dasharray": [2, 2],
-          "line-opacity": 0.8
-        }
-      })
-    }
-
-    if (!map.current.getSource("spider-cameras")) {
-      map.current.addSource("spider-cameras", {
-        type: "geojson",
-        data: { type: "FeatureCollection", features: [] }
-      })
-      map.current.addLayer({
-        id: "spider-cameras-layer",
-        type: "circle",
-        source: "spider-cameras",
-        paint: spiderPaintConfig
-      })
-      map.current.addLayer({
-        id: "spider-cameras-symbol",
-        type: "symbol",
-        source: "spider-cameras",
-        layout: symbolLayout
-      })
-
-      // Click on spider camera
-      map.current.on("click", "spider-cameras-layer", (e) => {
-        const feature = e.features?.[0]
-        if (feature) {
-          const props = feature.properties as any
-          setSelectedCamera({
-            id: props.id,
-            name: props.name,
-            description: props.description,
-            status: props.status,
-            hlsUrl: props.hlsUrl,
-            rtspUrl: props.rtspUrl,
-            cameraIndex: props.cameraIndex,
-            lat: (feature.geometry as any).coordinates[1],
-            lng: (feature.geometry as any).coordinates[0], // the offset coordinate
-            fovAngle: props.fovAngle,
-            fovDirection: props.fovDirection,
-            fovDistance: props.fovDistance
-          } as Camera)
-        }
-      })
-      map.current.on("mouseenter", "spider-cameras-layer", () => {
-        map.current!.getCanvas().style.cursor = "pointer"
-      })
-      map.current.on("mouseleave", "spider-cameras-layer", () => {
-        map.current!.getCanvas().style.cursor = ""
-      })
-    }
-    // ------------------------
-
     const popup = new maplibregl.Popup({
       closeButton: false,
       closeOnClick: false,
@@ -959,6 +851,9 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         })
 
         map.current!.on("click", id, (e) => {
+          const stopLayers = ["bus-stops-layer", "bus-stops-layer-raw"]
+            .filter(layer => map.current!.getLayer(layer))
+          if (stopLayers.length && map.current!.queryRenderedFeatures(e.point, { layers: stopLayers }).length) return
           const feature = e.features?.[0]
           if (feature) {
             const props = feature.properties as any
@@ -1462,16 +1357,17 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
   useEffect(() => {
     if (modulesLoading) return
-    fetchCameras(modules).then(setCameras)
+    let active = true
+    fetchCameras(modules).then(data => { if (active) setCameras(data) })
 
     if (hasModule('roads')) {
-      fetchRoadsGeoJSON().then(setRoadsData)
+      fetchRoadsGeoJSON().then(data => { if (active) setRoadsData(data) })
     } else {
       setRoadsData({ type: "FeatureCollection", features: [] })
     }
 
     if (hasModule('stops')) {
-      fetchBusStopsGeoJSON().then(setBusStopsData)
+      fetchBusStopsGeoJSON().then(data => { if (active) setBusStopsData(data) })
       // fetchBusStopHeatmapData is called in a separate effect below
     } else {
       setBusStopsData({ type: "FeatureCollection", features: [] })
@@ -1479,22 +1375,23 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     }
 
     if (hasModule('parks')) {
-      fetchParksGeoJSON().then(setParksData)
+      fetchParksGeoJSON().then(data => { if (active) setParksData(data) })
     } else {
       setParksData({ type: "FeatureCollection", features: [] })
     }
 
     if (hasModule('transport')) {
-      fetchAnchorsGeoJSON().then(setAnchorsData)
+      fetchAnchorsGeoJSON().then(data => { if (active) setAnchorsData(data) })
     } else {
       setAnchorsData({ type: "FeatureCollection", features: [] })
     }
 
     if (hasModule('asr')) {
-      fetchTkoSitesGeoJSON(modules).then(setTkoSitesData)
+      fetchTkoSitesGeoJSON(modules).then(data => { if (active) setTkoSitesData(data) })
     } else {
       setTkoSitesData({ type: "FeatureCollection", features: [] })
     }
+    return () => { active = false }
   }, [modules, hasModule, modulesLoading])
 
   // Realtime subscription for anchors
@@ -1649,13 +1546,11 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       essential: true,
     })
 
-    // Из списка камер сразу раскрываем камеры остановки.
-    setSpiderifiedStop(
-      focusTarget.spiderify
-        ? { id: focusTarget.stopId, lat: focusTarget.lat, lng: focusTarget.lng }
-        : null,
-    )
-  }, [focusTarget, mapLoaded, busStopsData])
+    if (feature) {
+      setSelectedCamera(null)
+      setSelectedBusStop({ ...feature.properties, initialTab: focusTarget.spiderify ? "cameras" : "sensors" })
+    }
+  }, [focusTarget, mapLoaded, busStopsData, setBusStopFilters])
 
 
 
@@ -1675,25 +1570,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     addCameraLayers()
     addAnchors()
 
-    // Global click listener to close spiderify if clicked elsewhere
 
-    if (map.current) {
-      const clickHandler = (e: any) => {
-        const features = map.current?.queryRenderedFeatures(e.point, {
-          layers: [
-            "bus-stops-layer", "bus-stops-layer-raw", "bus-stops-clusters",
-            "spider-cameras-layer", "cameras-layer", "cameras-layer-raw", "cameras-clusters"
-          ]
-        })
-        if (!features || features.length === 0) {
-          setSpiderifiedStop(null)
-        }
-      }
-      map.current.on('click', clickHandler)
-      return () => {
-        map.current?.off('click', clickHandler)
-      }
-    }
   }, [mapLoaded, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline, addTkoSites])
 
   // Sync parks data to source
@@ -1838,70 +1715,6 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
   }, [cameras, cameraFilters, mapLoaded, addCameraLayers, showClusters])
 
-  // Sync spiderified cameras
-  useEffect(() => {
-    if (!map.current || !mapLoaded) return
-    const linesSource = map.current.getSource("spider-lines") as maplibregl.GeoJSONSource
-    const camsSource = map.current.getSource("spider-cameras") as maplibregl.GeoJSONSource
-    if (!linesSource || !camsSource) return
-
-    if (!spiderifiedStop) {
-      linesSource.setData({ type: "FeatureCollection", features: [] })
-      camsSource.setData({ type: "FeatureCollection", features: [] })
-      return
-    }
-
-    const stopCams = cameras.filter(c => c.busStopId === spiderifiedStop.id)
-
-    // Spread them in a circle
-    const n = stopCams.length
-    const radiusLng = 0.00015 // approx 10 meters
-    const radiusLat = 0.00010 // scaling for lat distance
-
-    const featuresPoints: any[] = []
-    const featuresLines: any[] = []
-
-    stopCams.forEach((cam, i) => {
-      const angle = (2 * Math.PI * i) / n
-      const offsetLng = spiderifiedStop.lng + Math.cos(angle) * radiusLng
-      const offsetLat = spiderifiedStop.lat + Math.sin(angle) * radiusLat
-
-      featuresLines.push({
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [spiderifiedStop.lng, spiderifiedStop.lat],
-            [offsetLng, offsetLat]
-          ]
-        }
-      })
-
-      featuresPoints.push({
-        type: "Feature",
-        properties: {
-          id: cam.id,
-          cameraIndex: cam.cameraIndex,
-          name: cam.name,
-          description: cam.description,
-          status: cam.status,
-          hlsUrl: cam.hlsUrl,
-          rtspUrl: cam.rtspUrl,
-          fovAngle: cam.fovAngle,
-          fovDirection: cam.fovDirection,
-          fovDistance: cam.fovDistance
-        },
-        geometry: {
-          type: "Point",
-          coordinates: [offsetLng, offsetLat]
-        }
-      })
-    })
-
-    linesSource.setData({ type: "FeatureCollection", features: featuresLines })
-    camsSource.setData({ type: "FeatureCollection", features: featuresPoints })
-  }, [cameras, spiderifiedStop, mapLoaded])
-
   // Sync roads data to the GeoJSON source
   useEffect(() => {
     if (!map.current || !mapLoaded || !roadsData) return
@@ -1995,6 +1808,10 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     if (!map.current || !mapLoaded || !busStopsData) return
     const source = map.current.getSource("bus-stops-heatmap") as maplibregl.GeoJSONSource
     if (!source) return
+    if (map.current.getLayer("bus-stops-heatmap-layer")) {
+      map.current.setLayoutProperty("bus-stops-heatmap-layer", "visibility",
+        showHeatmap && hasModule("stops") ? "visible" : "none")
+    }
 
     let features: any[] = []
 
@@ -2051,10 +1868,10 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       map.current.setLayoutProperty(
         "bus-stops-heatmap-layer",
         "visibility",
-        showHeatmap ? "visible" : "none"
+        showHeatmap && hasModule("stops") ? "visible" : "none"
       )
     }
-  }, [heatmapData, occupancyData, heatmapMode, busStopsData, mapLoaded, showHeatmap, addBusStopHeatmap])
+  }, [heatmapData, occupancyData, heatmapMode, busStopsData, mapLoaded, showHeatmap, addBusStopHeatmap, hasModule])
 
   // Fetch heatmap data when dependencies change
   useEffect(() => {
@@ -2087,16 +1904,16 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
     clusterLayers.forEach(l => {
       if (map.current!.getLayer(l)) {
-        map.current!.setLayoutProperty(l, "visibility", showClusters ? "visible" : "none")
+        map.current!.setLayoutProperty(l, "visibility", hasModule("stops") && showClusters ? "visible" : "none")
       }
     })
 
     rawLayers.forEach(l => {
       if (map.current!.getLayer(l)) {
-        map.current!.setLayoutProperty(l, "visibility", showClusters ? "none" : "visible")
+        map.current!.setLayoutProperty(l, "visibility", hasModule("stops") && !showClusters ? "visible" : "none")
       }
     })
-  }, [showClusters, mapLoaded, busStopsData, cameras])
+  }, [showClusters, mapLoaded, busStopsData, cameras, hasModule])
 
   // TKO coverage analysis layers
   useEffect(() => {
@@ -2713,13 +2530,15 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       </div>
 
       <VideoModal
-        camera={selectedCamera}
+        camera={selectedBusStop ? null : selectedCamera}
         onClose={() => setSelectedCamera(null)}
       />
 
       <BusStopModal
+        key={selectedBusStop?.id ?? "closed"}
         busStop={selectedBusStop}
-        onClose={() => setSelectedBusStop(null)}
+        cameras={cameras.filter(camera => camera.busStopId === selectedBusStop?.id)}
+        onClose={() => { setSelectedBusStop(null); setSelectedCamera(null) }}
       />
     </>
   )
