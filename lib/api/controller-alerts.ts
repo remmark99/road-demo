@@ -61,6 +61,24 @@ export const CATEGORY_LABELS: Record<string, string> = {
     humidity: 'Влажность',
     'digital input': 'Напряжение',
     'glass_break': 'Датчик разбития стекла',
+    controller_offline: 'Контроллер не на связи',
+    controller_online: 'Контроллер снова на связи',
+}
+
+/**
+ * Связь с самим контроллером (backend equipment-monitor), а не показание
+ * датчика: element/address = 0, value — длительность простоя в минутах.
+ */
+export const CONTROLLER_LINK_CATEGORIES = ['controller_offline', 'controller_online'] as const
+
+export function isControllerLinkAlert(alert: Pick<ControllerAlert, 'category'>): boolean {
+    return (CONTROLLER_LINK_CATEGORIES as readonly string[]).includes(alert.category)
+}
+
+export function getControllerAlertSourceLabel(
+    alert: Pick<ControllerAlert, 'category' | 'element'>
+): string {
+    return isControllerLinkAlert(alert) ? 'Контроллер' : getSensorLabel(alert.element)
 }
 
 export async function fetchControllerAlerts(

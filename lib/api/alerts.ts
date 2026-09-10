@@ -232,6 +232,7 @@ export type AlertCategory =
     | 'park_monitoring'
     | 'transport_monitoring'
     | 'bus_stop_monitoring'
+    | 'bus_stop_equipment'
 
 export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: string[] }> = {
     equipment: {
@@ -285,6 +286,13 @@ export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: str
             'dogs_without_people',
             'bin_full'
         ]
+    },
+    // Отключения камер (backend equipment-monitor). Отдельно от
+    // bus_stop_monitoring: это не инциденты на остановке, и тепловая карта
+    // остановок не должна их считать.
+    bus_stop_equipment: {
+        label: 'Оборудование остановок',
+        types: ['camera_offline', 'camera_online']
     }
 }
 
@@ -524,6 +532,18 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         icon: 'trash-2',
         color: 'text-lime-500 bg-lime-500/20 border-lime-500/30',
         category: 'bus_stop_monitoring'
+    },
+    camera_offline: {
+        label: 'Камера не в сети',
+        icon: 'camera-off',
+        color: 'text-red-400 bg-red-500/20 border-red-500/30',
+        category: 'bus_stop_equipment'
+    },
+    camera_online: {
+        label: 'Камера снова в сети',
+        icon: 'camera',
+        color: 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30',
+        category: 'bus_stop_equipment'
     }
 }
 

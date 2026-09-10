@@ -15,7 +15,9 @@ import { fetchCameras } from "@/lib/api/cameras"
 import { STOP_TRASH_OVERFLOW_ALERT_TYPES } from "@/lib/api/stop-condition-windows"
 import {
   fetchControllerAlerts,
+  getControllerAlertSourceLabel,
   getSensorLabel,
+  isControllerLinkAlert,
   ALARM_CONFIG,
   CATEGORY_LABELS,
   type ControllerAlert,
@@ -82,8 +84,12 @@ import {
   Trash2,
   Cigarette,
   Dog,
+  Cctv,
+  Wifi,
+  WifiOff,
   type LucideIcon,
 } from "lucide-react"
+import { EquipmentTab } from "@/components/notifications/equipment-tab"
 import {
   getStopComplexByCameraIndex,
   getStopComplexByLocationId,
@@ -142,6 +148,8 @@ const alertIcons: Record<string, LucideIcon> = {
   lying_person: PersonStanding,
   abandoned_object: PackageSearch,
   dogs_without_people: Dog,
+  camera_offline: CameraOff,
+  camera_online: CameraIcon,
 }
 
 const RUSSIAN_ALERT_MESSAGES: Record<string, string> = {
@@ -192,6 +200,8 @@ const RUSSIAN_ALERT_MESSAGES: Record<string, string> = {
   overflowing_trash: "Зафиксирована переполненная урна",
   overflowing_bin: "Зафиксирована переполненная урна",
   trash_full: "Зафиксирована переполненная урна",
+  camera_offline: "Камера не в сети",
+  camera_online: "Камера снова в сети",
 }
 
 type AlertTypeFilterButton = {
@@ -565,6 +575,15 @@ function getAlertLocationId(alert: Alert) {
 }
 
 function getAlertStopDisplay(alert: Alert) {
+  // Массовое отключение оборудования: одно уведомление на много остановок.
+  if (getMetadataString(alert.metadata, ["scope"]) === "mass") {
+    const stopCount = getMetadataString(alert.metadata, ["stop_count"])
+    return {
+      label: "Несколько остановок",
+      detail: stopCount ? `остановок: ${stopCount}` : "массовое отключение",
+    }
+  }
+
   const locationId = getAlertLocationId(alert)
   const locationComplex = getStopComplexByLocationId(locationId)
   const cameraComplex = getStopCameraIndexCandidates(alert.camera_index)
@@ -787,7 +806,10 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
       types.push(...ALERT_CATEGORIES.transport_monitoring.types)
     }
     if (hasStops) {
-      types.push(...ALERT_CATEGORIES.bus_stop_monitoring.types)
+      types.push(
+        ...ALERT_CATEGORIES.bus_stop_monitoring.types,
+        ...ALERT_CATEGORIES.bus_stop_equipment.types
+      )
     }
     return types
   }, [hasParks, hasRoads, hasShore, hasStops, hasTransport])
@@ -1234,6 +1256,35 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
               </div>
 
               <Separator />
+
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <Cctv className="h-4 w-4 text-red-400" />
+                  Оборудование остановок
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {ALERT_CATEGORIES.bus_stop_equipment.types.map((type) => {
+                    const config = ALERT_TYPE_CONFIG[type]
+                    if (!config) return null
+                    const Icon = alertIcons[type] || CameraIcon
+                    const isSelected = selectedTypes.includes(type)
+                    return (
+                      <Button
+                        key={type}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleType(type)}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                        {config.label}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <Separator />
             </>
           )}
 
@@ -1621,6 +1672,21 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
 // ═══════════════════════════════════════════════════════════════════════
 // Controller Alerts Tab
 // ═══════════════════════════════════════════════════════════════════════
+function ControllerCategoryIcon({
+  category,
+  className,
+}: {
+  category: string
+  className: string
+}) {
+  if (category === "temperature") return <Thermometer className={className} />
+  if (category === "humidity") return <Droplets className={className} />
+  if (category === "glass_break") return <Hammer className={className} />
+  if (category === "controller_offline") return <WifiOff className={className} />
+  if (category === "controller_online") return <Wifi className={className} />
+  return <Zap className={className} />
+}
+
 function ControllerAlertsTab() {
   const [selectedElements, setSelectedElements] = useState<number[]>([])
   const [selectedAlarms, setSelectedAlarms] = useState<string[]>([])
@@ -1752,15 +1818,7 @@ function ControllerAlertsTab() {
                     className="gap-2"
                     onClick={() => toggleCategory(key)}
                   >
-                    {key === "temperature" ? (
-                      <Thermometer className="h-3.5 w-3.5" />
-                    ) : key === "humidity" ? (
-                      <Droplets className="h-3.5 w-3.5" />
-                    ) : key === "glass_break" ? (
-                      <Hammer className="h-3.5 w-3.5" />
-                    ) : (
-                      <Zap className="h-3.5 w-3.5" />
-                    )}
+                    <ControllerCategoryIcon category={key} className="h-3.5 w-3.5" />
                     {label}
                   </Button>
                 )
@@ -1846,7 +1904,7 @@ function ControllerAlertsTab() {
               : null
             const categoryLabel =
               CATEGORY_LABELS[alert.category] || "Другая категория"
-            const unit = alert.category === "temperature" ? "°C" : alert.category === "humidity" ? "%" : alert.category === "digital input" ? "В" : ""
+            const unit = isControllerLinkAlert(alert) ? "мин" : alert.category === "temperature" ? "°C" : alert.category === "humidity" ? "%" : alert.category === "digital input" ? "В" : ""
             const message = getRussianControllerMessage(
               alert.message,
               categoryLabel,
@@ -1880,7 +1938,7 @@ function ControllerAlertsTab() {
                       <span className="text-muted-foreground md:hidden">
                         Датчик:{" "}
                       </span>
-                      {getSensorLabel(alert.element)}
+                      {getControllerAlertSourceLabel(alert)}
                     </div>
 
                     {/* Category */}
@@ -1889,15 +1947,7 @@ function ControllerAlertsTab() {
                         variant="outline"
                         className="max-w-full gap-1.5 overflow-hidden"
                       >
-                        {alert.category === "temperature" ? (
-                          <Thermometer className="h-3 w-3" />
-                        ) : alert.category === "humidity" ? (
-                          <Droplets className="h-3 w-3" />
-                        ) : alert.category === "glass_break" ? (
-                          <Hammer className="h-3 w-3" />
-                        ) : (
-                          <Zap className="h-3 w-3" />
-                        )}
+                        <ControllerCategoryIcon category={alert.category} className="h-3 w-3" />
                         <span className="truncate">{categoryLabel}</span>
                       </Badge>
                     </div>
@@ -2078,6 +2128,12 @@ function NotificationsContent() {
                   Датчики
                 </TabsTrigger>
               )}
+              {showStops && (
+                <TabsTrigger value="equipment" className="gap-2">
+                  <Cctv className="h-4 w-4" />
+                  Оборудование
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <TabsContent value="camera">
@@ -2087,6 +2143,12 @@ function NotificationsContent() {
             {showStops && (
               <TabsContent value="controller">
                 <ControllerAlertsTab />
+              </TabsContent>
+            )}
+
+            {showStops && (
+              <TabsContent value="equipment">
+                <EquipmentTab />
               </TabsContent>
             )}
           </Tabs>
