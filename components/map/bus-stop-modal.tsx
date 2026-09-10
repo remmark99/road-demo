@@ -1,5 +1,11 @@
+"use client"
+
 import { useEffect, useState } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { CameraDetails } from "./video-modal"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Button } from "@/components/ui/button"
+import type { Camera } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Wifi, WifiOff, Thermometer, Droplets, Zap, AlertTriangle, ShieldAlert, BusFront, Hammer } from "lucide-react"
@@ -16,10 +22,12 @@ export interface SelectedBusStop {
     description: string | null
     address: string | null
     sensor_data?: BusStopSensorData
+    initialTab?: "cameras" | "sensors"
 }
 
 interface BusStopModalProps {
     busStop: SelectedBusStop | null
+    cameras: Camera[]
     onClose: () => void
 }
 
@@ -37,7 +45,9 @@ function formatTime(isoString: string | null | undefined) {
     }
 }
 
-export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
+export function BusStopModal({ busStop, cameras, onClose }: BusStopModalProps) {
+    const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
+    const activeCamera = cameras.find(camera => camera.id === selectedCameraId) ?? cameras[0]
     const [realReadings, setRealReadings] = useState<SensorReading[]>([])
     const [realAlerts, setRealAlerts] = useState<ControllerAlert[]>([])
     const [loading, setLoading] = useState(false)
@@ -50,6 +60,8 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
         }
 
         let isMounted = true
+        setRealReadings([])
+        setRealAlerts([])
         setLoading(true)
 
         async function loadData() {
@@ -104,7 +116,7 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
     const camerasOnline = Boolean(busStop.sensor_data?.cameras_online)
     const onlineCameraCount = busStop.sensor_data?.online_camera_count ?? 0
     const activityStatus = resolveActivityStatus(sensorsOnline, camerasOnline)
-    const hasEquipment = hasRealReadings || camerasOnline || Boolean(busStop.sensor_data?.has_equipment)
+    const hasEquipment = hasRealReadings || cameras.length > 0 || camerasOnline || Boolean(busStop.sensor_data?.has_equipment)
 
     // Real metric values (no fallbacks to fake random values)
     const tempOut = dht13?.temperature ?? undefined
@@ -127,8 +139,8 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
     const hasAnyRealProblems = glassBrokenAlarm || heaterFaultAlarm || tempWarningAlarm
 
     return (
-        <Dialog open={!!busStop} onOpenChange={onClose}>
-            <DialogContent className="max-w-xl">
+        <Dialog open={!!busStop} onOpenChange={open => { if (!open) onClose() }}>
+            <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <BusFront className="h-5 w-5 text-primary" />
@@ -156,6 +168,31 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                     </DialogDescription>
                 </DialogHeader>
 
+                <Tabs defaultValue={busStop.initialTab ?? "cameras"}>
+                    <TabsList className="w-full" aria-label="Информация об остановке">
+                        <TabsTrigger value="cameras">Камеры ({cameras.length})</TabsTrigger>
+                        <TabsTrigger value="sensors">Датчики</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="cameras" className="space-y-4 pt-2">
+                        {cameras.length > 1 && (
+                            <div className="flex flex-wrap gap-2" aria-label="Выбор камеры">
+                                {cameras.map(camera => (
+                                    <Button key={camera.id} size="sm"
+                                        variant={activeCamera?.id === camera.id ? "default" : "outline"}
+                                        aria-pressed={activeCamera?.id === camera.id}
+                                        onClick={() => setSelectedCameraId(camera.id)}>
+                                        {camera.name}
+                                    </Button>
+                                ))}
+                            </div>
+                        )}
+                        {activeCamera ? <CameraDetails key={activeCamera.id} camera={activeCamera} /> : (
+                            <div className="rounded-lg border border-dashed p-8 text-center text-muted-foreground">
+                                К этой остановке пока не подключены камеры.
+                            </div>
+                        )}
+                    </TabsContent>
+                    <TabsContent value="sensors">
                 <div className="py-4">
                     {!hasEquipment ? (
                         <div className="flex flex-col items-center justify-center p-8 text-center bg-muted/50 rounded-lg border border-dashed">
@@ -282,6 +319,8 @@ export function BusStopModal({ busStop, onClose }: BusStopModalProps) {
                         </div>
                     )}
                 </div>
+                    </TabsContent>
+                </Tabs>
             </DialogContent>
         </Dialog>
     )

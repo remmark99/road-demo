@@ -22,21 +22,37 @@ interface VideoModalProps {
 }
 
 export function VideoModal({ camera, onClose }: VideoModalProps) {
+  return (
+    <Dialog open={!!camera} onOpenChange={open => { if (!open) onClose() }}>
+      {camera && (
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{camera.name}</DialogTitle>
+            <DialogDescription>{camera.description || "Видеокамера"}</DialogDescription>
+          </DialogHeader>
+          <CameraDetails key={camera.id} camera={camera} showHeading={false} />
+        </DialogContent>
+      )}
+    </Dialog>
+  )
+}
+
+export function CameraDetails({ camera, showHeading = true }: { camera: Camera; showHeading?: boolean }) {
   const hlsRef = useRef<Hls | null>(null)
   const pcRef = useRef<RTCPeerConnection | null>(null)
   const [streamStatus, setStreamStatus] = useState<"loading" | "online" | "offline">("loading")
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([])
-  const [alertsLoading, setAlertsLoading] = useState(false)
+  const [alertsLoading, setAlertsLoading] = useState(true)
 
   // Fetch recent alerts for this camera
   useEffect(() => {
-    if (!camera) return
-
-    setAlertsLoading(true)
+    let active = true
     fetchAlertsByCamera(camera.cameraIndex, 5)
-      .then(setRecentAlerts)
-      .finally(() => setAlertsLoading(false))
-  }, [camera?.cameraIndex])
+      .then(alerts => { if (active) setRecentAlerts(alerts) })
+      .catch(() => { if (active) setRecentAlerts([]) })
+      .finally(() => { if (active) setAlertsLoading(false) })
+    return () => { active = false }
+  }, [camera.cameraIndex])
 
   // Cleanup effect
   useEffect(() => {
@@ -180,7 +196,7 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
     } else {
       setStreamStatus("offline")
     }
-  }, [camera?.hlsUrl, camera?.rtspUrl])
+  }, [camera])
 
   if (!camera) return null
 
@@ -204,15 +220,14 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
   }
 
   return (
-    <Dialog open={!!camera} onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
+    <div className="space-y-4">
+        <div className="space-y-2">
+          {showHeading && <h3 className="flex items-center gap-2 font-medium">
             <Video className="h-5 w-5" />
             {camera.name}
-          </DialogTitle>
-          <DialogDescription className="flex items-center gap-2">
-            {camera.description}
+          </h3>}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            {showHeading && camera.description}
             <Badge variant={isOnline ? "default" : "secondary"}>
               {isLoading ? (
                 <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Подключение...</>
@@ -222,8 +237,8 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
                 <><WifiOff className="h-3 w-3 mr-1" /> Оффлайн</>
               )}
             </Badge>
-          </DialogDescription>
-        </DialogHeader>
+          </div>
+        </div>
 
         <div className="relative aspect-video bg-muted rounded-lg overflow-hidden">
           {hasVideo ? (
@@ -340,7 +355,6 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
             </div>
           )}
         </div>
-      </DialogContent>
-    </Dialog>
+    </div>
   )
 }
