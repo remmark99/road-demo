@@ -240,6 +240,8 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [busStopFilters, setBusStopFilters] = useMapPreference("busStopFilters", { online: true, partial: true, offline: false, incidents: true, unequipped: true })
   const [showClusters, setShowClusters] = useMapPreference("showClusters", true)
   const [showHeatmap, setShowHeatmap] = useMapPreference("showHeatmap", false)
+  // Only the stops module is enabled: hide generic display/camera controls
+  const stopsOnly = modules.length > 0 && modules.every(m => m === "stops")
   
   // Heatmap advanced filters
   const [heatmapTimeWindow, setHeatmapTimeWindow] = useMapPreference<number>("heatmapTimeWindow", 24)
@@ -1778,8 +1780,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
           return busStopFilters.incidents
         }
 
-        if (sd.activity_status === "active") return busStopFilters.online
-        if (sd.activity_status === "partial") return busStopFilters.partial
+        if (sd.activity_status === "active" || sd.activity_status === "partial") return busStopFilters.online
         return busStopFilters.offline
       })
 
@@ -2115,7 +2116,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         const props = feature.properties as any
         const isNone = props.coverage === "none"
         const titleColor = isNone ? "#ef4444" : "#f59e0b"
-        const badgeLabel = isNone ? "🔴 Слепая зона" : "🟡 Частичное покрытие"
+        const badgeLabel = isNone ? "Слепая зона" : "Частичное покрытие"
         const distText = props.nearestCameraDistance === 999999 || isNaN(props.nearestCameraDistance)
           ? "Камеры отсутствуют"
           : `${props.nearestCameraDistance} м до ближайшей камеры`
@@ -2256,7 +2257,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         const isVisible = (camera.status === "online" && cameraFilters.online) || (camera.status !== "online" && cameraFilters.offline)
         if (!isVisible) return false
 
-        return showAllFov || (hoveredCamera && camera.id === hoveredCamera.id)
+        return (showAllFov && !stopsOnly) || (hoveredCamera && camera.id === hoveredCamera.id)
       })
 
       const features = fovCameras.map(camera => ({
@@ -2340,7 +2341,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     return () => {
       // No cleanup needed here as we reuse the source/layers
     }
-  }, [cameras, cameraFilters, showAllFov, hoveredCamera, mapLoaded])
+  }, [cameras, cameraFilters, showAllFov, stopsOnly, hoveredCamera, mapLoaded])
 
   return (
     <>
@@ -2366,6 +2367,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
         <Card className="shadow-sm">
           <CardContent className="p-4 space-y-4">
+            {!stopsOnly && (<>
             {/* Display Toggles */}
             <div className="space-y-3">
               <div className="font-medium text-sm border-b pb-1 mb-2">Отображение</div>
@@ -2381,7 +2383,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
             {/* Camera Filters */}
             <div className="space-y-3">
-              <div className="font-medium text-sm border-b pb-1 mb-2">Камеры (📷)</div>
+              <div className="font-medium text-sm border-b pb-1 mb-2">Камеры</div>
               <div className="flex items-center space-x-2">
                 <Checkbox id="cam-online" checked={cameraFilters.online} onCheckedChange={(checked) => setCameraFilters(prev => ({ ...prev, online: !!checked }))} />
                 <Label htmlFor="cam-online" className="text-sm cursor-pointer">Показывать рабочие</Label>
@@ -2391,26 +2393,23 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                 <Label htmlFor="cam-offline" className="text-sm cursor-pointer">Показывать не в сети</Label>
               </div>
             </div>
+            </>)}
 
             {/* Bus Stop Filters */}
             {hasModule('stops') && (
               <div className="space-y-3">
-                <div className="font-medium text-sm border-b pb-1 mb-2">Остановки (🚌)</div>
+                <div className="font-medium text-sm border-b pb-1 mb-2">Остановки</div>
                 <div className="flex items-center space-x-2">
                   <Checkbox id="bus-online" checked={busStopFilters.online} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, online: !!checked }))} />
-                  <Label htmlFor="bus-online" className="text-sm cursor-pointer">Активные</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="bus-partial" checked={busStopFilters.partial} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, partial: !!checked }))} />
-                  <Label htmlFor="bus-partial" className="text-sm cursor-pointer">Частично активные</Label>
+                  <Label htmlFor="bus-online" className="text-sm cursor-pointer">В сети</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox id="bus-offline" checked={busStopFilters.offline} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, offline: !!checked }))} />
-                  <Label htmlFor="bus-offline" className="text-sm cursor-pointer">Неактивные</Label>
+                  <Label htmlFor="bus-offline" className="text-sm cursor-pointer">Не в сети</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox id="bus-incidents" checked={busStopFilters.incidents} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, incidents: !!checked }))} />
-                  <Label htmlFor="bus-incidents" className="text-sm cursor-pointer">Инциденты/Поломки</Label>
+                  <Label htmlFor="bus-incidents" className="text-sm cursor-pointer">Инциденты</Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <Checkbox id="bus-unequipped" checked={busStopFilters.unequipped} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, unequipped: !!checked }))} />
@@ -2502,7 +2501,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
             {/* TKO Coverage Analysis */}
             {hasModule('asr') && (
               <div className="space-y-3">
-                <div className="font-medium text-sm border-b pb-1 mb-2">Площадки ТКО (🗑️)</div>
+                <div className="font-medium text-sm border-b pb-1 mb-2">Площадки ТКО</div>
                 <div className="flex items-center space-x-2">
                   <Checkbox id="tko-coverage" checked={showTkoCoverage} onCheckedChange={(checked) => setShowTkoCoverage(!!checked)} />
                   <Label htmlFor="tko-coverage" className="text-sm cursor-pointer font-medium">Анализ покрытия</Label>
