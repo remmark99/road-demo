@@ -1,5 +1,6 @@
 import { supabase } from '../supabase'
 import type { Camera } from '../types'
+import { indexEquipmentStatus, monitoredOnline, type EquipmentStatusRow } from '../equipment-status'
 
 export interface CameraRow {
     id: number
@@ -37,6 +38,31 @@ function mapCameraRow(row: CameraRow): Camera {
     }
 }
 
+/**
+ * Статус камер от equipment-monitor — тот же, что на вкладке «Оборудование».
+ * Пусто, если миграции нет или у пользователя нет модуля остановок (RLS).
+ */
+async function fetchMonitoredCameraStatus() {
+    const { data, error } = await supabase
+        .from('equipment_state')
+        .select('equipment_type,equipment_id,status')
+        .eq('equipment_type', 'camera')
+
+    if (error) {
+        console.warn('equipment_state недоступна, статус камер берётся из cameras.status:', error.message)
+        return indexEquipmentStatus([]).cameras
+    }
+    return indexEquipmentStatus(data as EquipmentStatusRow[]).cameras
+}
+
+/** cameras.status остаётся только для камер, которые монитор не ведёт. */
+function withMonitoredStatus(rows: CameraRow[], statuses: Map<number, EquipmentStatusRow['status']>): CameraRow[] {
+    return rows.map(row => {
+        const online = monitoredOnline(statuses, row.camera_index)
+        return online === null ? row : { ...row, status: online ? 'online' : 'offline' }
+    })
+}
+
 function shouldHideAllCameras(allowedModules?: string[]) {
     return Array.isArray(allowedModules) && allowedModules.length === 0
 }
@@ -67,56 +93,26 @@ export async function fetchCameraRows(allowedModules?: string[]): Promise<Camera
     return data as CameraRow[]
 }
 
+/**
+ * Камеры со статусом «в сети / не в сети» от equipment-monitor. Для админки,
+ * где cameras.status редактируется как есть, — fetchCameraRows.
+ */
 export async function fetchCameras(allowedModules?: string[]): Promise<Camera[]> {
     if (shouldHideAllCameras(allowedModules)) {
         return []
     }
 
-    let query = supabase.from('cameras').select('*').order('camera_index')
+    const [rows, statuses] = await Promise.all([
+        fetchCameraRows(allowedModules),
+        fetchMonitoredCameraStatus(),
+    ])
 
-    if (allowedModules && allowedModules.length > 0) {
-        query = query.in('module', allowedModules)
-    }
-
-    const { data, error } = await query
-
-    if (error) {
-        if (error.code === '42703' || error.message?.includes('module')) {
-            console.warn("Колонка 'module' не найдена. Делаю fallback на все камеры.");
-            const fallbackQuery = await supabase.from('cameras').select('*').order('camera_index')
-            if (!fallbackQuery.error) return (fallbackQuery.data as CameraRow[]).map(mapCameraRow)
-        }
-        console.error('Error fetching cameras:', error)
-        return []
-    }
-
-    return (data as CameraRow[]).map(mapCameraRow)
+    return withMonitoredStatus(rows, statuses).map(mapCameraRow)
 }
 
 export async function fetchOnlineCameras(allowedModules?: string[]): Promise<Camera[]> {
-    if (shouldHideAllCameras(allowedModules)) {
-        return []
-    }
-
-    let query = supabase.from('cameras').select('*').eq('status', 'online').order('camera_index')
-
-    if (allowedModules && allowedModules.length > 0) {
-        query = query.in('module', allowedModules)
-    }
-
-    const { data, error } = await query
-
-    if (error) {
-        if (error.code === '42703' || error.message?.includes('module')) {
-            console.warn("Колонка 'module' не найдена. Делаю fallback на все онлайн камеры.");
-            const fallbackQuery = await supabase.from('cameras').select('*').eq('status', 'online').order('camera_index')
-            if (!fallbackQuery.error) return (fallbackQuery.data as CameraRow[]).map(mapCameraRow)
-        }
-        console.error('Error fetching online cameras:', error)
-        return []
-    }
-
-    return (data as CameraRow[]).map(mapCameraRow)
+    const cameras = await fetchCameras(allowedModules)
+    return cameras.filter(camera => camera.status === 'online')
 }
 
 export async function updateCameraFov(

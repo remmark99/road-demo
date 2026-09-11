@@ -1,3 +1,5 @@
+import { indexEquipmentStatus, monitoredOnline, type EquipmentStatusRow } from '../equipment-status'
+
 /**
  * Activity status of a bus stop, derived strictly from real data:
  *
@@ -5,6 +7,10 @@
  *              `bus_stop_analytics` worker, which upserts `stop_sensor_states`
  *              and stamps `bus_stops.controller_status` / `last_ping_at`.
  *   cameras  — rows in `cameras` linked to the stop via `bus_stop_id`.
+ *
+ * Online / offline of both comes from `equipment_state` (equipment-monitor) —
+ * the same verdict the «Оборудование» tab shows. The legacy signals above are
+ * only used for devices the monitor does not track.
  *
  *   active   — sensors AND at least one camera are working
  *   partial  — exactly one of the two is working
@@ -101,6 +107,7 @@ export interface SensorStateRow {
 }
 
 export interface CameraStatusRow {
+    camera_index?: number | null
     bus_stop_id: number | null
     status: string | null
 }
@@ -109,6 +116,8 @@ export interface BuildStopActivityInput {
     busStops: BusStopStatusRow[]
     sensorRows: SensorStateRow[]
     cameraRows: CameraStatusRow[]
+    /** Rows of `equipment_state`; empty when the monitor is not deployed. */
+    equipmentRows?: EquipmentStatusRow[]
     windowMs?: number
     now?: number
 }
@@ -121,9 +130,11 @@ export function buildStopActivity({
     busStops,
     sensorRows,
     cameraRows,
+    equipmentRows,
     windowMs = STOP_ACTIVITY_FRESHNESS_MS,
     now = Date.now(),
 }: BuildStopActivityInput): Record<string, StopActivityEntry> {
+    const monitored = indexEquipmentStatus(equipmentRows)
     const latestSensorAt = new Map<number, string>()
     const glassBroken = new Set<number>()
     const heaterFault = new Set<number>()
@@ -150,7 +161,8 @@ export function buildStopActivity({
         const stopId = row.bus_stop_id
         if (stopId === null || stopId === undefined) continue
         totalCameras.set(stopId, (totalCameras.get(stopId) ?? 0) + 1)
-        if (row.status === 'online') {
+        const cameraOnline = monitoredOnline(monitored.cameras, row.camera_index) ?? row.status === 'online'
+        if (cameraOnline) {
             onlineCameras.set(stopId, (onlineCameras.get(stopId) ?? 0) + 1)
         }
     }
@@ -162,7 +174,8 @@ export function buildStopActivity({
         const lastSensorAt = latestSensorAt.get(stop.id) ?? null
 
         const controllerOnline = stop.controller_status === 'online' && isFresh(lastPingAt, windowMs, now)
-        const sensorsOnline = controllerOnline || isFresh(lastSensorAt, windowMs, now)
+        const sensorsOnline = monitoredOnline(monitored.controllers, stop.id)
+            ?? (controllerOnline || isFresh(lastSensorAt, windowMs, now))
 
         const onlineCameraCount = onlineCameras.get(stop.id) ?? 0
         const totalCameraCount = totalCameras.get(stop.id) ?? 0
@@ -171,7 +184,9 @@ export function buildStopActivity({
         // Контроллер есть тогда и только тогда, когда у остановки заполнен ip_address.
         // На controller_status опираться нельзя: в схеме у него DEFAULT 'offline',
         // поэтому он непустой у всех строк, включая остановки без контроллера.
-        const hasController = Boolean(stop.ip_address?.trim()) || lastSensorAt !== null
+        const hasController = Boolean(stop.ip_address?.trim())
+            || lastSensorAt !== null
+            || monitored.controllers.has(stop.id)
 
         stops[String(stop.id)] = {
             sensors_online: sensorsOnline,

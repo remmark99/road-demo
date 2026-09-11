@@ -8,6 +8,7 @@ import {
     type SensorStateRow,
     type StopActivityResponse,
 } from '@/lib/api/stop-activity'
+import type { EquipmentStatusRow } from '@/lib/equipment-status'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
@@ -46,17 +47,20 @@ export async function GET() {
     const supabase = await createClient()
     const windowMs = freshnessMs()
 
-    const [busStops, sensorStates, cameras] = await Promise.all([
+    const [busStops, sensorStates, cameras, equipment] = await Promise.all([
         loadBusStops(supabase),
         supabase
             .from('stop_sensor_states')
             .select('bus_stop_id,element,category,alarm,updated_at')
             .limit(10000),
-        supabase.from('cameras').select('bus_stop_id,status').limit(10000),
+        supabase.from('cameras').select('camera_index,bus_stop_id,status').limit(10000),
+        // Тот же статус, что на вкладке «Оборудование».
+        supabase.from('equipment_state').select('equipment_type,equipment_id,status').limit(10000),
     ])
 
     if (sensorStates.error) console.error('Error fetching sensor states:', sensorStates.error)
     if (cameras.error) console.error('Error fetching cameras:', cameras.error)
+    if (equipment.error) console.warn('equipment_state unavailable, falling back to legacy status:', equipment.error.message)
 
     const body: StopActivityResponse = {
         freshnessMs: windowMs,
@@ -64,6 +68,7 @@ export async function GET() {
             busStops,
             sensorRows: (sensorStates.data ?? []) as SensorStateRow[],
             cameraRows: (cameras.data ?? []) as CameraStatusRow[],
+            equipmentRows: (equipment.data ?? []) as EquipmentStatusRow[],
             windowMs,
         }),
     }
