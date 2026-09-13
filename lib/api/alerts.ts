@@ -84,9 +84,11 @@ export async function fetchAlerts(options: FetchAlertsOptions = {}): Promise<Ale
     const { types, cameraIndexes, limit = 25, offset = 0 } = options
 
     let query = supabase
-        .from('alerts')
+        .from('alerts_with_bin_episodes')
         .select('*', { count: 'exact' })
+        .order('bin_episode_active', { ascending: false })
         .order('timestamp', { ascending: false })
+        .order('id', { ascending: false })
         .range(offset, offset + limit - 1)
 
     // Apply type filter
@@ -141,19 +143,8 @@ export async function fetchAlertsByCamera(
     cameraIndex: number,
     limit: number = 5
 ): Promise<Alert[]> {
-    const { data, error } = await supabase
-        .from('alerts')
-        .select('*')
-        .eq('camera_index', cameraIndex)
-        .order('timestamp', { ascending: false })
-        .limit(limit)
-
-    if (error) {
-        console.error('Error fetching camera alerts:', error)
-        return []
-    }
-
-    return data || []
+    const { alerts } = await fetchAlerts({ cameraIndexes: [cameraIndex], limit })
+    return alerts
 }
 
 export async function fetchAlertTypes(): Promise<string[]> {

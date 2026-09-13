@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["next-env.d.ts", "app/notifications/page.tsx", "lib/api/alerts.ts", "lib/bin-episodes.ts"],
+  "exclude": ["node_modules"]
+}
