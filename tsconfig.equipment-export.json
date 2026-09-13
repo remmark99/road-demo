@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "target": "ES2022", "incremental": false },
+  "include": ["next-env.d.ts", "app/api/equipment/export/route.ts", "components/notifications/equipment-tab.tsx", "lib/exports/**/*.ts"],
+  "exclude": ["node_modules"]
+}

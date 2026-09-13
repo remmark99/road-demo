@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { EquipmentExport } from "./equipment-export"
 import { addDays, format, isSameDay, startOfDay, subDays } from "date-fns"
 import { ru } from "date-fns/locale"
 import {
@@ -208,6 +209,7 @@ export function EquipmentTab() {
 
   return (
     <>
+      <EquipmentExport />
       <Card className="mb-6">
         <CardContent className="flex flex-wrap items-center gap-3 p-4">
           <div className="flex flex-wrap items-center gap-2">
