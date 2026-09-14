@@ -1,5 +1,7 @@
 "use client"
 
+import { getBinEpisode } from "@/lib/bin-episodes"
+
 import { Suspense, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
@@ -1394,6 +1396,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
               ? lyingPersonEpisodesById.get(episodeId)
               : undefined
             const episodeIsOpen = episode?.status === "open"
+            const binEpisode = getBinEpisode(alert)
 
             return (
               <Card
@@ -1415,7 +1418,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                     <div className="md:col-span-2 flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
                       <span className="text-muted-foreground md:text-foreground">
-                        {formatTimeAgo(alert.timestamp)}
+                        {binEpisode ? `Начало: ${formatTime(binEpisode.started_at)}` : formatTimeAgo(alert.timestamp)}
                       </span>
                     </div>
 
@@ -1443,6 +1446,18 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
 
                     <div className="md:col-span-4 min-w-0 text-sm">
                       <div className="truncate">{message}</div>
+                      {binEpisode && (
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <Badge variant="outline">
+                            {binEpisode.status === "open" ? "Продолжается" : "Завершено"}
+                          </Badge>
+                          <span>
+                            {binEpisode.ended_at
+                              ? `Завершено: ${formatTime(binEpisode.ended_at)}`
+                              : `Подтверждено: ${formatTime(binEpisode.last_seen_at)}`}
+                          </span>
+                        </div>
+                      )}
                       {episode && (
                         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <Badge
