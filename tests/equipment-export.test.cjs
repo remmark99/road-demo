@@ -89,12 +89,15 @@ test('XLSX preserves numeric counts, empty unknown values and safe literal strin
     fs.writeFileSync(process.env.EQUIPMENT_TEST_XLSX || path.join(require('node:os').tmpdir(), 'equipment-export-test.xlsx'),buffer)
 })
 
-function client({user=true,access=true,fail=false,states=[],outages=[]}={}) {
-    return {auth:{getUser:async()=>({data:{user:user?{id:'test'}:null},error:null})},from(table){
+const { buildMapInventoryDays, mapCameraIds } = load('lib/exports/map-inventory.ts')
+function client({user=true,access=true,fail=false,cameras=[],history=[],outages=[],controllers=[],sensorEvents=[],stopIds=[],missingHistory=false}={}) {
+    return {auth:{getUser:async()=>({data:{user:user?{id:'test'}:null},error:null})},
+        rpc:async()=>({data:{features:stopIds.map(id=>({properties:{id}}))},error:fail?'unavailable':null}),
+        from(table){
         let from=0,to=999
-        const chain={select(){return chain},eq(){return chain},order(){return chain},range(a,b){from=a;to=b;return chain},
+        const chain={select(){return chain},eq(){return chain},order(){return chain},gte(){return chain},lte(){return chain},lt(){return chain},range(a,b){from=a;to=b;return chain},
             single:async()=>({data:{role:'user',modules:access?['stops']:[]},error:null}),
-            then(resolve,reject){return Promise.resolve({data:(table==='equipment_state'?states:outages).slice(from,to+1),error:fail?'unavailable':null}).then(resolve,reject)}}
+            then(resolve,reject){return Promise.resolve({data:(table==='cameras'?cameras:table==='map_inventory_history'?history:table==='bus_stops'?controllers:table==='controller_alerts'?sensorEvents:outages).slice(from,to+1),error:fail?'unavailable':missingHistory && table==='map_inventory_history'?{code:'PGRST205'}:null}).then(resolve,reject)}}
         return chain
     }}
 }
@@ -108,12 +111,98 @@ test('export route enforces sign-in, module access and date validation', async()
     assert.equal((await request({access:false})).status,403)
     assert.equal((await request({},'from=bad&to=bad')).status,400)
 })
-test('export route reads beyond 1000 rows and returns a real workbook, never a partial success on DB failure',async()=>{
-    const states=Array.from({length:1001},(_,i)=>state(1000+i,'online',iso(0),'stop-'+i))
-    const response=await request({states})
+test('map report reads all objects, counts offline objects and exports one row per day',async()=>{
+    const cameras=Array.from({length:1001},(_,i)=>({camera_index:i,bus_stop_id:10,lat:61,lng:73,status:'offline'}))
+    const options={cameras,stopIds:[10,11],history:[{recorded_at:iso(0),cameras:1001,stops:2}]}
+    const response=await request(options)
     assert.equal(response.status,200)
-    assert.match(response.headers.get('content-type'),/spreadsheetml.sheet/)
     const files=unzipSync(new Uint8Array(await response.arrayBuffer()))
-    assert.match(strFromU8(files['xl/worksheets/sheet1.xml']),/<v>1001<\/v>/)
+    const sheet=strFromU8(files['xl/worksheets/sheet1.xml'])
+    assert.match(sheet,/<v>1001<\/v>/)
+    assert.equal(Object.keys(files).filter(name => /^xl\/worksheets\/sheet\d+\.xml$/.test(name)).length, 1)
+    assert.equal((sheet.match(/<row /g)||[]).length,2)
+    assert.match(sheet,/11\.09\.2026/)
+    const json=await (await request(options,'from=2026-09-11&to=2026-09-11&format=json')).json()
+    assert.equal(json.current.cameras,1001)
+    assert.equal(json.current.stops,2)
+    assert.equal(json.days[0].cameras,1001)
     assert.equal((await request({fail:true})).status,503)
+})
+test('missing inventory history is explicit and is never backfilled with current totals',async()=>{
+    const result=await (await request({missingHistory:true,cameras:[{camera_index:1,bus_stop_id:10}],stopIds:[10]},'from=2026-09-11&to=2026-09-11&format=json')).json()
+    assert.equal(result.current.cameras,1)
+    assert.equal(result.days[0].cameras,null)
+    assert.equal(result.days[0].stops,null)
+    assert.equal(result.historyAvailable,false)
+})
+test('daily inventory uses the final snapshot, respects midnight, and times only incidents',()=>{
+    const history=[{recorded_at:iso(1),cameras:3,stops:2},{recorded_at:iso(20),cameras:4,stops:3},{recorded_at:iso(24),cameras:5,stops:4}]
+    const current={recorded_at:iso(36),cameras:6,stops:4}
+    const days=buildMapInventoryDays(history,current,[outage(1,900,iso(7,20),iso(8,5))],at(0),at(36))
+    assert.equal(days.length,2)
+    assert.deepEqual(days.map(d=>[d.cameras,d.stops]),[[4,3],[6,4]])
+    assert.match(days[0].note,/07:20 — потеря связи/)
+    assert.match(days[0].note,/08:05 — связь восстановлена/)
+    assert.doesNotMatch(days[0].note,/20:00/)
+    assert.match(days[1].note,/день ещё не завершён/)
+    const unknown=buildMapInventoryDays([],current,[],at(-24),at(36))
+    assert.equal(unknown[0].cameras,null)
+    assert.equal(unknown[1].cameras,null)
+    assert.equal(unknown[2].cameras,6)
+    const zero=buildMapInventoryDays([{recorded_at:iso(0),cameras:0,stops:0}],current,[],at(0),at(24))
+    assert.equal(zero[0].cameras,0)
+})
+test('map inventory excludes orphaned bound cameras and deduplicates map camera ids',()=>{
+    assert.deepEqual([...mapCameraIds([
+        {camera_index:1,bus_stop_id:10,lat:0,lng:0},
+        {camera_index:1,bus_stop_id:10,lat:0,lng:0},
+        {camera_index:2,bus_stop_id:11,lat:61,lng:73},
+        {camera_index:3,bus_stop_id:null,lat:61,lng:73},
+        {camera_index:4,bus_stop_id:null,lat:NaN,lng:73},
+    ],new Set([10]))],[1,3])
+})
+
+test('map camera aliases retain pipeline outages without changing inventory totals',async()=>{
+    const data=await (await request({cameras:[{camera_index:10130,bus_stop_id:10}],stopIds:[10],history:[{recorded_at:iso(0),cameras:1,stops:1}],outages:[outage(1,130,iso(7,20),iso(8))]},'from=2026-09-11&to=2026-09-11&format=json')).json()
+    assert.equal(data.days[0].cameras,1)
+    assert.match(data.days[0].note,/07:20 — потеря связи: камеры: 1/)
+})
+
+
+test('daily report names locations and deduplicates repeated sensor faults within a day',()=>{
+    const current={recorded_at:iso(24),cameras:31,stops:438,sensor_stops:10}
+    const sensorEvents=[7,8,9].map(h=>({created_at:iso(h),bus_stop_id:10,element:1,category:'glass_break',alarm:'critical'}))
+    const days=buildMapInventoryDays([{...current,recorded_at:iso(0)}],current,[outage(1,130,iso(7),iso(8))],at(0),at(24),{'camera:130':'Никольский — камера №130','controller:10':'Никольский'},sensorEvents)
+    assert.equal(days[0].sensor_stops,10)
+    assert.equal(days[0].failures,2)
+    assert.equal(days[0].events.filter(e=>e.includes('разбитие стекла')).length,1)
+    assert.match(days[0].note,/Никольский/)
+})
+
+const {stopHistoryAt,historicalCameras,historicalStops}=load('lib/stop-history.ts')
+test('map rewind follows actual recoveries, preserves unknown dates, aliases and both cameras',()=>{
+    const history={now:iso(12),states:[state(130,'online',iso(10)),state(131,'online',iso(11)),{...state(10,'offline',iso(7)),equipment_type:'controller'}],outages:[outage(1,130,iso(7),iso(10)),outage(2,131,iso(7),iso(11))]}
+    const cameras=[130,131].map(id=>({id:`cam-${10000+id}`,cameraIndex:10000+id,module:'stops',busStopId:10,status:'online'}))
+    const geo={type:'FeatureCollection',features:[{type:'Feature',geometry:{type:'Point',coordinates:[73,61]},properties:{id:10,sensor_data:{has_controller:true,glass_broken:true}}}]}
+    function view(h){const snapshot=stopHistoryAt(history,at(h));const cams=historicalCameras(cameras,snapshot);return {cams,sd:historicalStops(geo,cams,snapshot).features[0].properties.sensor_data}}
+    assert.equal(view(6).sd.activity_status,'unknown')
+    assert.equal(view(8).sd.activity_status,'inactive')
+    assert.equal(view(10).sd.online_camera_count,1)
+    assert.equal(view(11).sd.online_camera_count,2)
+    assert.equal(view(12).sd.online_camera_count,2)
+    assert.equal(view(10).sd.glass_broken,undefined)
+    assert.equal(view(8).cams[0].status,'offline')
+    assert.equal(cameras[0].status,'online')
+    assert.equal(historicalCameras(cameras,null),cameras)
+})
+
+test('history endpoint requires module access and pages past 1000 records',async()=>{
+    const {NextRequest}=require('next/server')
+    const rows=Array.from({length:1001},(_,id)=>outage(id,130,iso(7),null))
+    for(const [options,status] of [[{user:false},401],[{access:false},403],[{outages:rows},200]]){
+        const {GET}=load('app/api/stop-history/route.ts',{'@/lib/supabase/server':{createClient:async()=>client(options)}})
+        const response=await GET(new NextRequest('http://localhost/api/stop-history'))
+        assert.equal(response.status,status)
+        if(status===200) assert.equal((await response.json()).outages.length,1001)
+    }
 })

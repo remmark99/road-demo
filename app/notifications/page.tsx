@@ -378,6 +378,10 @@ const DEMO_ALERT_SEEDS: DemoAlertSeed[] = [
 const DEMO_ALERT_BASE_TIME = Date.now()
 
 // ── Shared helpers ──────────────────────────────────────────────────────
+  const formatBinTime = (value: string) => new Date(value).toLocaleString("ru-RU", {
+    timeZone: "Asia/Yekaterinburg", day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
+  }) + " (UTC+5)"
+
 function formatTime(dateStr: string) {
   const date = new Date(dateStr)
   return date.toLocaleString("ru-RU", {
@@ -1418,7 +1422,7 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                     <div className="md:col-span-2 flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
                       <span className="text-muted-foreground md:text-foreground">
-                        {binEpisode ? `Начало: ${formatTime(binEpisode.started_at)}` : formatTimeAgo(alert.timestamp)}
+                        {binEpisode ? `Начало: ${formatBinTime(binEpisode.started_at)}` : formatTimeAgo(alert.timestamp)}
                       </span>
                     </div>
 
@@ -1453,11 +1457,12 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                           </Badge>
                           <span>
                             {binEpisode.ended_at
-                              ? `Завершено: ${formatTime(binEpisode.ended_at)}`
-                              : `Подтверждено: ${formatTime(binEpisode.last_seen_at)}`}
+                              ? `Завершено: ${formatBinTime(binEpisode.ended_at)}`
+                              : `Подтверждено: ${formatBinTime(binEpisode.last_seen_at)}`}
                           </span>
                         </div>
                       )}
+                      {alert.alert_type === "bin_full" && !binEpisode && <div className="mt-1 text-xs text-muted-foreground">Архивное срабатывание</div>}
                       {episode && (
                         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <Badge
@@ -1506,7 +1511,23 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                   {isExpanded && !demoAlert && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {episode ? (
+                        {binEpisode ? (
+                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
+                            {[
+                              { label: binEpisode.first_image_url ? "Переполнена — первый сохранённый кадр" : "Переполнена — кадр события",
+                                url: binEpisode.first_image_url || alert.clip_path,
+                                time: binEpisode.first_image_at, empty: "Фото недоступно" },
+                              { label: "Очищена — при завершении", url: binEpisode.closed_image_url,
+                                time: binEpisode.ended_at, empty: binEpisode.status === "open" ? "Событие продолжается" : "Фото завершения не сохранялось" },
+                            ].map(({ label, url, time, empty }) => <div key={label} className="space-y-1.5">
+                              <div className="text-xs font-medium text-muted-foreground">{label}</div>
+                              <MediaFrame className="h-[180px] lg:h-[200px]">
+                                {url ? <MediaPhoto src={url} alt={label} /> : <div className="flex h-full items-center justify-center p-3 text-center text-xs text-muted-foreground">{empty}</div>}
+                              </MediaFrame>
+                              {time && <div className="text-xs text-muted-foreground">{formatBinTime(time)}</div>}
+                            </div>)}
+                          </div>
+                        ) : episode ? (
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
                             {[
                               {
@@ -1579,7 +1600,8 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                         )}
 
                         <div className="space-y-3 text-sm">
-                          {episode && (
+                          {alert.alert_type === "bin_full" && !binEpisode && <div className="mt-1 text-xs text-muted-foreground">Архивное срабатывание</div>}
+                      {episode && (
                             <div className="grid grid-cols-2 gap-3 rounded-lg border p-3">
                               <div>
                                 <div className="text-muted-foreground">Статус</div>

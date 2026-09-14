@@ -1,5 +1,6 @@
 "use client"
 
+import { historicalCameras, historicalStops, type StopHistorySnapshot } from "@/lib/stop-history"
 import { useEffect, useMemo, useState } from "react"
 import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { fetchCameras } from "@/lib/api/cameras"
@@ -110,6 +111,7 @@ function EquipmentRow({
     label,
     onlineItems,
     offlineItems,
+    unknown = 0,
     openList,
     onlineKey,
     offlineKey,
@@ -120,13 +122,14 @@ function EquipmentRow({
     label: string
     onlineItems: FocusItem[]
     offlineItems: FocusItem[]
+    unknown?: number
     openList: ListKey | null
     onlineKey: ListKey
     offlineKey: ListKey
     onToggle: (key: ListKey) => void
     onSelect: (item: FocusItem) => void
 }) {
-    const total = onlineItems.length + offlineItems.length
+    const total = onlineItems.length + offlineItems.length + unknown
 
     const tile = (
         tileKey: ListKey,
@@ -178,6 +181,7 @@ function EquipmentRow({
                 {tile(onlineKey, "В сети", onlineItems, "bg-green-500", "text-green-500")}
                 {tile(offlineKey, "Не в сети", offlineItems, "bg-gray-400", "")}
             </div>
+            {unknown > 0 && <p className="mt-1 text-xs text-violet-400">Нет истории: {unknown}</p>}
             {openItems && <FocusList items={openItems} onSelect={onSelect} />}
         </div>
     )
@@ -198,10 +202,12 @@ function EquipmentRowSkeleton() {
     )
 }
 
-export function BusStopsStats({ onFocusStop }: { onFocusStop?: (target: MapFocusTarget) => void }) {
+export function BusStopsStats({ onFocusStop, historySnapshot = null }: { onFocusStop?: (target: MapFocusTarget) => void; historySnapshot?: StopHistorySnapshot | null }) {
     const { modules, loading: modulesLoading } = useModuleAccess()
-    const [data, setData] = useState<BusStopsGeoJSON | null>(null)
-    const [cameras, setCameras] = useState<Camera[] | null>(null)
+    const [liveData, setData] = useState<BusStopsGeoJSON | null>(null)
+    const [liveCameras, setCameras] = useState<Camera[] | null>(null)
+    const cameras = useMemo(() => liveCameras && historicalCameras(liveCameras, historySnapshot), [liveCameras, historySnapshot])
+    const data = useMemo(() => historicalStops(liveData, cameras ?? [], historySnapshot), [liveData, cameras, historySnapshot])
     const [openList, setOpenList] = useState<ListKey | null>(null)
 
     useEffect(() => {
@@ -217,6 +223,7 @@ export function BusStopsStats({ onFocusStop }: { onFocusStop?: (target: MapFocus
         if (!data || !cameras) return null
 
         const stops = new Map<number, StopInfo>()
+        let camerasUnknown = 0, sensorsUnknown = 0
         let unequipped = 0
         let vandalism = 0
         let heaterIssues = 0
@@ -254,7 +261,8 @@ export function BusStopsStats({ onFocusStop }: { onFocusStop?: (target: MapFocus
                     lat: info.lat,
                     spiderify: false,
                 }
-                if (sd.sensors_online) sensorsOnline.push(item)
+                if (sd.sensors_history_known === false) sensorsUnknown++
+                else if (sd.sensors_online) sensorsOnline.push(item)
                 else sensorsOffline.push(item)
             }
         })
@@ -276,7 +284,8 @@ export function BusStopsStats({ onFocusStop }: { onFocusStop?: (target: MapFocus
                     lat: stop?.lat ?? null,
                     spiderify: true,
                 }
-                if (c.status === "online") camerasOnline.push(item)
+                if (c.historyStatus === "unknown") camerasUnknown++
+                else if (c.status === "online") camerasOnline.push(item)
                 else camerasOffline.push(item)
             })
 
@@ -287,6 +296,7 @@ export function BusStopsStats({ onFocusStop }: { onFocusStop?: (target: MapFocus
         sensorsOffline.sort(byTitle)
 
         return {
+            camerasUnknown, sensorsUnknown,
             totalStops: data.features.length,
             unequipped,
             vandalism,
@@ -345,6 +355,7 @@ export function BusStopsStats({ onFocusStop }: { onFocusStop?: (target: MapFocus
                 <EquipmentRow
                     icon={Video}
                     label="Камеры"
+                    unknown={stats.camerasUnknown}
                     onlineItems={stats.camerasOnline}
                     offlineItems={stats.camerasOffline}
                     openList={openList}
@@ -356,6 +367,7 @@ export function BusStopsStats({ onFocusStop }: { onFocusStop?: (target: MapFocus
                 <EquipmentRow
                     icon={Radio}
                     label="Остановки (датчики)"
+                    unknown={stats.sensorsUnknown}
                     onlineItems={stats.sensorsOnline}
                     offlineItems={stats.sensorsOffline}
                     openList={openList}

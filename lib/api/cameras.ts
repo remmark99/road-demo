@@ -58,7 +58,7 @@ async function fetchMonitoredCameraStatus() {
 /** cameras.status остаётся только для камер, которые монитор не ведёт. */
 function withMonitoredStatus(rows: CameraRow[], statuses: Map<number, EquipmentStatusRow['status']>): CameraRow[] {
     return rows.map(row => {
-        const online = monitoredOnline(statuses, row.camera_index)
+        const online = row.module === 'stops' ? monitoredOnline(statuses, row.camera_index >= 10000 ? row.camera_index - 10000 : row.camera_index) : null
         return online === null ? row : { ...row, status: online ? 'online' : 'offline' }
     })
 }

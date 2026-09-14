@@ -61,7 +61,9 @@ BEGIN
 
   IF p_overfilled AND v_alert_id IS NULL THEN
     v_episode := jsonb_build_object('status', 'open', 'started_at', p_observed_at,
-      'last_seen_at', p_observed_at, 'ended_at', NULL, 'observation_count', 1);
+      'last_seen_at', p_observed_at, 'ended_at', NULL, 'observation_count', 1,
+      'first_image_url', p_image_url, 'first_image_at', CASE WHEN p_image_url IS NOT NULL THEN p_observed_at END,
+      'closed_image_url', NULL);
     INSERT INTO public.alerts(module_name, alert_type, severity, message, metadata,
       timestamp, video_timestamp, source_video, clip_path, camera_index)
     VALUES ('stops', 'bin_full', p_severity, 'Trash bin appears full or overflowing',
@@ -74,8 +76,13 @@ BEGIN
     IF p_overfilled THEN
       v_episode := v_episode || jsonb_build_object('last_seen_at', p_observed_at,
         'observation_count', (v_episode->>'observation_count')::integer + 1);
+      -- Retain the earliest available evidence, including after an upload failure.
+      IF v_episode->>'first_image_url' IS NULL AND p_image_url IS NOT NULL THEN
+        v_episode := v_episode || jsonb_build_object('first_image_url', p_image_url, 'first_image_at', p_observed_at);
+      END IF;
     ELSIF v_clear >= p_clear_observations THEN
-      v_episode := v_episode || jsonb_build_object('status', 'closed', 'ended_at', p_observed_at);
+      v_episode := v_episode || jsonb_build_object('status', 'closed', 'ended_at', p_observed_at,
+        'closed_image_url', p_image_url);
     END IF;
     -- Original timestamp/video_timestamp stay fixed. Only the evidence and
     -- episode status change; INSERT-only notification triggers do not repeat.

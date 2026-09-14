@@ -1,6 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState, useMemo } from "react"
+import { historicalCameras, historicalStops, type StopHistorySnapshot } from "@/lib/stop-history"
 import { useMapPreference } from "@/lib/hooks/use-map-preference"
 import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
@@ -167,6 +168,7 @@ interface SurgutMapProps {
   hoveredSegmentId?: string | null
   onHoverSegment?: (segmentId: string | null) => void
   /** Остановка, к которой нужно приблизиться (выбор в боковой панели). */
+  historySnapshot?: StopHistorySnapshot | null
   focusTarget?: MapFocusTarget | null
 }
 
@@ -212,8 +214,9 @@ function getSimulatedStatusAtTime(osmId: number, time: Date): RoadStatus {
   return "dirty";
 }
 
-export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHoverSegment, focusTarget }: SurgutMapProps) {
+export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHoverSegment, focusTarget, historySnapshot = null }: SurgutMapProps) {
 
+  const lastFocusRequest = useRef<number | null>(null)
   const mapContainer = useRef<HTMLDivElement>(null)
   const map = useRef<maplibregl.Map | null>(null)
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
@@ -222,12 +225,15 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const { city } = useCity()
   const [isDark, setIsDark] = useState(true)
   const lastThemeRef = useRef(isDark)
-  const [cameras, setCameras] = useState<Camera[]>([])
+  const [liveCameras, setCameras] = useState<Camera[]>([])
   const [hoveredCamera, setHoveredCamera] = useState<Camera | null>(null)
   const [showAllFov, setShowAllFov] = useMapPreference("showAllFov", false)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
-  const [busStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
+  const [liveBusStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
+  const cameras = useMemo(() => historicalCameras(liveCameras, historySnapshot), [liveCameras, historySnapshot])
+  const busStopsData = useMemo(() => historicalStops(liveBusStopsData, cameras, historySnapshot), [liveBusStopsData, cameras, historySnapshot])
+  useEffect(() => { setSelectedBusStop(null); setSelectedCamera(null) }, [historySnapshot])
   const [parksData, setParksData] = useState<any>(null)
   const [anchorsData, setAnchorsData] = useState<AnchorsGeoJSON | null>(null)
   const [tkoSitesData, setTkoSitesData] = useState<TkoSitesGeoJSON | null>(null)
@@ -458,6 +464,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         ["==", ["get", "has_equipment"], false], "#3b82f6",
         ["==", ["get", "glass_broken"], true], "#ef4444",
         ["==", ["get", "heater_working"], false], "#f97316",
+        ["==", ["get", "activity_status"], "unknown"], "#a78bfa",
         ["==", ["get", "activity_status"], "active"], "#22c55e",
         ["==", ["get", "activity_status"], "partial"], "#eab308",
         "#9ca3af"
@@ -678,7 +685,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                   ${props.name || 'Остановка'}
                 </div>
                 ${props.address ? `<div class="text-muted-foreground text-xs">${props.address}</div>` : ''}
-                <div class="text-muted-foreground text-xs mt-1">${props.has_equipment === false ? 'Без оборудования' : `${ACTIVITY_STATUS_LABELS[props.activity_status as StopActivityStatus] ?? 'Неактивна'} — ${props.sensors_online ? 'датчики в сети' : 'датчики не в сети'}, ${props.cameras_online ? `камеры в сети (${props.online_camera_count})` : 'камеры не в сети'}`}</div>
+                <div class="text-muted-foreground text-xs mt-1">${props.has_equipment === false ? 'Без оборудования' : `${ACTIVITY_STATUS_LABELS[props.activity_status as StopActivityStatus] ?? 'Неактивна'} — ${props.sensors_history_known === false ? 'нет истории датчиков' : props.sensors_online ? 'датчики в сети' : 'датчики не в сети'}, ${props.cameras_history_known === false ? 'нет истории камер' : props.cameras_online ? `камеры в сети (${props.online_camera_count})` : 'камеры не в сети'}`}</div>
               </div>`
               )
               .addTo(map.current!)
@@ -1519,7 +1526,8 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
   // Fly to a stop picked in the sidebar (списки камер / датчиков)
   useEffect(() => {
-    if (!map.current || !mapLoaded || !focusTarget) return
+    if (!map.current || !mapLoaded || !focusTarget || lastFocusRequest.current === focusTarget.requestId) return
+    lastFocusRequest.current = focusTarget.requestId
 
     // Остановка может быть скрыта фильтром — тогда зумиться было бы не к чему.
     const feature = busStopsData?.features.find(f => f.properties.id === focusTarget.stopId)
@@ -1772,6 +1780,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       const filteredFeatures = busStopsData.features.filter(f => {
         const sd: any = f.properties.sensor_data || {}
 
+        if (sd.activity_status === "unknown") return true
         if (!sd.has_equipment) {
           return busStopFilters.unequipped
         }
@@ -2535,6 +2544,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
       <BusStopModal
         key={selectedBusStop?.id ?? "closed"}
+        historicalAt={historySnapshot?.at}
         busStop={selectedBusStop}
         cameras={cameras.filter(camera => camera.busStopId === selectedBusStop?.id)}
         onClose={() => { setSelectedBusStop(null); setSelectedCamera(null) }}

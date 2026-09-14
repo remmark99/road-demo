@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useState, useMemo, useEffect, useCallback, useRef } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Slider } from "@/components/ui/slider"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
@@ -15,112 +15,46 @@ import { Play, Pause, SkipBack, SkipForward, Clock, CalendarIcon } from "lucide-
 
 import type { RoadStatus } from "@/lib/types"
 
-import { format, addDays, differenceInHours } from "date-fns"
+import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { type DateRange } from "react-day-picker"
 
 interface TimelineSliderProps {
-  onTimeChange: (time: Date, statusOverride: Record<string, RoadStatus>) => void
+  onTimeChange: (time: Date, statusOverride: Record<string, RoadStatus>, live: boolean) => void
 }
 
 export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
   const [value, setValue] = useState([100])
   const [isPlaying, setIsPlaying] = useState(false)
-
-  const nowRef = useRef(new Date())
-  const now = nowRef.current
-
-  // Date range state - defaults to last 24 hours
-  const [dateRange, setDateRange] = React.useState<DateRange | undefined>({
-    from: new Date(now.getTime() - 24 * 60 * 60 * 1000),
-    to: now,
-  })
-
-
-
-  const startTime = useMemo(() => dateRange?.from ?? new Date(now.getTime() - 24 * 60 * 60 * 1000), [dateRange, now])
-  const endTime = useMemo(() => dateRange?.to ?? now, [dateRange, now])
-
-  // Calculate the range duration in milliseconds
-  const rangeDuration = useMemo(() => {
-    return endTime.getTime() - startTime.getTime()
-  }, [startTime, endTime])
-
-  const currentTime = useMemo(() => {
-    const progress = value[0] / 100
-    return new Date(startTime.getTime() + progress * rangeDuration)
-  }, [value, startTime, rangeDuration])
-
-  const getStatusAtTime = useCallback((time: Date): Record<string, RoadStatus> => {
-    // We now handle simulation in SurgutMap based on selectedTime, 
-    // but we can still provide overrides here if needed.
-    return {}
+  const [now, setNow] = useState(() => new Date())
+  const [dateRange, setDateRange] = useState<DateRange | undefined>()
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(timer)
   }, [])
-
-
-  const handleSliderChange = useCallback((newValue: number[]) => {
-    setValue(newValue)
-    const time = new Date(startTime.getTime() + (newValue[0] / 100) * rangeDuration)
-    onTimeChange(time, getStatusAtTime(time))
-  }, [startTime, rangeDuration, onTimeChange, getStatusAtTime])
-
-  const skipBackward = () => {
-    const newValue = Math.max(0, value[0] - 5)
-    handleSliderChange([newValue])
-  }
-
-  const skipForward = () => {
-    const newValue = Math.min(100, value[0] + 5)
-    handleSliderChange([newValue])
-  }
-
-  const togglePlay = () => {
-    setIsPlaying(!isPlaying)
-  }
-
-  // Auto-play effect
+  // A rolling week by default. Calendar selections include the entire last day.
+  const startTime = useMemo(() => (dateRange?.from ? new Date(`${format(dateRange.from, "yyyy-MM-dd")}T00:00:00+05:00`) : undefined) ?? new Date(now.getTime() - 7 * 86400_000), [dateRange, now])
+  const endTime = useMemo(() => dateRange?.to
+    ? new Date(Math.min((Date.parse(`${format(dateRange.to, "yyyy-MM-dd")}T00:00:00+05:00`) + 86400_000) - 1, now.getTime()))
+    : now, [dateRange, now])
+  const rangeDuration = Math.max(0, endTime.getTime() - startTime.getTime())
+  const currentTime = useMemo(() => new Date(startTime.getTime() + value[0] / 100 * rangeDuration), [startTime, value, rangeDuration])
+  const isLive = value[0] === 100 && endTime.getTime() === now.getTime()
+  useEffect(() => { onTimeChange(currentTime, {}, isLive) }, [currentTime, isLive, onTimeChange])
   useEffect(() => {
     if (!isPlaying) return
-
-    const interval = setInterval(() => {
-      setValue(prev => {
-        const newValue = Math.min(100, prev[0] + 0.5)
-        if (newValue >= 100) {
-          setIsPlaying(false)
-          return [100]
-        }
-        return [newValue]
-      })
-    }, 100)
-
-    return () => clearInterval(interval)
+    const timer = setInterval(() => setValue(prev => [Math.min(100, prev[0] + 0.5)]), 500)
+    return () => clearInterval(timer)
   }, [isPlaying])
-
-  // Sync time change when value changes from auto-play
-  useEffect(() => {
-    if (isPlaying) {
-      const time = new Date(startTime.getTime() + (value[0] / 100) * rangeDuration)
-      onTimeChange(time, getStatusAtTime(time))
-    }
-  }, [value, isPlaying, startTime, rangeDuration, onTimeChange, getStatusAtTime])
-
-  const formatTime = (date: Date) => {
-    return date.toLocaleString("ru-RU", {
-      day: "numeric",
-      month: "short",
-      hour: "2-digit",
-      minute: "2-digit"
-    })
-  }
-
-  // Check if viewing "live" (near the end of the range and end is near current time)
-  const isLive = value[0] >= 99 && (now.getTime() - endTime.getTime()) < 60000
-
-  // Handle date range change - reset slider to end
-  const handleDateRangeSelect = (range: DateRange | undefined) => {
-    setDateRange(range)
-    setValue([100]) // Reset to end of range
-  }
+  useEffect(() => { if (value[0] === 100) setIsPlaying(false) }, [value])
+  const handleSliderChange = (next: number[]) => { setIsPlaying(false); setValue(next) }
+  const skipBackward = () => handleSliderChange([Math.max(0, value[0] - 5)])
+  const skipForward = () => handleSliderChange([Math.min(100, value[0] + 5)])
+  const togglePlay = () => { if (value[0] === 100) setValue([0]); setIsPlaying(v => !v) }
+  const handleDateRangeSelect = (range: DateRange | undefined) => { setDateRange(range); setValue([100]); setIsPlaying(false) }
+  const formatTime = (date: Date) => date.toLocaleString("ru-RU", {
+    timeZone: "Asia/Yekaterinburg", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+  })
 
   return (
     <div className="bg-card border border-border rounded-lg p-4">
@@ -144,13 +78,14 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
                   format(dateRange.from, "dd MMM yyyy", { locale: ru })
                 )
               ) : (
-                <span>Выберите период</span>
+                <span>Последние 7 дней</span>
               )}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
               mode="range"
+              disabled={{ after: now }}
               defaultMonth={dateRange?.from}
               selected={dateRange}
               onSelect={handleDateRangeSelect}
@@ -178,6 +113,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
           <Slider
             value={value}
             onValueChange={handleSliderChange}
+            aria-label="История связи остановок"
             max={100}
             step={0.1}
             className="cursor-pointer"
@@ -201,7 +137,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
       </div>
 
       <div className="flex justify-between text-xs text-muted-foreground">
-        <span>{formatTime(startTime)}</span>
+        <span>{formatTime(startTime)} · местное время (UTC+5)</span>
         <span>{formatTime(endTime)}</span>
       </div>
     </div>

@@ -2,6 +2,7 @@ export type RoadStatus = "clean" | "dirty" | "warning" | "unknown"
 
 export interface Camera {
   id: string
+  historyStatus?: "online" | "offline" | "unknown"
   cameraIndex: number
   name: string
   description: string

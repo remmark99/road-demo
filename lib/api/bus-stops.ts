@@ -8,6 +8,8 @@ import {
 export interface BusStopSensorData {
     /** active = датчики и камеры, partial = что-то одно, inactive = ничего. */
     activity_status: StopActivityStatus
+    sensors_history_known?: boolean
+    cameras_history_known?: boolean
     sensors_online: boolean
     cameras_online: boolean
     online_camera_count: number
@@ -80,7 +82,7 @@ export function toSensorData(entry: StopActivityEntry | undefined): BusStopSenso
         total_camera_count: entry.total_camera_count,
         has_controller: entry.has_controller,
         has_equipment: entry.has_equipment,
-        is_online: status !== 'inactive',
+        is_online: status === 'active' || status === 'partial',
         is_partly_equipped: status === 'partial',
         last_ping_at: entry.last_ping_at,
         last_sensor_at: entry.last_sensor_at,

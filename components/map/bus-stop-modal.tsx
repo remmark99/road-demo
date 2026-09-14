@@ -28,6 +28,7 @@ export interface SelectedBusStop {
 interface BusStopModalProps {
     busStop: SelectedBusStop | null
     cameras: Camera[]
+    historicalAt?: string
     onClose: () => void
 }
 
@@ -45,7 +46,7 @@ function formatTime(isoString: string | null | undefined) {
     }
 }
 
-export function BusStopModal({ busStop, cameras, onClose }: BusStopModalProps) {
+export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusStopModalProps) {
     const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
     const activeCamera = cameras.find(camera => camera.id === selectedCameraId) ?? cameras[0]
     const [realReadings, setRealReadings] = useState<SensorReading[]>([])
@@ -53,7 +54,7 @@ export function BusStopModal({ busStop, cameras, onClose }: BusStopModalProps) {
     const [loading, setLoading] = useState(false)
 
     useEffect(() => {
-        if (!busStop) {
+        if (!busStop || historicalAt) {
             setRealReadings([])
             setRealAlerts([])
             return
@@ -91,9 +92,17 @@ export function BusStopModal({ busStop, cameras, onClose }: BusStopModalProps) {
             isMounted = false
             unsubscribe()
         }
-    }, [busStop])
+    }, [busStop, historicalAt])
 
     if (!busStop) return null
+
+    if (historicalAt) return <Dialog open onOpenChange={open => { if (!open) onClose() }}>
+        <DialogContent><DialogHeader><DialogTitle>{busStop.name || "Остановка"}</DialogTitle>
+            <DialogDescription>Состояние связи на {new Date(historicalAt).toLocaleString("ru-RU", { timeZone: "Asia/Yekaterinburg" })} (UTC+5)</DialogDescription></DialogHeader>
+            <p>{busStop.sensor_data?.has_controller ? busStop.sensor_data.sensors_history_known === false ? "Датчики: нет истории" : busStop.sensor_data.sensors_online ? "Датчики в сети" : "Датчики не в сети" : "Датчики не установлены"}</p>
+            {cameras.map(camera => <p key={camera.id}>{camera.name}: {camera.historyStatus === "unknown" ? "нет истории" : camera.status === "online" ? "в сети" : "не в сети"}</p>)}
+        </DialogContent>
+    </Dialog>
 
     // Determine equipment presence and online status based strictly on real readings & database status
     const dht13 = realReadings.find((r) => r.element === 13) // Temperature & Humidity

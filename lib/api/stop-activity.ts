@@ -17,7 +17,7 @@ import { indexEquipmentStatus, monitoredOnline, type EquipmentStatusRow } from '
  *   inactive — neither is working
  */
 
-export type StopActivityStatus = 'active' | 'partial' | 'inactive'
+export type StopActivityStatus = 'active' | 'partial' | 'inactive' | 'unknown'
 
 /** How long a controller ping / sensor reading stays "fresh". */
 export const STOP_ACTIVITY_FRESHNESS_MS = 15 * 60 * 1000
@@ -66,12 +66,14 @@ export function isFresh(
 }
 
 export const ACTIVITY_STATUS_LABELS: Record<StopActivityStatus, string> = {
+    unknown: 'Нет истории',
     active: 'Активна',
     partial: 'Частично активна',
     inactive: 'Неактивна',
 }
 
 export const ACTIVITY_STATUS_COLORS: Record<StopActivityStatus, string> = {
+    unknown: '#a78bfa',
     active: '#22c55e',
     partial: '#eab308',
     inactive: '#9ca3af',
@@ -161,7 +163,7 @@ export function buildStopActivity({
         const stopId = row.bus_stop_id
         if (stopId === null || stopId === undefined) continue
         totalCameras.set(stopId, (totalCameras.get(stopId) ?? 0) + 1)
-        const cameraOnline = monitoredOnline(monitored.cameras, row.camera_index) ?? row.status === 'online'
+        const cameraOnline = monitoredOnline(monitored.cameras, row.camera_index != null && row.camera_index >= 10000 ? row.camera_index - 10000 : row.camera_index) ?? row.status === 'online'
         if (cameraOnline) {
             onlineCameras.set(stopId, (onlineCameras.get(stopId) ?? 0) + 1)
         }

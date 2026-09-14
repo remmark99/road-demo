@@ -57,9 +57,11 @@ test('camera-scoped episodes, retries, closure, pagination and permissions', asy
     assert.equal((await observe(153, 95, false)).action, 'ignored')
     await observe(153, 100, true) // A positive resets the clear streak.
     assert.equal((await observe(153, 105, false)).action, 'updated')
-    assert.equal((await observe(153, 110, false)).action, 'closed')
+    assert.equal((await observe(153, 110, false, 'clean.jpg')).action, 'closed')
     alert = (await rows(`SELECT * FROM alerts WHERE id='${first.alert_id}'`))[0]
     assert.equal(getBinEpisode(alert).status, 'closed')
+    assert.equal(getBinEpisode(alert).first_image_url, 'first.jpg')
+    assert.equal(getBinEpisode(alert).closed_image_url, 'clean.jpg')
     assert.equal(new Date(getBinEpisode(alert).ended_at).toISOString(), '2026-01-01T19:50:00.000Z')
     assert.equal((await observe(153, 109, true)).action, 'ignored')
     const next = await observe(153, 115, true)
