@@ -32,7 +32,13 @@ export function getEventLink(payload: NotificationEventPayload) {
   const params = payload.source === "alerts"
     ? `?alertId=${encodeURIComponent(payload.event_id)}`
     : ""
-  return `${baseUrl}/notifications${params}`
+  try {
+    // MAX requires an ASCII URL in link buttons, including IDN hostnames.
+    const url = new URL(`${baseUrl}/notifications${params}`)
+    return ["https:", "http:"].includes(url.protocol) ? url.href : null
+  } catch {
+    return null
+  }
 }
 
 export function getModuleLabel(moduleName: string) {

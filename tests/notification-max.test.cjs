@@ -15,10 +15,30 @@ function load(file, mocks = {}, cache = {}) {
     if (id === 'server-only') return {}
     if (id in mocks) return mocks[id]
     if (id.startsWith('@/')) return load(id.slice(2) + '.ts', mocks, cache)
+    if (id.startsWith('.')) return load(path.resolve(path.dirname(file), id + '.ts'), mocks, cache)
     return require(id)
   }, module, module.exports)
   return module.exports
 }
+
+test('notification buttons serialize Russian domains as ASCII HTTP URLs', () => {
+  const previous = process.env.APP_BASE_URL
+  const { getEventLink } = load('lib/notifications/render.ts')
+  try {
+    process.env.APP_BASE_URL = 'https://векторгорода.рф/'
+    assert.equal(getEventLink({ source: 'controller_alerts', event_id: 'test' }),
+      'https://xn--80added4a2abarct.xn--p1ai/notifications')
+    assert.equal(getEventLink({ source: 'alerts', event_id: 'a&b' }),
+      'https://xn--80added4a2abarct.xn--p1ai/notifications?alertId=a%26b')
+    for (const invalid of ['', 'not a URL', 'javascript:alert(1)']) {
+      process.env.APP_BASE_URL = invalid
+      assert.equal(getEventLink({ source: 'alerts', event_id: 'test' }), null)
+    }
+  } finally {
+    if (previous === undefined) delete process.env.APP_BASE_URL
+    else process.env.APP_BASE_URL = previous
+  }
+})
 
 test('MAX transport keeps CA and hostname validation scoped, sends JSON, preserves retry headers', async () => {
   let options, payload, agentOptions
