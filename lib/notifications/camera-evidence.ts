@@ -25,7 +25,8 @@ export function cameraConfidence(alert: Pick<Alert, 'metadata' | 'alert_type'>):
   const scores = detections.map(item => {
     const detection = record(item)
     const label = detection.class ?? detection.cls
-    return label === alert.alert_type ? probability(detection.confidence) : null
+    const matches = label === alert.alert_type || (alert.alert_type === 'smoking' && label === 'cigarette')
+    return matches ? probability(detection.confidence ?? detection.conf) : null
   }).filter((value): value is number => value !== null)
   return scores.length ? Math.max(...scores) : null
 }

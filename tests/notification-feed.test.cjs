@@ -75,6 +75,7 @@ test('accuracy uses recorded model scores, never priority or appearance matching
   assert.equal(cameraConfidence({...alert,metadata:{model_response:'YOLO Classifier: label=not_overfilled, confidence=0.999'}}),null)
   assert.equal(cameraConfidence({alert_type:'lying_person',metadata:{spatial_evidence:{pose_evidence:{detection_confidence:.91}},lying_subject:{appearance_confidence:1}}}),.91)
   assert.equal(cameraConfidence({alert_type:'smoking',metadata:{detections:[{class:'person',confidence:.99},{class:'smoking',confidence:.87}]}}),.87)
+  assert.equal(formatCameraConfidence({alert_type:'smoking',metadata:{detections:[{class:'cigarette',conf:.6816961765289307}]}}),'68,2 %')
 })
 test('last positive frame is never substituted for recovery evidence', () => {
   assert.equal(closedEpisodeImage({latest_image_url:'incident.jpg',image_url:'incident.jpg'}),null)
