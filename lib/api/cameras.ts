@@ -1,6 +1,6 @@
 import { supabase } from '../supabase'
 import type { Camera } from '../types'
-import { indexEquipmentStatus, monitoredOnline, type EquipmentStatusRow } from '../equipment-status'
+import { indexEquipmentStatus, monitoredCameraOnline, type EquipmentStatusRow } from '../equipment-status'
 
 export interface CameraRow {
     id: number
@@ -58,7 +58,7 @@ async function fetchMonitoredCameraStatus() {
 /** cameras.status остаётся только для камер, которые монитор не ведёт. */
 function withMonitoredStatus(rows: CameraRow[], statuses: Map<number, EquipmentStatusRow['status']>): CameraRow[] {
     return rows.map(row => {
-        const online = row.module === 'stops' ? monitoredOnline(statuses, row.camera_index >= 10000 ? row.camera_index - 10000 : row.camera_index) : null
+        const online = monitoredCameraOnline(statuses, row.camera_index)
         return online === null ? row : { ...row, status: online ? 'online' : 'offline' }
     })
 }

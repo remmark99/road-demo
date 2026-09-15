@@ -206,3 +206,13 @@ test('history endpoint requires module access and pages past 1000 records',async
         if(status===200) assert.equal((await response.json()).outages.length,1001)
     }
 })
+
+
+test('merged live camera lookup does not confuse road IDs with VMS camera IDs',()=>{
+    const {monitoredCameraOnline}=load('lib/equipment-status.ts')
+    const statuses=new Map([[130,'offline'],[131,'online']])
+    assert.equal(monitoredCameraOnline(statuses,10130),false)
+    assert.equal(monitoredCameraOnline(statuses,10131),true)
+    assert.equal(monitoredCameraOnline(statuses,130),null)
+    assert.equal(monitoredCameraOnline(statuses,1000),null)
+})

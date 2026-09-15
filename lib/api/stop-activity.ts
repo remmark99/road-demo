@@ -1,4 +1,9 @@
-import { indexEquipmentStatus, monitoredOnline, type EquipmentStatusRow } from '../equipment-status'
+import {
+    indexEquipmentStatus,
+    monitoredCameraOnline,
+    monitoredOnline,
+    type EquipmentStatusRow,
+} from '../equipment-status'
 
 /**
  * Activity status of a bus stop, derived strictly from real data:
@@ -163,7 +168,7 @@ export function buildStopActivity({
         const stopId = row.bus_stop_id
         if (stopId === null || stopId === undefined) continue
         totalCameras.set(stopId, (totalCameras.get(stopId) ?? 0) + 1)
-        const cameraOnline = monitoredOnline(monitored.cameras, row.camera_index != null && row.camera_index >= 10000 ? row.camera_index - 10000 : row.camera_index) ?? row.status === 'online'
+        const cameraOnline = monitoredCameraOnline(monitored.cameras, row.camera_index) ?? row.status === 'online'
         if (cameraOnline) {
             onlineCameras.set(stopId, (onlineCameras.get(stopId) ?? 0) + 1)
         }

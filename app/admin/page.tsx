@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from "react"
 import { Navigation } from "@/components/navigation"
-import { Shield, Plus, Edit2, Loader2, Save, X, AlertCircle, Users, Camera } from "lucide-react"
+import { Shield, Plus, Edit2, Loader2, Save, X, AlertCircle, Users, Camera, SlidersHorizontal } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CamerasTab } from "@/components/admin/cameras-tab"
+import { PipelineSettingsTab } from "@/components/admin/pipeline-settings-tab"
 
 type Module = 'roads' | 'shore' | 'stops' | 'parks' | 'transport'
 
@@ -209,6 +210,10 @@ export default function AdminPage() {
                             <Camera className="h-4 w-4" />
                             Камеры
                         </TabsTrigger>
+                        <TabsTrigger value="pipeline" className="gap-2">
+                            <SlidersHorizontal className="h-4 w-4" />
+                            Параметры анализа
+                        </TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="users" className="space-y-2">
@@ -332,6 +337,10 @@ export default function AdminPage() {
 
                     <TabsContent value="cameras" className="mt-6">
                         <CamerasTab />
+                    </TabsContent>
+
+                    <TabsContent value="pipeline" className="mt-6">
+                        <PipelineSettingsTab />
                     </TabsContent>
                 </Tabs>
             </div>

@@ -43,3 +43,21 @@ export function monitoredOnline(statuses: Map<number, MonitoredStatus>, id: numb
     const status = statuses.get(id)
     return status === undefined ? null : status === 'online'
 }
+
+/**
+ * Остановочные камеры лежат в cameras под camera_index + 10000: строка 10130 —
+ * это камера 130 на VMS, а монитор ведёт камеры по индексу VMS. Строки ниже
+ * 10000 (например, 130–159) — дорожные камеры другого модуля: вердикт монитора
+ * к ним не относится, даже если номер совпадает.
+ */
+export const STOP_CAMERA_INDEX_OFFSET = 10000
+
+export function monitoredCameraOnline(
+    statuses: Map<number, MonitoredStatus>,
+    cameraIndex: number | null | undefined,
+): boolean | null {
+    if (cameraIndex === null || cameraIndex === undefined || cameraIndex < STOP_CAMERA_INDEX_OFFSET) {
+        return null
+    }
+    return monitoredOnline(statuses, cameraIndex - STOP_CAMERA_INDEX_OFFSET)
+}
