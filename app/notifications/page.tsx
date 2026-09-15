@@ -4,6 +4,7 @@ import { PeriodFilter } from '@/components/notifications/period-filter'
 import { CameraPlaceFilter } from '@/components/notifications/camera-place-filter'
 import { buildCameraPlaces, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
 import { fetchBusStopsGeoJSON, type BusStopProperties } from '@/lib/api/bus-stops'
+import { formatCameraConfidence, closedEpisodeImage } from '@/lib/notifications/camera-evidence'
 import { getBinEpisode } from "@/lib/bin-episodes"
 
 import { Suspense, useEffect, useMemo, useState } from "react"
@@ -1317,7 +1318,7 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
             <div className="col-span-2">Тип</div>
             <div className="col-span-2">Остановка</div>
             <div className="col-span-4">Сообщение</div>
-            <div className="col-span-1">Срочность</div>
+            <div className="col-span-1">Точность</div>
             <div className="col-span-1"></div>
           </div>
 
@@ -1427,11 +1428,8 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
 
                     <div className="md:col-span-1">
                       <Badge variant="secondary" className="text-xs">
-                        {alert.severity >= 0.7
-                          ? "Высокая"
-                          : alert.severity >= 0.4
-                            ? "Средняя"
-                            : "Низкая"}
+                        <span className="md:hidden">Точность: </span>
+                        {formatCameraConfidence(alert)}
                       </Badge>
                     </div>
 
@@ -1454,11 +1452,11 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
                         {binEpisode ? (
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
                             {[
-                              { label: "Переполненная урна",
+                              { label: "До — переполненная урна",
                                 url: binEpisode.first_image_url || alert.clip_path,
                                 time: binEpisode.first_image_at, empty: "Фото недоступно" },
-                              { label: "Очищенная урна", url: binEpisode.closed_image_url,
-                                time: binEpisode.ended_at, empty: binEpisode.status === "open" ? "Событие продолжается" : "Фото завершения недоступно" },
+                              { label: "После — очищенная урна", url: binEpisode.closed_image_url,
+                                time: binEpisode.closed_image_at || binEpisode.ended_at, empty: binEpisode.status === "open" ? "Событие продолжается" : "Фото завершения недоступно" },
                             ].map(({ label, url, time, empty }) => <div key={label} className="space-y-1.5">
                               <div className="text-xs font-medium text-muted-foreground">{label}</div>
                               <MediaFrame className="h-[180px] lg:h-[200px]">
@@ -1471,12 +1469,12 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
                             {[
                               {
-                                label: "Первый кадр",
+                                label: "До — начало события",
                                 imageUrl: episode.first_image_url,
                               },
                               {
-                                label: "Последний кадр",
-                                imageUrl: episode.latest_image_url,
+                                label: "После — событие завершено",
+                                imageUrl: episode.status === "closed" ? closedEpisodeImage(alert.metadata) : null,
                               },
                             ].map(({ label, imageUrl }) => (
                               <div key={label} className="space-y-1.5">
@@ -1494,7 +1492,7 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
                                     />
                                   ) : (
                                     <div className="flex h-full w-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
-                                      Фото недоступно
+                                      {label.startsWith("После") ? episodeIsOpen ? "Событие продолжается" : "Фото завершения недоступно" : "Фото недоступно"}
                                     </div>
                                   )}
                                 </MediaFrame>

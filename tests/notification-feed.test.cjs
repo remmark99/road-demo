@@ -63,3 +63,20 @@ test('sensor filter uses the same date boundaries before pagination', async()=>{
   assert.ok(calls.some(c=>c[0]==='lt' && c[1]==='created_at' && c[2]===bounds.toExclusive))
   assert.ok(calls.some(c=>c[0]==='range' && c[1]===20 && c[2]===29))
 })
+
+const {cameraConfidence, formatCameraConfidence, closedEpisodeImage} = load('lib/notifications/camera-evidence.ts')
+test('accuracy uses recorded model scores, never priority or appearance matching', () => {
+  const alert={alert_type:'bin_full', severity:.7, metadata:{model_response:'YOLO Classifier: label=overfilled, confidence=0.999'}}
+  assert.equal(formatCameraConfidence(alert), '99,9 %')
+  assert.equal(formatCameraConfidence({...alert,metadata:{}}),'Нет данных')
+  for(const value of [NaN,Infinity,-.1,1.1,'0.99',null]) assert.equal(cameraConfidence({...alert,metadata:{confidence:value}}),null)
+  assert.equal(formatCameraConfidence({...alert,metadata:{confidence:0}}),'0 %')
+  assert.equal(formatCameraConfidence({...alert,metadata:{confidence:1}}),'100 %')
+  assert.equal(cameraConfidence({...alert,metadata:{model_response:'YOLO Classifier: label=not_overfilled, confidence=0.999'}}),null)
+  assert.equal(cameraConfidence({alert_type:'lying_person',metadata:{spatial_evidence:{pose_evidence:{detection_confidence:.91}},lying_subject:{appearance_confidence:1}}}),.91)
+  assert.equal(cameraConfidence({alert_type:'smoking',metadata:{detections:[{class:'person',confidence:.99},{class:'smoking',confidence:.87}]}}),.87)
+})
+test('last positive frame is never substituted for recovery evidence', () => {
+  assert.equal(closedEpisodeImage({latest_image_url:'incident.jpg',image_url:'incident.jpg'}),null)
+  assert.equal(closedEpisodeImage({closed_image_url:'clean.jpg'}),'clean.jpg')
+})

@@ -1,20 +1,6 @@
--- PostgreSQL 15+. Apply before deploying the bin worker and frontend.
--- Existing alerts remain historical records; no continuity is guessed for them.
+-- Keep the first clean image; no historical evidence is fabricated.
+-- Same RPC signature and permissions. Apply before publishing the frontend.
 BEGIN;
-
-CREATE TABLE IF NOT EXISTS public.bin_camera_state (
-  camera_index INTEGER PRIMARY KEY,
-  last_observed_at TIMESTAMPTZ,
-  active_alert_id TEXT,
-  clear_count INTEGER NOT NULL DEFAULT 0 CHECK (clear_count >= 0)
-);
-ALTER TABLE public.bin_camera_state ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.bin_camera_state FROM PUBLIC, anon, authenticated;
-GRANT ALL ON public.bin_camera_state TO service_role;
-
--- The camera row serializes observations, including simultaneous first events.
--- Its watermark survives episode closure and worker restarts. Retried or older
--- frames cannot create alerts, increment counters or close an episode twice.
 CREATE OR REPLACE FUNCTION public.record_bin_observation(
   p_camera_index INTEGER,
   p_observed_at TIMESTAMPTZ,
@@ -125,14 +111,5 @@ REVOKE ALL ON FUNCTION public.record_bin_observation(INTEGER, TIMESTAMPTZ, BOOLE
 GRANT EXECUTE ON FUNCTION public.record_bin_observation(INTEGER, TIMESTAMPTZ, BOOLEAN, TEXT, JSONB, TEXT, DOUBLE PRECISION, INTEGER)
   TO service_role;
 
--- Invoker security retains the underlying alerts RLS and access rights.
--- Sorting happens before pagination, so ongoing events stay in the feed.
-CREATE OR REPLACE VIEW public.alerts_with_bin_episodes WITH (security_invoker = true) AS
-  SELECT alerts.*, coalesce(alert_type = 'bin_full'
-    AND metadata->>'episode_schema' = 'bin_episode_v1'
-    AND metadata->'bin_episode'->>'status' = 'open', false) AS bin_episode_active
-  FROM public.alerts;
-REVOKE ALL ON public.alerts_with_bin_episodes FROM PUBLIC, anon;
-GRANT SELECT ON public.alerts_with_bin_episodes TO authenticated, service_role;
 NOTIFY pgrst, 'reload schema';
 COMMIT;

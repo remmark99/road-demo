@@ -8,6 +8,7 @@ export interface BinEpisode {
     first_image_url?: string | null
     first_image_at?: string | null
     closed_image_url?: string | null
+    closed_image_at?: string | null
     observation_count: number
 }
 
@@ -25,7 +26,8 @@ export function getBinEpisode(alert: Pick<Alert, 'alert_type' | 'metadata'>): Bi
     const image = (value: unknown) => typeof value === 'string' && value.length > 0 ? value : null
     const normalized = { ...episode, first_image_url: image(episode.first_image_url),
         first_image_at: validDate(episode.first_image_at) ? episode.first_image_at : null,
-        closed_image_url: image(episode.closed_image_url) } as unknown as BinEpisode
+        closed_image_at: validDate(episode.closed_image_at) ? episode.closed_image_at : null,
+        closed_image_url: episode.status === 'closed' ? image(episode.closed_image_url) : null } as unknown as BinEpisode
     if (episode.status === 'open' && episode.ended_at === null) return normalized
     if (episode.status === 'closed' && validDate(episode.ended_at)
         && Date.parse(episode.ended_at) >= Date.parse(episode.last_seen_at)) return normalized

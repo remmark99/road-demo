@@ -34,7 +34,7 @@ test('camera-scoped episodes, retries, closure, pagination and permissions', asy
     `)
     const migration = readFileSync(new URL('../sql/bin_episodes_migration.sql', import.meta.url), 'utf8')
     await db.exec(migration)
-    const observe = async (camera, minute, full, image = null) => (await db.query(
+    const observe = async (camera, minute, full, image = full ? null : 'clean.jpg') => (await db.query(
       `SELECT record_bin_observation($1, $2, $3, $4) AS result`,
       [camera, new Date(Date.UTC(2026, 0, 1, 18, minute)).toISOString(), full, image])).rows[0].result
     const rows = async (sql) => (await db.query(sql)).rows
@@ -53,19 +53,26 @@ test('camera-scoped episodes, retries, closure, pagination and permissions', asy
     const other = await observe(132, 100, true)
     assert.notEqual(other.alert_id, first.alert_id)
     assert.equal((await rows('SELECT * FROM alerts')).length, 2)
-    await observe(153, 95, false)
+    await observe(153, 95, false, 'discarded-clean.jpg')
     assert.equal((await observe(153, 95, false)).action, 'ignored')
     await observe(153, 100, true) // A positive resets the clear streak.
-    assert.equal((await observe(153, 105, false)).action, 'updated')
-    assert.equal((await observe(153, 110, false, 'clean.jpg')).action, 'closed')
+    assert.equal((await observe(153, 105, false, 'first-clean.jpg')).action, 'updated')
+    // A restart/redeployment between clear observations must retain the candidate.
+    await db.exec(readFileSync(new URL('../sql/bin_first_clear_evidence_migration.sql', import.meta.url), 'utf8'))
+    assert.equal((await observe(153, 105, false, 'replacement.jpg')).action, 'ignored')
+    assert.equal((await observe(153, 110, false, 'second-clean.jpg')).action, 'closed')
     alert = (await rows(`SELECT * FROM alerts WHERE id='${first.alert_id}'`))[0]
     assert.equal(getBinEpisode(alert).status, 'closed')
     assert.equal(getBinEpisode(alert).first_image_url, 'first.jpg')
-    assert.equal(getBinEpisode(alert).closed_image_url, 'clean.jpg')
-    assert.equal(new Date(getBinEpisode(alert).ended_at).toISOString(), '2026-01-01T19:50:00.000Z')
+    assert.equal(getBinEpisode(alert).closed_image_url, 'first-clean.jpg')
+    assert.equal(new Date(getBinEpisode(alert).ended_at).toISOString(), '2026-01-01T19:45:00.000Z')
     assert.equal((await observe(153, 109, true)).action, 'ignored')
+    assert.equal(new Date(getBinEpisode(alert).closed_image_at).toISOString(), '2026-01-01T19:45:00.000Z')
+    assert.equal(new Date(alert.metadata.bin_episode.confirmed_at).toISOString(), '2026-01-01T19:50:00.000Z')
     const next = await observe(153, 115, true)
     assert.notEqual(next.alert_id, first.alert_id)
+    assert.equal((await observe(153, 119, false, null)).action, 'ignored')
+    assert.equal((await rows('SELECT clear_count FROM bin_camera_state WHERE camera_index=153'))[0].clear_count, 0)
     await observe(153, 120, true) // A fresh client/worker needs no local episode state.
     assert.equal((await rows('SELECT * FROM deliveries')).length, 3)
     // Newer ordinary events cannot push an ongoing bin incident out of page one.
