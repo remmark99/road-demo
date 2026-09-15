@@ -1,5 +1,9 @@
 "use client"
 
+import { PeriodFilter } from '@/components/notifications/period-filter'
+import { CameraPlaceFilter } from '@/components/notifications/camera-place-filter'
+import { buildCameraPlaces, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
+import { fetchBusStopsGeoJSON, type BusStopProperties } from '@/lib/api/bus-stops'
 import { getBinEpisode } from "@/lib/bin-episodes"
 
 import { Suspense, useEffect, useMemo, useState } from "react"
@@ -10,7 +14,6 @@ import {
   fetchLyingPersonEpisodes,
   ALERT_TYPE_CONFIG,
   ALERT_CATEGORIES,
-  MODULE_MAP,
   type LyingPersonEpisode,
 } from "@/lib/api/alerts"
 import { fetchCameras } from "@/lib/api/cameras"
@@ -38,11 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
+
 import {
   Bell,
   Loader2,
@@ -380,11 +379,13 @@ const DEMO_ALERT_BASE_TIME = Date.now()
 // ── Shared helpers ──────────────────────────────────────────────────────
   const formatBinTime = (value: string) => new Date(value).toLocaleString("ru-RU", {
     timeZone: "Asia/Yekaterinburg", day: "2-digit", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit",
-  }) + " (UTC+5)"
+  })
 
 function formatTime(dateStr: string) {
   const date = new Date(dateStr)
   return date.toLocaleString("ru-RU", {
+    timeZone: "Asia/Yekaterinburg",
+    year: "numeric",
     day: "numeric",
     month: "short",
     hour: "2-digit",
@@ -406,35 +407,7 @@ function formatTimeAgo(dateStr: string) {
   return formatTime(dateStr)
 }
 
-function formatDuration(startedAt: string, lastSeenAt: string) {
-  const durationMs =
-    new Date(lastSeenAt).getTime() - new Date(startedAt).getTime()
 
-  if (!Number.isFinite(durationMs) || durationMs < 0) return "—"
-
-  const totalSeconds = Math.floor(durationMs / 1000)
-  if (totalSeconds < 60) return `${totalSeconds} сек.`
-
-  const totalMinutes = Math.floor(totalSeconds / 60)
-  if (totalMinutes < 60) return `${totalMinutes} мин.`
-
-  const totalHours = Math.floor(totalMinutes / 60)
-  const remainingMinutes = totalMinutes % 60
-  if (totalHours < 24) {
-    return remainingMinutes > 0
-      ? `${totalHours} ч. ${remainingMinutes} мин.`
-      : `${totalHours} ч.`
-  }
-
-  const days = Math.floor(totalHours / 24)
-  const remainingHours = totalHours % 24
-  return remainingHours > 0 ? `${days} дн. ${remainingHours} ч.` : `${days} дн.`
-}
-
-function getModuleLabel(moduleName: string | null | undefined) {
-  if (!moduleName) return "—"
-  return MODULE_MAP[moduleName] ?? "Другой модуль"
-}
 
 function isDemoAlert(alert: Alert) {
   return alert.id.startsWith("demo-")
@@ -736,7 +709,7 @@ function ResultsHeader({
 // ═══════════════════════════════════════════════════════════════════════
 // Camera Alerts Tab
 // ═══════════════════════════════════════════════════════════════════════
-function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
+function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; places: CameraPlace[]; period: NotificationPeriod }) {
   const searchParams = useSearchParams()
   const querySelectedTypes = useMemo(
     () => getQueryValues(searchParams, ["type", "types"]),
@@ -757,6 +730,8 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
   const [selectedTypes, setSelectedTypes] = useState<string[]>(querySelectedTypes)
   const [repairShortcutSelected, setRepairShortcutSelected] = useState(false)
   const [selectedCameras, setSelectedCameras] = useState<number[]>(querySelectedCameras)
+  const [cameraSearch, setCameraSearch] = useState('')
+  const effectiveCameras = useMemo(() => filteredCameraIndexes(places, cameraSearch, selectedCameras), [places, cameraSearch, selectedCameras])
   const [alerts, setAlerts] = useState<Alert[]>([])
   const [lyingPersonEpisodes, setLyingPersonEpisodes] = useState<
     LyingPersonEpisode[]
@@ -829,7 +804,14 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
     [repairShortcutSelected, repairTypes, selectedTypes]
   )
 
+  useEffect(() => { setPage(0) }, [period.from, period.to])
+
   useEffect(() => {
+    setLoading(true)
+    let bounds
+    try { bounds = notificationPeriodBounds(period) } catch {
+      setAlerts([]); setLyingPersonEpisodes([]); setTotal(0); setLoading(false); return
+    }
     const request =
       allowedTypes.length === 0
         ? Promise.resolve({ alerts: [], total: 0, hasMore: false })
@@ -838,8 +820,8 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
               effectiveSelectedTypes.length > 0
                 ? effectiveSelectedTypes
                 : allowedTypes,
-            cameraIndexes:
-              selectedCameras.length > 0 ? selectedCameras : undefined,
+            ...bounds,
+            cameraIndexes: effectiveCameras,
             limit: pageSize,
             offset: page * pageSize,
           })
@@ -869,7 +851,9 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
     }
   }, [
     effectiveSelectedTypes,
-    selectedCameras,
+    effectiveCameras,
+    period.from,
+    period.to,
     page,
     pageSize,
     allowedTypes,
@@ -902,24 +886,17 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
     setRepairShortcutSelected((prev) => !prev)
   }
 
-  const toggleCamera = (index: number) => {
-    setLoading(true)
-    setPage(0)
-    setSelectedCameras((prev) =>
-      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
-    )
-  }
-
   const clearFilters = () => {
     setLoading(true)
     setPage(0)
     setSelectedTypes([])
     setRepairShortcutSelected(false)
     setSelectedCameras([])
+    setCameraSearch('')
   }
 
   const hasFilters =
-    selectedTypes.length > 0 || repairShortcutSelected || selectedCameras.length > 0
+    selectedTypes.length > 0 || repairShortcutSelected || selectedCameras.length > 0 || !!cameraSearch
   const onlineCameras = cameras.filter((c) => c.status === "online")
   const demoAlerts = useMemo<Alert[]>(() => {
     const resolveCameraIndex = (module: DemoAlertSeed["module"]) => {
@@ -962,12 +939,16 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
           effectiveSelectedTypes.length === 0 ||
           effectiveSelectedTypes.includes(alert.alert_type)
         const cameraMatches =
-          selectedCameras.length === 0 ||
-          (alert.camera_index !== null &&
-            selectedCameras.includes(alert.camera_index))
-        return typeMatches && cameraMatches
+          effectiveCameras === undefined ||
+          (alert.camera_index !== null && effectiveCameras.includes(alert.camera_index))
+        let periodMatches = false
+        try {
+          const { fromInclusive, toExclusive } = notificationPeriodBounds(period)
+          periodMatches = (!fromInclusive || alert.timestamp >= fromInclusive) && (!toExclusive || alert.timestamp < toExclusive)
+        } catch { /* Invalid period has no results. */ }
+        return typeMatches && cameraMatches && periodMatches
       }),
-    [demoAlerts, effectiveSelectedTypes, selectedCameras]
+    [demoAlerts, effectiveSelectedTypes, effectiveCameras, period.from, period.to]
   )
   const visibleAlerts = useMemo(
     () => [...alerts, ...(page === 0 ? filteredDemoAlerts : [])],
@@ -1294,53 +1275,9 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
             </>
           )}
 
-          {/* Camera filter */}
-          <div>
-            <div className="text-sm text-muted-foreground mb-2">
-              Камеры
-              <span className="ml-2 text-xs opacity-60">
-                ({cameras.length})
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto pr-1">
-              {cameras.map((camera) => {
-                const isSelected = selectedCameras.includes(camera.cameraIndex)
-                const isOffline = camera.status !== "online"
-                return (
-                  <Tooltip key={camera.cameraIndex}>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant={isSelected ? "default" : "outline"}
-                        size="sm"
-                        className={`gap-1.5 ${isOffline && !isSelected ? "opacity-50" : ""}`}
-                        onClick={() => toggleCamera(camera.cameraIndex)}
-                      >
-                        <CameraIcon className="h-3 w-3" />
-                        #{camera.cameraIndex}
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      {camera.description ? (
-                        <p className="text-xs opacity-80">
-                          {camera.description}
-                        </p>
-                      ) : (
-                        <p className="text-xs opacity-80">Без описания</p>
-                      )}
-                      {isOffline && (
-                        <p className="text-xs text-destructive">Оффлайн</p>
-                      )}
-                    </TooltipContent>
-                  </Tooltip>
-                )
-              })}
-            </div>
-            {selectedCameras.length > 0 && (
-              <div className="mt-2 text-xs text-muted-foreground">
-                Выбрано: {selectedCameras.map((i) => `#${i}`).join(", ")}
-              </div>
-            )}
-          </div>
+          <CameraPlaceFilter places={places} query={cameraSearch} selected={selectedCameras}
+            onQueryChange={value => { setPage(0); setCameraSearch(value) }}
+            onSelectionChange={value => { setPage(0); setSelectedCameras(value) }} />
         </CardContent>
       </Card>
 
@@ -1393,7 +1330,9 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
             const demoAlert = isDemoAlert(alert)
             const isExpanded = expandedId === alert.id
             const isHighlighted = alert.id === initialAlertId
-            const stopDisplay = getAlertStopDisplay(alert)
+            const place = places.find(place => place.cameraIndexes.includes(alert.camera_index ?? -1)
+              || (alert.module_name === 'stops' && place.cameraIndexes.some(index => index >= 10000 && index - 10000 === alert.camera_index)))
+            const stopDisplay = place ? { label: place.label, detail: place.detail } : getAlertStopDisplay(alert)
             const message = getRussianAlertMessage(alert, config.label)
             const episodeId = getLyingPersonEpisodeId(alert)
             const episode = episodeId
@@ -1401,6 +1340,9 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
               : undefined
             const episodeIsOpen = episode?.status === "open"
             const binEpisode = getBinEpisode(alert)
+            const timedEvent = binEpisode || episode
+            const duration = timedEvent ? formatEventDuration(timedEvent.started_at,
+              timedEvent.status === 'open' ? new Date().toISOString() : timedEvent.ended_at || timedEvent.last_seen_at) : ['bin_full', 'lying_person'].includes(alert.alert_type) ? 'не определена' : null
 
             return (
               <Card
@@ -1458,11 +1400,10 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                           <span>
                             {binEpisode.ended_at
                               ? `Завершено: ${formatBinTime(binEpisode.ended_at)}`
-                              : `Подтверждено: ${formatBinTime(binEpisode.last_seen_at)}`}
+                              : `Последнее обнаружение: ${formatBinTime(binEpisode.last_seen_at)}`}
                           </span>
                         </div>
                       )}
-                      {alert.alert_type === "bin_full" && !binEpisode && <div className="mt-1 text-xs text-muted-foreground">Архивное срабатывание</div>}
                       {episode && (
                         <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <Badge
@@ -1476,13 +1417,12 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                             {episodeIsOpen ? "Продолжается" : "Завершено"}
                           </Badge>
                           <span className="truncate">
-                            {formatTime(episode.started_at)} — {formatTime(episode.last_seen_at)}
+                            {formatTime(episode.started_at)} — {episodeIsOpen ? "продолжается" : formatTime(episode.ended_at || episode.last_seen_at)}
                           </span>
-                          <span className="shrink-0">
-                            {formatDuration(episode.started_at, episode.last_seen_at)} · {episode.observation_count} набл.
-                          </span>
+
                         </div>
                       )}
+                      {duration && <p className="mt-2 font-medium">Длительность: {duration}{timedEvent?.status === 'open' ? ' · продолжается' : ''}</p>}
                     </div>
 
                     <div className="md:col-span-1">
@@ -1514,11 +1454,11 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                         {binEpisode ? (
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
                             {[
-                              { label: binEpisode.first_image_url ? "Переполнена — первый сохранённый кадр" : "Переполнена — кадр события",
+                              { label: "Переполненная урна",
                                 url: binEpisode.first_image_url || alert.clip_path,
                                 time: binEpisode.first_image_at, empty: "Фото недоступно" },
-                              { label: "Очищена — при завершении", url: binEpisode.closed_image_url,
-                                time: binEpisode.ended_at, empty: binEpisode.status === "open" ? "Событие продолжается" : "Фото завершения не сохранялось" },
+                              { label: "Очищенная урна", url: binEpisode.closed_image_url,
+                                time: binEpisode.ended_at, empty: binEpisode.status === "open" ? "Событие продолжается" : "Фото завершения недоступно" },
                             ].map(({ label, url, time, empty }) => <div key={label} className="space-y-1.5">
                               <div className="text-xs font-medium text-muted-foreground">{label}</div>
                               <MediaFrame className="h-[180px] lg:h-[200px]">
@@ -1600,7 +1540,6 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                         )}
 
                         <div className="space-y-3 text-sm">
-                          {alert.alert_type === "bin_full" && !binEpisode && <div className="mt-1 text-xs text-muted-foreground">Архивное срабатывание</div>}
                       {episode && (
                             <div className="grid grid-cols-2 gap-3 rounded-lg border p-3">
                               <div>
@@ -1612,21 +1551,16 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                               <div>
                                 <div className="text-muted-foreground">Длительность</div>
                                 <div className="font-medium">
-                                  {formatDuration(episode.started_at, episode.last_seen_at)}
+                                  {duration}
                                 </div>
                               </div>
                               <div className="col-span-2">
-                                <div className="text-muted-foreground">Период наблюдения</div>
+                                <div className="text-muted-foreground">Начало и завершение</div>
                                 <div className="font-medium">
-                                  {formatTime(episode.started_at)} — {formatTime(episode.last_seen_at)}
+                                  {formatTime(episode.started_at)} — {episodeIsOpen ? "продолжается" : formatTime(episode.ended_at || episode.last_seen_at)}
                                 </div>
                               </div>
-                              <div className="col-span-2">
-                                <div className="text-muted-foreground">Наблюдений</div>
-                                <div className="font-medium">
-                                  {episode.observation_count}
-                                </div>
-                              </div>
+
                             </div>
                           )}
                           <div>
@@ -1646,20 +1580,6 @@ function CameraAlertsTab({ cameras }: { cameras: Camera[] }) {
                             </div>
                             <div className="font-medium">
                               {formatTime(alert.timestamp)}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Модуль</div>
-                            <div className="font-medium">
-                              {getModuleLabel(alert.module_name)}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">
-                              Источник видео
-                            </div>
-                            <div className="font-medium truncate">
-                              {alert.source_video}
                             </div>
                           </div>
                           {alert.clip_path && (
@@ -1724,7 +1644,7 @@ function ControllerCategoryIcon({
   return <Zap className={className} />
 }
 
-function ControllerAlertsTab() {
+function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
   const [selectedElements, setSelectedElements] = useState<number[]>([])
   const [selectedAlarms, setSelectedAlarms] = useState<string[]>([])
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
@@ -1735,19 +1655,29 @@ function ControllerAlertsTab() {
   const [pageSize, setPageSize] = useState(25)
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
+  useEffect(() => { setPage(0) }, [period.from, period.to])
   useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    let bounds
+    try { bounds = notificationPeriodBounds(period) } catch {
+      setAlerts([]); setTotal(0); setLoading(false); return
+    }
     fetchControllerAlerts({
+      ...bounds,
       elements: selectedElements.length > 0 ? selectedElements : undefined,
       alarms: selectedAlarms.length > 0 ? selectedAlarms : undefined,
       categories: selectedCategories.length > 0 ? selectedCategories : undefined,
       limit: pageSize,
       offset: page * pageSize,
     }).then((result) => {
+      if (cancelled) return
       setAlerts(result.alerts)
       setTotal(result.total)
       setLoading(false)
     })
-  }, [selectedElements, selectedAlarms, selectedCategories, page, pageSize])
+    return () => { cancelled = true }
+  }, [selectedElements, selectedAlarms, selectedCategories, page, pageSize, period.from, period.to])
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -2017,6 +1947,7 @@ function ControllerAlertsTab() {
                     {/* Message */}
                     <div className="min-w-0 text-sm text-muted-foreground truncate">
                       {message}
+                      {alert.category === 'controller_online' && Number.isFinite(Date.parse(alert.created_at)) && Number.isFinite(alert.value) && alert.value >= 0 && <p className="mt-2 whitespace-normal font-medium text-foreground">Длительность отключения: {formatEventDuration(new Date(Date.parse(alert.created_at) - alert.value * 60_000).toISOString(), alert.created_at)}</p>}
                     </div>
 
                     {/* Chevron icon indicator for media */}
@@ -2095,7 +2026,7 @@ function ControllerAlertsTab() {
                                 .toLowerCase()
                                 .match(/\.(jpg|jpeg|png|webp)$/)
                                 ? "Скачать фото"
-                                : "Скачать медиа"}
+                                : "Скачать видео"}
                             </a>
                           </Button>
                         </div>
@@ -2127,10 +2058,18 @@ function ControllerAlertsTab() {
 function NotificationsContent() {
   const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
   const [cameras, setCameras] = useState<Camera[]>([])
+  const [stops, setStops] = useState<BusStopProperties[]>([])
+  const [period, setPeriod] = useState<NotificationPeriod>({ from: '', to: '' })
+  const [tab, setTab] = useState('camera')
+  const places = useMemo(() => buildCameraPlaces(cameras, stops), [cameras, stops])
 
   useEffect(() => {
     if (modulesLoading) return
-    fetchCameras(modules).then(setCameras)
+    let cancelled = false
+    fetchCameras(modules).then(value => { if (!cancelled) setCameras(value) })
+    if (modules.includes('stops')) fetchBusStopsGeoJSON().then(value => { if (!cancelled) setStops(value.features.map(feature => feature.properties)) })
+    else setStops([])
+    return () => { cancelled = true }
   }, [modules, modulesLoading])
 
   const showStops = hasModule('stops')
@@ -2148,12 +2087,13 @@ function NotificationsContent() {
               Уведомления
             </h1>
             <p className="text-muted-foreground mt-1">
-              События с камер мониторинга и датчиков
+              События с камер города и датчиков
             </p>
           </div>
 
+          {tab !== 'equipment' && <PeriodFilter value={period} onChange={setPeriod} />}
           {/* Tabs */}
-          <Tabs defaultValue="camera" className="space-y-6">
+          <Tabs value={tab} onValueChange={setTab} className="space-y-6">
             <TabsList>
               <TabsTrigger value="camera" className="gap-2">
                 <CameraIcon className="h-4 w-4" />
@@ -2174,12 +2114,12 @@ function NotificationsContent() {
             </TabsList>
 
             <TabsContent value="camera">
-              <CameraAlertsTab cameras={cameras} />
+              <CameraAlertsTab cameras={cameras} places={places} period={period} />
             </TabsContent>
 
             {showStops && (
               <TabsContent value="controller">
-                <ControllerAlertsTab />
+                <ControllerAlertsTab period={period} />
               </TabsContent>
             )}
 

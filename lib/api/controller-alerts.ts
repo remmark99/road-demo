@@ -16,6 +16,8 @@ export interface ControllerAlert {
 }
 
 export interface FetchControllerAlertsOptions {
+    fromInclusive?: string
+    toExclusive?: string
     elements?: number[]
     alarms?: string[]
     categories?: string[]
@@ -32,9 +34,9 @@ export interface ControllerAlertsResult {
 }
 
 const SENSOR_LABELS: Record<number, string> = {
-    1: 'Датчик DIO1 (напряжение)',
-    13: 'Датчик 1 (влажность и температура)',
-    14: 'Датчик 2 (температура)',
+    1: 'Датчик напряжения',
+    13: 'Датчик температуры и влажности',
+    14: 'Датчик температуры',
 }
 
 export function getSensorLabel(element: number): string {
@@ -84,7 +86,7 @@ export function getControllerAlertSourceLabel(
 export async function fetchControllerAlerts(
     options: FetchControllerAlertsOptions = {}
 ): Promise<ControllerAlertsResult> {
-    const { elements, alarms, categories, busStopId, limit = 25, offset = 0 } = options
+    const { elements, alarms, categories, busStopId, fromInclusive, toExclusive, limit = 25, offset = 0 } = options
 
     const build = (withBusStopId: boolean) => {
         let query = supabase
@@ -92,6 +94,9 @@ export async function fetchControllerAlerts(
             .select('*', { count: 'exact' })
             .order('created_at', { ascending: false })
             .range(offset, offset + limit - 1)
+
+        if (fromInclusive) query = query.gte('created_at', fromInclusive)
+        if (toExclusive) query = query.lt('created_at', toExclusive)
 
         if (elements && elements.length > 0) {
             query = query.in('element', elements)

@@ -7,6 +7,8 @@ import {
 } from "@/lib/stop-analytics-config"
 
 export interface FetchAlertsOptions {
+    fromInclusive?: string
+    toExclusive?: string
     types?: string[]        // filter by alert_type
     cameraIndexes?: number[] // filter by camera_index
     limit?: number          // default 25
@@ -81,7 +83,7 @@ type StopSafetyAlertRow = Omit<StopSafetyAlert, "alert_type"> & { alert_type: st
 export type LyingPersonAlert = StopSafetyAlert
 
 export async function fetchAlerts(options: FetchAlertsOptions = {}): Promise<AlertsResult> {
-    const { types, cameraIndexes, limit = 25, offset = 0 } = options
+    const { types, cameraIndexes, fromInclusive, toExclusive, limit = 25, offset = 0 } = options
 
     let query = supabase
         .from('alerts_with_bin_episodes')
@@ -91,6 +93,10 @@ export async function fetchAlerts(options: FetchAlertsOptions = {}): Promise<Ale
         .order('id', { ascending: false })
         .range(offset, offset + limit - 1)
 
+    if (fromInclusive) query = query.gte('timestamp', fromInclusive)
+    if (toExclusive) query = query.lt('timestamp', toExclusive)
+    if (cameraIndexes?.length === 0) return { alerts: [], total: 0, hasMore: false }
+
     // Apply type filter
     if (types && types.length > 0) {
         query = query.in('alert_type', types)
@@ -98,7 +104,12 @@ export async function fetchAlerts(options: FetchAlertsOptions = {}): Promise<Ale
 
     // Apply camera filter
     if (cameraIndexes && cameraIndexes.length > 0) {
-        query = query.in('camera_index', cameraIndexes)
+        const indexes = cameraIndexes.filter(index => Number.isSafeInteger(index) && index >= 0)
+        if (!indexes.length) return { alerts: [], total: 0, hasMore: false }
+        const stopAliases = indexes.filter(index => index >= 10000).map(index => index - 10000)
+        query = stopAliases.length
+            ? query.or(`camera_index.in.(${indexes.join(',')}),and(module_name.eq.stops,camera_index.in.(${stopAliases.join(',')}))`)
+            : query.in('camera_index', indexes)
     }
 
     const { data, error, count } = await query
