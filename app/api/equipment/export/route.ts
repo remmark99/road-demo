@@ -4,6 +4,7 @@ import type { EquipmentOutage } from '@/lib/api/equipment'
 import { parseEquipmentPeriod } from '@/lib/exports/equipment-hours'
 import { buildMapInventoryDays, mapCameraIds, mapInventorySheet, mapFaultsSheet, type MapInventoryPoint, type DailySensorEvent } from '@/lib/exports/map-inventory'
 import { createXlsx } from '@/lib/exports/xlsx'
+import { mapReportFilename } from '@/lib/exports/filename'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -36,7 +37,7 @@ export async function GET(request: NextRequest) {
     if (profileError || !profile || (profile.role !== 'admin' && !profile.modules?.includes('stops'))) {
         return NextResponse.json({ error: 'Нет доступа к модулю остановок' }, { status: 403 })
     }
-    const now = Date.now(), from = request.nextUrl.searchParams.get('from'), to = request.nextUrl.searchParams.get('to')
+    const now = Date.now(), from = request.nextUrl.searchParams.get('from') ?? '', to = request.nextUrl.searchParams.get('to') ?? ''
     let period: { start: number; end: number }
     try { period = parseEquipmentPeriod(from, to, now) }
     catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }) }
@@ -77,7 +78,7 @@ export async function GET(request: NextRequest) {
         const workbook = createXlsx([mapInventorySheet(days), ...(faults ? [faults] : [])])
         return new NextResponse(Buffer.from(workbook), { headers: {
             'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            'Content-Disposition': `attachment; filename="map-daily-${from}-${to}.xlsx"`,
+            'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(mapReportFilename(from, to))}`,
             'Cache-Control': 'private, no-store',
         } })
     } catch (e) {

@@ -1,10 +1,9 @@
 import "server-only"
 
 import { NotificationDeliveryError } from "@/lib/notifications/errors"
+import { requestMax } from "@/lib/notifications/max-http"
 import { getEventLink, renderMaxEvent } from "@/lib/notifications/render"
 import type { NotificationEventPayload } from "@/lib/notifications/types"
-
-const MAX_API_URL = "https://platform-api2.max.ru"
 
 function getMaxToken() {
   const token = process.env.MAX_BOT_TOKEN
@@ -29,26 +28,18 @@ function parseRetryAfter(value: string | null) {
 }
 
 export async function sendMaxMessage(userId: string, text: string, link?: string | null) {
-  const response = await fetch(`${MAX_API_URL}/messages?user_id=${encodeURIComponent(userId)}`, {
-    method: "POST",
-    headers: {
-      Authorization: getMaxToken(),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      text,
-      format: "markdown",
-      notify: true,
-      attachments: link
-        ? [{
-            type: "inline_keyboard",
-            payload: {
-              buttons: [[{ type: "link", text: "Открыть событие", url: link }]],
-            },
-          }]
-        : undefined,
-    }),
-    signal: AbortSignal.timeout(10_000),
+  const response = await requestMax(`/messages?user_id=${encodeURIComponent(userId)}`, getMaxToken(), {
+    text,
+    format: "markdown",
+    notify: true,
+    attachments: link
+      ? [{
+          type: "inline_keyboard",
+          payload: {
+            buttons: [[{ type: "link", text: "Открыть событие", url: link }]],
+          },
+        }]
+      : undefined,
   }).catch((error) => {
     throw new NotificationDeliveryError(
       error instanceof Error ? error.message : "MAX network error",

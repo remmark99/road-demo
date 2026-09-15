@@ -116,6 +116,9 @@ test('map report reads all objects, counts offline objects and exports one row p
     const options={cameras,stopIds:[10,11],history:[{recorded_at:iso(0),cameras:1001,stops:2}]}
     const response=await request(options)
     assert.equal(response.status,200)
+    const disposition=response.headers.get('content-disposition')
+    assert.match(disposition,/^attachment; filename\*=UTF-8''/)
+    assert.equal(decodeURIComponent(disposition.split("UTF-8''")[1]),'Отчёт об остановках с 11.09.2026 по 11.09.2026.xlsx')
     const files=unzipSync(new Uint8Array(await response.arrayBuffer()))
     const sheet=strFromU8(files['xl/worksheets/sheet1.xml'])
     assert.match(sheet,/<v>1001<\/v>/)

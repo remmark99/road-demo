@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { MapInventoryReport } from '@/lib/exports/map-inventory'
+import { mapReportFilename } from '@/lib/exports/filename'
 import { Download, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -47,7 +48,7 @@ export function EquipmentExport() {
             const url = URL.createObjectURL(await response.blob())
             const link = document.createElement('a')
             link.href = url
-            link.download = `map-daily-${from}-${to}.xlsx`
+            link.download = mapReportFilename(from, to)
             document.body.appendChild(link)
             link.click()
             link.remove()
