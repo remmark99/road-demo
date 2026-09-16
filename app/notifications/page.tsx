@@ -1,5 +1,7 @@
 "use client"
 
+import { EventsExport } from '@/components/notifications/events-export'
+import { getAbandonedEpisode } from '@/lib/notifications/abandoned-episode'
 import { PeriodFilter } from '@/components/notifications/period-filter'
 import { CameraPlaceFilter } from '@/components/notifications/camera-place-filter'
 import { buildCameraPlaces, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
@@ -1282,6 +1284,8 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
         </CardContent>
       </Card>
 
+      <EventsExport channel="cameras" period={period} filters={{types:(effectiveSelectedTypes.length ? effectiveSelectedTypes : allowedTypes).join(','),cameras:selectedCameras.join(','),search:cameraSearch}} />
+
       <ResultsHeader
         total={total}
         loading={loading}
@@ -1340,10 +1344,11 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
               ? lyingPersonEpisodesById.get(episodeId)
               : undefined
             const episodeIsOpen = episode?.status === "open"
-            const binEpisode = getBinEpisode(alert)
+            const abandonedEpisode = getAbandonedEpisode(alert)
+            const binEpisode = getBinEpisode(alert) || abandonedEpisode
             const timedEvent = binEpisode || episode
             const duration = timedEvent ? formatEventDuration(timedEvent.started_at,
-              timedEvent.status === 'open' ? new Date().toISOString() : timedEvent.ended_at || timedEvent.last_seen_at) : ['bin_full', 'lying_person'].includes(alert.alert_type) ? 'не определена' : null
+              timedEvent.status === 'open' ? new Date().toISOString() : timedEvent.ended_at || timedEvent.last_seen_at) : ['bin_full', 'lying_person', 'abandoned_object'].includes(alert.alert_type) ? 'не определена' : null
 
             return (
               <Card
@@ -1452,10 +1457,10 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
                         {binEpisode ? (
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
                             {[
-                              { label: "До — переполненная урна",
+                              { label: abandonedEpisode ? "До — предмет оставлен" : "До — переполненная урна",
                                 url: binEpisode.first_image_url || alert.clip_path,
                                 time: binEpisode.first_image_at, empty: "Фото недоступно" },
-                              { label: "После — очищенная урна", url: binEpisode.closed_image_url,
+                              { label: abandonedEpisode ? "После — предмет убран" : "После — очищенная урна", url: binEpisode.closed_image_url,
                                 time: binEpisode.closed_image_at || binEpisode.ended_at, empty: binEpisode.status === "open" ? "Событие продолжается" : "Фото завершения недоступно" },
                             ].map(({ label, url, time, empty }) => <div key={label} className="space-y-1.5">
                               <div className="text-xs font-medium text-muted-foreground">{label}</div>
@@ -1817,6 +1822,8 @@ function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
           </div>
         </CardContent>
       </Card>
+
+      <EventsExport channel="sensors" period={period} filters={{elements:selectedElements.join(','),alarms:selectedAlarms.join(','),categories:selectedCategories.join(',')}} />
 
       <ResultsHeader
         total={total}

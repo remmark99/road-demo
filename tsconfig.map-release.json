@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": { "target": "ES2022", "incremental": false },
-  "include": ["next-env.d.ts", "app/page.tsx", "app/notifications/page.tsx", "app/api/stop-history/route.ts", "app/api/stop-activity/route.ts", "app/api/equipment/export/route.ts"],
+  "include": ["next-env.d.ts", "app/page.tsx", "app/notifications/page.tsx", "app/api/stop-history/route.ts", "app/api/stop-activity/route.ts", "app/api/equipment/export/route.ts", "app/api/notifications/export/route.ts"],
   "exclude": ["node_modules"]
 }
