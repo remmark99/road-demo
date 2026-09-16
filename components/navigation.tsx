@@ -205,15 +205,6 @@ export function Navigation() {
                 </div>
 
                 <div className="mt-auto">
-                  {/* Status */}
-                  <div className="border-t border-border px-4 py-3 flex items-center gap-2 bg-muted/30">
-                    <Badge variant="outline" className="gap-1.5 bg-background">
-                      <span className="h-2 w-2 rounded-full bg-road-clean animate-pulse" />
-                      Система активна
-                    </Badge>
-                    <Badge variant="secondary">Вектор Города</Badge>
-                  </div>
-
                   {/* User Profile */}
                   {authLoading ? (
                     <div className="border-t border-border px-4 py-3 bg-muted/10">
@@ -412,18 +403,6 @@ export function Navigation() {
                 <Thermometer className="h-4 w-4" />
               </a>
             </Button>
-
-            {/* Status (Pulse dot on lg/xl, full badge on 2xl) */}
-            <div className="flex items-center gap-2">
-              <span className="flex 2xl:hidden h-2.5 w-2.5 rounded-full bg-road-clean animate-pulse" title="Система активна" />
-              <Badge variant="outline" className="gap-1.5 hidden 2xl:flex text-xs">
-                <span className="h-2 w-2 rounded-full bg-road-clean animate-pulse" />
-                Система активна
-              </Badge>
-              <Badge variant="secondary" className="hidden 2xl:flex text-xs">Вектор Города</Badge>
-            </div>
-
-            <Separator orientation="vertical" className="h-6" />
 
             {/* User Dropdown Profile (≥1024px) */}
             {authLoading ? (
