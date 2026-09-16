@@ -712,7 +712,7 @@ function ResultsHeader({
 // ═══════════════════════════════════════════════════════════════════════
 // Camera Alerts Tab
 // ═══════════════════════════════════════════════════════════════════════
-function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; places: CameraPlace[]; period: NotificationPeriod }) {
+function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras: Camera[]; places: CameraPlace[]; period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void }) {
   const searchParams = useSearchParams()
   const querySelectedTypes = useMemo(
     () => getQueryValues(searchParams, ["type", "types"]),
@@ -1284,7 +1284,10 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
         </CardContent>
       </Card>
 
-      <EventsExport channel="cameras" period={period} filters={{types:(effectiveSelectedTypes.length ? effectiveSelectedTypes : allowedTypes).join(','),cameras:selectedCameras.join(','),search:cameraSearch}} />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <PeriodFilter value={period} onChange={onPeriodChange} />
+        <EventsExport channel="cameras" period={period} filters={{types:(effectiveSelectedTypes.length ? effectiveSelectedTypes : allowedTypes).join(','),cameras:selectedCameras.join(','),search:cameraSearch}} />
+      </div>
 
       <ResultsHeader
         total={total}
@@ -1647,7 +1650,7 @@ function ControllerCategoryIcon({
   return <Zap className={className} />
 }
 
-function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
+function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void }) {
   const [selectedElements, setSelectedElements] = useState<number[]>([])
   const [selectedAlarms, setSelectedAlarms] = useState<string[]>([])
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
@@ -1823,7 +1826,10 @@ function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
         </CardContent>
       </Card>
 
-      <EventsExport channel="sensors" period={period} filters={{elements:selectedElements.join(','),alarms:selectedAlarms.join(','),categories:selectedCategories.join(',')}} />
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <PeriodFilter value={period} onChange={onPeriodChange} />
+        <EventsExport channel="sensors" period={period} filters={{elements:selectedElements.join(','),alarms:selectedAlarms.join(','),categories:selectedCategories.join(',')}} />
+      </div>
 
       <ResultsHeader
         total={total}
@@ -2096,7 +2102,6 @@ function NotificationsContent() {
             </p>
           </div>
 
-          {tab !== 'equipment' && <PeriodFilter value={period} onChange={setPeriod} />}
           {/* Tabs */}
           <Tabs value={tab} onValueChange={setTab} className="space-y-6">
             <TabsList>
@@ -2119,12 +2124,12 @@ function NotificationsContent() {
             </TabsList>
 
             <TabsContent value="camera">
-              <CameraAlertsTab cameras={cameras} places={places} period={period} />
+              <CameraAlertsTab cameras={cameras} places={places} period={period} onPeriodChange={setPeriod} />
             </TabsContent>
 
             {showStops && (
               <TabsContent value="controller">
-                <ControllerAlertsTab period={period} />
+                <ControllerAlertsTab period={period} onPeriodChange={setPeriod} />
               </TabsContent>
             )}
 

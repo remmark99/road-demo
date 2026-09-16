@@ -20,7 +20,7 @@ export function PeriodFilter({ value, onChange }: { value: NotificationPeriod; o
   const date = (day: string) => day ? new Date(`${day}T12:00:00`) : undefined
   let error = ''
   try { notificationPeriodBounds(draft) } catch (e) { error = (e as Error).message }
-  return <div className="mb-4 flex flex-wrap items-center gap-2">
+  return <div className="flex flex-wrap items-center gap-2">
     <Select value={preset} onValueChange={key => { if (presets[key]) onChange(presets[key]); else { setDraft(value); setOpen(true) } }}>
       <SelectTrigger aria-label="Период уведомлений" className="h-9 w-[145px]"><SelectValue /></SelectTrigger>
       <SelectContent>{[['all','Всё время'],['today','Сегодня'],['yesterday','Вчера'],['week','Неделя'],['month','Месяц'],['custom','Свой период']].map(([key,label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
