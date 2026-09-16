@@ -12,8 +12,6 @@ export interface City {
 
 export const CITIES: City[] = [
     { id: "surgut", name: "Сургут", lat: 61.253954, lng: 73.396344, zoom: 15 },
-    { id: "fedorovsky", name: "Фёдоровский", lat: 61.605785, lng: 73.724136, zoom: 14 },
-    { id: "bely-yar", name: "Белый Яр", lat: 61.260563, lng: 73.251839, zoom: 14 },
 ]
 
 const CITY_KEY = "road-demo-city"
