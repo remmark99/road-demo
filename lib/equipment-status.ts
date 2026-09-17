@@ -3,7 +3,7 @@
  *
  * Таблицу equipment_state пишет equipment-monitor (bus_stop_analytics) по
  * heartbeat: cameras.last_seen_at и bus_stops.last_ok_at. Её же показывает
- * вкладка «Оборудование» в уведомлениях, поэтому карта и остальные экраны берут
+ * вкладка «Оборудование» в аналитике, поэтому карта и остальные экраны берут
  * статус отсюда, а не из cameras.status (ручное поле в админке) или
  * bus_stops.controller_status.
  *

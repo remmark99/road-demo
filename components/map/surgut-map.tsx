@@ -462,8 +462,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         "case",
         ["==", ["has", "has_equipment"], false], "#3b82f6",
         ["==", ["get", "has_equipment"], false], "#3b82f6",
-        ["==", ["get", "glass_broken"], true], "#ef4444",
-        ["==", ["get", "heater_working"], false], "#f97316",
+        ["==", ["get", "incident"], true], "#ef4444",
         ["==", ["get", "activity_status"], "unknown"], "#a78bfa",
         ["==", ["get", "activity_status"], "active"], "#22c55e",
         ["==", ["get", "activity_status"], "partial"], "#eab308",
@@ -605,15 +604,13 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
             const props = f.properties
             const colorClass = props.has_equipment === false
               ? 'bg-blue-500'
-              : props.glass_broken
+              : props.incident
                 ? 'bg-red-500'
-                : props.heater_working === false
-                  ? 'bg-orange-500'
-                  : props.activity_status === 'active'
-                    ? 'bg-green-500'
-                    : props.activity_status === 'partial'
-                      ? 'bg-yellow-500'
-                      : 'bg-gray-400'
+                : props.activity_status === 'active'
+                  ? 'bg-green-500'
+                  : props.activity_status === 'partial'
+                    ? 'bg-yellow-500'
+                    : 'bg-gray-400'
             html += `<div class="bus-stop-cluster-row flex items-center gap-2 text-xs p-1.5 hover:bg-muted cursor-pointer rounded" data-index="\${index}">
                <div class="w-2 h-2 rounded-full \${colorClass}"></div>
                <span class="truncate max-w-[150px] font-medium">\${props.name || 'Остановка'}</span>
@@ -680,7 +677,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
               .setLngLat((e as unknown as { lngLat: any }).lngLat)
               .setHTML(
                 `<div class="p-2 text-sm">
-                <div class="font-semibold flex items-center gap-1.5 mb-1 ${props.has_equipment === false ? 'text-[#3b82f6]' : props.glass_broken ? 'text-red-500' : props.activity_status === 'active' ? 'text-green-500' : props.activity_status === 'partial' ? 'text-yellow-500' : 'text-gray-400'}">
+                <div class="font-semibold flex items-center gap-1.5 mb-1 ${props.has_equipment === false ? 'text-[#3b82f6]' : props.incident ? 'text-red-500' : props.activity_status === 'active' ? 'text-green-500' : props.activity_status === 'partial' ? 'text-yellow-500' : 'text-gray-400'}">
                   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6v6"/><path d="M15 6v6"/><path d="M2 12h19.6"/><path d="M18 18h3s.5-1.7.8-2.8c.1-.4.2-.8.2-1.2 0-.4-.1-.8-.2-1.2l-1.4-5C20.1 6.8 19.1 6 18 6H4a2 2 0 0 0-2 2v10h3"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></svg>
                   ${props.name || 'Остановка'}
                 </div>
@@ -1536,7 +1533,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       ? null
       : !sd.has_equipment
         ? "unequipped"
-        : (sd.heater_working === false || sd.glass_broken)
+        : sd.incident
           ? "incidents"
           : sd.activity_status === "active"
             ? "online"
@@ -1785,7 +1782,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
           return busStopFilters.unequipped
         }
 
-        if (sd.heater_working === false || sd.glass_broken) {
+        if (sd.incident) {
           return busStopFilters.incidents
         }
 

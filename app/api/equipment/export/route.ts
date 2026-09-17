@@ -52,14 +52,16 @@ export async function GET(request: NextRequest) {
             readAll<EquipmentOutage>((a, b) => supabase.from('equipment_outages')
                 .select('id,equipment_type,equipment_id,bus_stop_id,location_id,started_at,detected_at,ended_at,resolution')
                 .lt('started_at', new Date(period.end).toISOString()).order('id').range(a, b)),
-            readAll<{ id: number; ip_address: string | null }>((a, b) => supabase.from('bus_stops').select('id,ip_address').order('id').range(a, b)),
+            readAll<{ id: number; ip_address: string | null; has_controller: boolean | null }>((a, b) => supabase.from('bus_stops').select('id,ip_address,has_controller').order('id').range(a, b)),
             readAll<DailySensorEvent>((a, b) => supabase.from('controller_alerts').select('created_at,bus_stop_id,category,alarm,element')
                 .gte('created_at', new Date(period.start).toISOString()).lt('created_at', new Date(period.end).toISOString()).order('created_at').order('id').range(a, b)),
         ])
         if (geometry.error || !Array.isArray(geometry.data?.features)) throw new Error('Не удалось прочитать объекты карты')
         const stops = new Set<number>(geometry.data.features.map((f: { properties: { id: number } }) => f.properties.id))
         const ids = mapCameraIds(cameras, stops)
-        const current = { recorded_at: new Date(now).toISOString(), cameras: ids.size, stops: stops.size, sensor_stops: controllers.filter(c => stops.has(c.id) && c.ip_address?.trim()).length }
+        // Остановка с датчиками = контроллер смонтирован; общий на группу адрес
+        // не записан в ip_address (sql/stop_equipment_flag_migration.sql).
+        const current = { recorded_at: new Date(now).toISOString(), cameras: ids.size, stops: stops.size, sensor_stops: controllers.filter(c => stops.has(c.id) && (c.has_controller || c.ip_address?.trim())).length }
         // Map cameras use 10000 + pipeline index, as in notification camera lookup.
         const monitoredIds = new Set([...ids].flatMap(id => id >= 10000 ? [id, id - 10000] : [id]))
         const relevantOutages = outages.filter(o => o.equipment_type === 'camera' ? monitoredIds.has(o.equipment_id) : stops.has(o.bus_stop_id ?? o.equipment_id))

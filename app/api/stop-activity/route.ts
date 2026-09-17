@@ -22,24 +22,39 @@ function freshnessMs() {
 }
 
 /**
+ * `has_controller` arrives with sql/stop_equipment_flag_migration.sql, and
  * `controller_status` / `last_ping_at` / `ip_address` are written by the external
- * controller worker and may be absent on older deployments — fall back to ids only.
+ * controller worker — both may be absent on older deployments, so drop the
+ * missing columns rather than blanking the map.
  */
 async function loadBusStops(supabase: Awaited<ReturnType<typeof createClient>>): Promise<BusStopStatusRow[]> {
     const { data, error } = await supabase
         .from('bus_stops')
-        .select('id,controller_status,last_ping_at,ip_address')
+        .select('id,controller_status,last_ping_at,ip_address,has_controller')
         .limit(10000)
 
     if (!error) return (data ?? []) as BusStopStatusRow[]
 
-    if (error.code === MISSING_COLUMN) {
+    if (error.code !== MISSING_COLUMN) {
+        console.error('Error fetching bus stop controller status:', error)
+        return []
+    }
+
+    console.warn('bus_stops is missing has_controller, falling back to ip_address')
+    const legacy = await supabase
+        .from('bus_stops')
+        .select('id,controller_status,last_ping_at,ip_address')
+        .limit(10000)
+
+    if (!legacy.error) return (legacy.data ?? []) as BusStopStatusRow[]
+
+    if (legacy.error.code === MISSING_COLUMN) {
         console.warn('bus_stops is missing controller columns, falling back to ids only')
         const fallback = await supabase.from('bus_stops').select('id').limit(10000)
         if (!fallback.error) return (fallback.data ?? []) as BusStopStatusRow[]
     }
 
-    console.error('Error fetching bus stop controller status:', error)
+    console.error('Error fetching bus stop controller status:', legacy.error)
     return []
 }
 

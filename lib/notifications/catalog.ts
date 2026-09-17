@@ -79,7 +79,7 @@ export const NOTIFICATION_EVENT_TYPES: readonly NotificationEventTypeOption[] = 
   option("controller_alerts", "stops", "controller_online", "Контроллер снова на связи"),
   option("controller_alerts", "stops", "temperature", "Температура"),
   option("controller_alerts", "stops", "humidity", "Влажность"),
-  option("controller_alerts", "stops", "glass_break", "Разбитие стекла"),
+  option("controller_alerts", "stops", "incident", "Инцидент"),
 ]
 
 const EVENT_TYPE_BY_KEY = new Map(NOTIFICATION_EVENT_TYPES.map((item) => [item.key, item]))

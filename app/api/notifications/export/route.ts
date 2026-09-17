@@ -5,7 +5,7 @@ import { notificationPeriodBounds, buildCameraPlaces, filteredCameraIndexes } fr
 import { cameraEventSheet, sensorEventSheet } from '@/lib/exports/notification-events'
 import { createXlsx } from '@/lib/exports/xlsx'
 import { ALERT_TYPE_CONFIG, type LyingPersonEpisode } from '@/lib/api/alerts'
-import { CATEGORY_LABELS, ALARM_CONFIG, type ControllerAlert } from '@/lib/api/controller-alerts'
+import { CATEGORY_LABELS, ALARM_CONFIG, expandCategoryFilter, type ControllerAlert } from '@/lib/api/controller-alerts'
 import type { Alert, Camera } from '@/lib/types'
 
 export const runtime='nodejs'
@@ -54,7 +54,7 @@ export async function GET(request:NextRequest){
     if(bounds.toExclusive)q=q.lt('created_at',bounds.toExclusive)
     if(elements.length)q=q.in('element',elements)
     if(alarms.length)q=q.in('alarm',alarms)
-    if(categories.length)q=q.in('category',categories)
+    if(categories.length)q=q.in('category',expandCategoryFilter(categories))
     return q
    })
    sheet=sensorEventSheet(rows,a=>stopNames.get(a.bus_stop_id??-1)||'Адрес не указан',a=>{const name=CATEGORY_LABELS[a.category]||'Событие датчика';const unit=a.category==='temperature'?'°C':a.category==='humidity'?'%':a.category==='digital input'?'В':null;return unit&&Number.isFinite(a.value)?`${name}: ${a.value.toLocaleString('ru-RU')} ${unit}`:name},alarm=>ALARM_CONFIG[alarm]?.label||'Зафиксировано')

@@ -41,8 +41,19 @@ export interface StopActivityEntry {
     activity_status: StopActivityStatus
     last_ping_at: string | null
     last_sensor_at: string | null
-    glass_broken: boolean
-    heater_working?: boolean
+    /**
+     * Что-то на остановке отклонилось от нормы.
+     *
+     * Один флаг вместо прежних «вандализм» и «отказ обогревателя». Датчик
+     * фиксирует только само отклонение, но не причину: мокрый пакет, брошенный
+     * в стекло, срабатывает так же, как удар. Поэтому событие не называет
+     * причину — оператор смотрит снимок и решает сам.
+     *
+     * Обогревателя на остановках нет и не планируется, так что прежний
+     * оранжевый статус был выведен из того же дискретного входа 1, что и
+     * «вандализм», — то есть из одного и того же срабатывания.
+     */
+    incident: boolean
 }
 
 export interface StopActivityResponse {
@@ -68,6 +79,11 @@ export function isFresh(
     const parsed = Date.parse(timestamp)
     if (Number.isNaN(parsed)) return false
     return now - parsed <= freshnessMs
+}
+
+/** Любое состояние тревоги, кроме «норма», считается отклонением. */
+export function isDeviation(alarm: string | null | undefined): boolean {
+    return Boolean(alarm) && alarm !== 'normal'
 }
 
 export const ACTIVITY_STATUS_LABELS: Record<StopActivityStatus, string> = {
@@ -103,6 +119,8 @@ export interface BusStopStatusRow {
     controller_status?: string | null
     last_ping_at?: string | null
     ip_address?: string | null
+    /** Контроллер смонтирован; собственный адрес может быть ещё не выдан. */
+    has_controller?: boolean | null
 }
 
 export interface SensorStateRow {
@@ -143,8 +161,7 @@ export function buildStopActivity({
 }: BuildStopActivityInput): Record<string, StopActivityEntry> {
     const monitored = indexEquipmentStatus(equipmentRows)
     const latestSensorAt = new Map<number, string>()
-    const glassBroken = new Set<number>()
-    const heaterFault = new Set<number>()
+    const incidents = new Set<number>()
 
     for (const row of sensorRows) {
         const stopId = row.bus_stop_id
@@ -155,10 +172,12 @@ export function buildStopActivity({
             latestSensorAt.set(stopId, row.updated_at)
         }
 
-        // Mirrors the alarm derivation in components/map/bus-stop-modal.tsx
+        // Mirrors the alarm derivation in components/map/bus-stop-modal.tsx.
+        // Любое ненормальное состояние дискретного входа — инцидент: и
+        // warning, и alarm, и critical. Степень уверенности датчика не даёт
+        // повода раскладывать срабатывание на разные типы событий.
         const isDigital = row.element === 1 || row.category === 'glass_break'
-        if (isDigital && (row.alarm === 'alarm' || row.alarm === 'critical')) glassBroken.add(stopId)
-        if (row.element === 1 && (row.alarm === 'warning' || row.alarm === 'critical')) heaterFault.add(stopId)
+        if (isDigital && isDeviation(row.alarm)) incidents.add(stopId)
     }
 
     const onlineCameras = new Map<number, number>()
@@ -188,10 +207,13 @@ export function buildStopActivity({
         const totalCameraCount = totalCameras.get(stop.id) ?? 0
         const camerasOnline = onlineCameraCount > 0
 
-        // Контроллер есть тогда и только тогда, когда у остановки заполнен ip_address.
-        // На controller_status опираться нельзя: в схеме у него DEFAULT 'offline',
+        // Контроллер есть, если он числится смонтированным, отвечает или
+        // опрашивается. На один ip_address опираться нельзя: у группы остановок
+        // адрес пока общий и поэтому не записан (sql/stop_equipment_flag_migration.sql),
+        // а на controller_status — тем более: в схеме у него DEFAULT 'offline',
         // поэтому он непустой у всех строк, включая остановки без контроллера.
-        const hasController = Boolean(stop.ip_address?.trim())
+        const hasController = stop.has_controller === true
+            || Boolean(stop.ip_address?.trim())
             || lastSensorAt !== null
             || monitored.controllers.has(stop.id)
 
@@ -205,8 +227,7 @@ export function buildStopActivity({
             activity_status: resolveActivityStatus(sensorsOnline, camerasOnline),
             last_ping_at: lastPingAt,
             last_sensor_at: lastSensorAt,
-            glass_broken: glassBroken.has(stop.id),
-            heater_working: heaterFault.has(stop.id) ? false : (sensorsOnline ? true : undefined),
+            incident: incidents.has(stop.id),
         }
     }
 

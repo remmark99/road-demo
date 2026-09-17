@@ -6,7 +6,7 @@ import {
 } from './stop-activity'
 
 export interface BusStopSensorData {
-    /** active = датчики и камеры, partial = что-то одно, inactive = ничего. */
+    /** active = датчики и камеры, partial = одно из двух, inactive = ничего. */
     activity_status: StopActivityStatus
     sensors_history_known?: boolean
     cameras_history_known?: boolean
@@ -27,8 +27,8 @@ export interface BusStopSensorData {
     temperature_in?: number
     temperature_out?: number
     humidity?: number
-    heater_working?: boolean
-    glass_broken?: boolean
+    /** Что-то отклонилось от нормы; причина не уточняется. */
+    incident?: boolean
 }
 
 export interface BusStopProperties {
@@ -86,8 +86,7 @@ export function toSensorData(entry: StopActivityEntry | undefined): BusStopSenso
         is_partly_equipped: status === 'partial',
         last_ping_at: entry.last_ping_at,
         last_sensor_at: entry.last_sensor_at,
-        heater_working: entry.heater_working,
-        glass_broken: entry.glass_broken,
+        incident: entry.incident,
     }
 }
 

@@ -18,7 +18,7 @@ import {
 } from "@/lib/api/measurements"
 import { fetchControllerAlerts, type ControllerAlert } from "@/lib/api/controller-alerts"
 import type { BusStopSensorData } from "@/lib/api/bus-stops"
-import { ACTIVITY_STATUS_LABELS, resolveActivityStatus } from "@/lib/api/stop-activity"
+import { ACTIVITY_STATUS_LABELS, isDeviation, resolveActivityStatus } from "@/lib/api/stop-activity"
 
 export type { BusStopSensorData }
 
@@ -137,16 +137,20 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
     const temperature = climate?.temperature ?? undefined
     const humidity = climate?.humidity ?? undefined
 
-    // Real alarm conditions (derived strictly from active real alarms or non-normal statuses)
-    const glassBrokenAlarm = glass?.glassBreak === true
-        || realReadings.some((r) => r.glassBreakAlarm === "alarm" || r.glassBreakAlarm === "critical")
-        || realAlerts.some((a) => a.category === "glass_break" && (a.alarm === "alarm" || a.alarm === "critical"))
+    // Real alarm conditions (derived strictly from active real alarms or non-normal statuses).
+    // Любое отклонение от нормы — инцидент; причину датчик не знает, поэтому
+    // событие её и не называет. "glass_break" — категория старых записей,
+    // новые приходят как "incident".
+    const incidentAlarm = glass?.glassBreak === true
+        || realReadings.some((r) => isDeviation(r.glassBreakAlarm))
+        || realAlerts.some((a) => (a.category === "incident" || a.category === "glass_break") && isDeviation(a.alarm))
 
-    const tempWarningAlarm = realReadings.some(
-        (r) => r.temperatureAlarm === "warning" || r.temperatureAlarm === "critical"
-    )
+    // Показание вне порогов, заданных в настройках анализа: тот же статус, по
+    // которому оператору ушло уведомление о температуре или влажности.
+    const temperatureAlarm = realReadings.some((r) => isDeviation(r.temperatureAlarm))
+    const humidityAlarm = realReadings.some((r) => isDeviation(r.humidityAlarm))
 
-    const hasAnyRealProblems = glassBrokenAlarm || tempWarningAlarm
+    const hasAnyRealProblems = incidentAlarm || temperatureAlarm || humidityAlarm
 
     return (
         <Dialog open={!!busStop} onOpenChange={open => { if (!open) onClose() }}>
@@ -232,8 +236,9 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                         Внимание: Обнаружены проблемы
                                     </div>
                                     <ul className="text-sm list-disc pl-5 space-y-1">
-                                        {glassBrokenAlarm && <li>Зафиксирован вандализм (разбито стекло).</li>}
-                                        {tempWarningAlarm && <li>Предупреждение по температуре.</li>}
+                                        {incidentAlarm && <li>Зафиксирован инцидент: сработал датчик стекла.</li>}
+                                        {temperatureAlarm && <li>Температура вышла за заданные пороги.</li>}
+                                        {humidityAlarm && <li>Влажность вышла за заданные пороги.</li>}
                                     </ul>
                                 </div>
                             )}
@@ -255,10 +260,10 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
-                                    <Hammer className={`h-5 w-5 mb-2 ${sensorsOnline ? (glassBrokenAlarm ? 'text-red-500' : 'text-emerald-500') : 'text-muted-foreground'}`} />
-                                    <div className="text-xs text-muted-foreground">Разбитие стекла</div>
+                                    <Hammer className={`h-5 w-5 mb-2 ${sensorsOnline ? (incidentAlarm ? 'text-red-500' : 'text-emerald-500') : 'text-muted-foreground'}`} />
+                                    <div className="text-xs text-muted-foreground">Датчик стекла</div>
                                     <div className="font-medium mt-0.5">
-                                        {sensorsOnline ? (glassBrokenAlarm ? 'Тревога' : 'Норма') : '—'}
+                                        {sensorsOnline ? (incidentAlarm ? 'Тревога' : 'Норма') : '—'}
                                     </div>
                                 </div>
                             </div>

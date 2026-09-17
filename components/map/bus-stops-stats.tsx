@@ -6,7 +6,7 @@ import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { fetchCameras } from "@/lib/api/cameras"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Activity, Video, Radio, AlertTriangle, Flame, Crosshair, ChevronDown } from "lucide-react"
+import { Activity, Video, Radio, AlertTriangle, Crosshair, ChevronDown } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -225,8 +225,7 @@ export function BusStopsStats({ onFocusStop, historySnapshot = null }: { onFocus
         const stops = new Map<number, StopInfo>()
         let camerasUnknown = 0, sensorsUnknown = 0
         let unequipped = 0
-        let vandalism = 0
-        let heaterIssues = 0
+        let incidents = 0
         const sensorsOnline: FocusItem[] = []
         const sensorsOffline: FocusItem[] = []
 
@@ -248,8 +247,7 @@ export function BusStopsStats({ onFocusStop, historySnapshot = null }: { onFocus
                 return
             }
 
-            if (sd.glass_broken) vandalism++
-            if (sd.heater_working === false) heaterIssues++
+            if (sd.incident) incidents++
 
             if (sd.has_controller) {
                 const item: FocusItem = {
@@ -299,8 +297,7 @@ export function BusStopsStats({ onFocusStop, historySnapshot = null }: { onFocus
             camerasUnknown, sensorsUnknown,
             totalStops: data.features.length,
             unequipped,
-            vandalism,
-            heaterIssues,
+            incidents,
             camerasOnline,
             camerasOffline,
             sensorsOnline,
@@ -388,25 +385,17 @@ export function BusStopsStats({ onFocusStop, historySnapshot = null }: { onFocus
                     </div>
                 </div>
 
-                {(stats.vandalism > 0 || stats.heaterIssues > 0) && (
+                {stats.incidents > 0 && (
                     <div className="pt-3 border-t">
                         <div className="text-sm font-medium mb-2 text-red-500 flex items-center gap-1.5">
                             <AlertTriangle className="h-4 w-4 shrink-0" />
                             <span className="truncate">Активные инциденты</span>
                         </div>
                         <div className="space-y-1.5 text-xs">
-                            {stats.vandalism > 0 && (
-                                <div className="flex justify-between items-center gap-2 text-red-500">
-                                    <span className="truncate">Вандализм (разбито стекло)</span>
-                                    <span className="font-bold tabular-nums shrink-0">{stats.vandalism}</span>
-                                </div>
-                            )}
-                            {stats.heaterIssues > 0 && (
-                                <div className="flex justify-between items-center gap-2 text-orange-500">
-                                    <span className="flex items-center gap-1.5 min-w-0"><Flame className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Отказ обогревателя</span></span>
-                                    <span className="font-bold tabular-nums shrink-0">{stats.heaterIssues}</span>
-                                </div>
-                            )}
+                            <div className="flex justify-between items-center gap-2 text-red-500">
+                                <span className="truncate">Инцидент</span>
+                                <span className="font-bold tabular-nums shrink-0">{stats.incidents}</span>
+                            </div>
                         </div>
                     </div>
                 )}

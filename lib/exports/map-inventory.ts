@@ -53,7 +53,7 @@ export function buildMapInventoryDays(history: MapInventoryPoint[], current: Map
             const key = `${event.bus_stop_id}:${event.element}:${event.category}`
             if (!sensorProblems.has(key)) sensorProblems.set(key, event)
         }
-        const categories: Record<string, string> = { glass_break: 'разбитие стекла', temperature: 'температура', humidity: 'влажность', 'digital input': 'разбитие стекла' }
+        const categories: Record<string, string> = { incident: 'инцидент', glass_break: 'инцидент', temperature: 'температура', humidity: 'влажность', 'digital input': 'инцидент' }
         for (const event of sensorProblems.values()) eventNotes.push(`${equipmentLocalTime(Date.parse(event.created_at)).slice(11)} — ${names[`controller:${event.bus_stop_id}`] || 'Остановка не указана'}: ${categories[event.category] || event.category}`)
         const failures = outages.filter(o => Date.parse(o.started_at) < until && (!o.ended_at || Date.parse(o.ended_at) > day)).length + sensorProblems.size
         const notes: string[] = []

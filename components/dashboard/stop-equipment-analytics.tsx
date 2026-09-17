@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { EquipmentExport } from "./equipment-export"
+import { EquipmentExport } from "@/components/notifications/equipment-export"
 import { addDays, format, isSameDay, startOfDay, subDays } from "date-fns"
 import { ru } from "date-fns/locale"
 import {
@@ -127,7 +127,7 @@ function SummaryCard({
   )
 }
 
-export function EquipmentTab() {
+export function StopEquipmentAnalytics() {
   const [day, setDay] = useState<Date>(() => startOfDay(new Date()))
   const [showShort, setShowShort] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
@@ -208,7 +208,7 @@ export function EquipmentTab() {
   const unknownCount = states.filter((s) => s.status === "unknown").length
 
   return (
-    <>
+    <div className="p-4 md:p-6">
       <EquipmentExport />
       <Card className="mb-6">
         <CardContent className="flex flex-wrap items-center gap-3 p-4">
@@ -406,6 +406,6 @@ export function EquipmentTab() {
           )}
         </>
       )}
-    </>
+    </div>
   )
 }

@@ -57,25 +57,58 @@ export const ALARM_CONFIG: Record<string, { label: string; color: string }> = {
     },
 }
 
+/**
+ * Единый тип события для срабатывания датчика на остановке.
+ *
+ * Датчик фиксирует отклонение, но не его причину: мокрый пакет, брошенный в
+ * стекло, срабатывает так же, как удар. Поэтому событие называется «инцидент»
+ * и не утверждает, что это был вандализм.
+ */
+export const INCIDENT_CATEGORY = 'incident'
+
+/**
+ * Категории, под которыми это же событие писалось раньше. Бэкенд пишет
+ * INCIDENT_CATEGORY, но записи в БД остаются навсегда, поэтому фильтр и подписи
+ * должны понимать и старые значения.
+ */
+export const INCIDENT_CATEGORY_ALIASES = [INCIDENT_CATEGORY, 'glass_break', 'digital input'] as const
+
 export const CATEGORY_LABELS: Record<string, string> = {
     temperature: 'Температура',
     humidity: 'Влажность',
-    'digital input': 'Разбитие стекла',
-    'glass_break': 'Датчик разбития стекла',
+    'digital input': 'Инцидент',
+    'glass_break': 'Инцидент',
+    incident: 'Инцидент',
     controller_offline: 'Контроллер не на связи',
     controller_online: 'Контроллер снова на связи',
 }
 
 /**
- * Категории для кнопок фильтра. `digital input` остаётся в CATEGORY_LABELS,
- * чтобы подписать старые записи, но кнопки для него нет: это тот же датчик
- * разбития стекла, что и `glass_break`, и две одинаковые кнопки оператору
- * только мешают.
+ * Разворачивает «инцидент» в список его исторических категорий: запрос идёт
+ * через `in('category', …)`, и без этого кнопка фильтра теряла бы старые записи.
+ */
+export function expandCategoryFilter(categories: readonly string[]): string[] {
+    const expanded = new Set<string>()
+    for (const category of categories) {
+        if (category === INCIDENT_CATEGORY) {
+            for (const alias of INCIDENT_CATEGORY_ALIASES) expanded.add(alias)
+        } else {
+            expanded.add(category)
+        }
+    }
+    return [...expanded]
+}
+
+/**
+ * Категории для кнопок фильтра. `glass_break` и `digital input` остаются в
+ * CATEGORY_LABELS, чтобы подписать старые записи, но отдельных кнопок у них
+ * нет: это то же самое событие, что и `incident`, — кнопка «Инцидент»
+ * разворачивается в них через expandCategoryFilter().
  */
 export const FILTERABLE_CATEGORIES = [
     'temperature',
     'humidity',
-    'glass_break',
+    INCIDENT_CATEGORY,
     'controller_offline',
     'controller_online',
 ] as const
@@ -120,7 +153,7 @@ export async function fetchControllerAlerts(
         }
 
         if (categories && categories.length > 0) {
-            query = query.in('category', categories)
+            query = query.in('category', expandCategoryFilter(categories))
         }
 
         if (withBusStopId && busStopId !== undefined) {

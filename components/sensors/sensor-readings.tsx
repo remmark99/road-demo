@@ -42,16 +42,19 @@ function MeasurementLine({
     updatedAt: string | null
     normalColor: string
 }) {
-    const isWarning = alarm === "warning"
+    // «critical» — показание вышло за порог, заданный в настройках анализа;
+    // «warning» приходит от самого контроллера. Красным выделяется только то,
+    // о чём оператору уже ушло уведомление.
+    const color =
+        alarm === "critical" ? "text-red-500" : alarm === "warning" ? "text-amber-500" : null
     return (
         <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
                 <Icon
-                    className={`h-3.5 w-3.5 ${isWarning ? "text-amber-500" : normalColor}`}
+                    className={`h-3.5 w-3.5 ${color ?? normalColor}`}
                 />
                 <span
-                    className={`text-lg font-bold tabular-nums ${isWarning ? "text-amber-500" : "text-foreground"
-                        }`}
+                    className={`text-lg font-bold tabular-nums ${color ?? "text-foreground"}`}
                 >
                     {value.toFixed(1)}
                 </span>

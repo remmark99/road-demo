@@ -94,7 +94,6 @@ import {
   WifiOff,
   type LucideIcon,
 } from "lucide-react"
-import { EquipmentTab } from "@/components/notifications/equipment-tab"
 import {
   getStopComplexByCameraIndex,
   getStopComplexByLocationId,
@@ -439,13 +438,25 @@ function getRussianAlertMessage(alert: Alert, fallbackLabel: string) {
   )
 }
 
+/**
+ * Единицы измерения, которые не считаются латиницей.
+ *
+ * Сообщение контроллера с латинскими буквами заменяется общим: контроллер
+ * подписывает свои каналы как «DIO1». Но «°C» — это единица измерения в нашем
+ * собственном сообщении о пороге температуры, и без этой поправки оператор
+ * вместо значения и порога увидел бы «Температура: критично».
+ */
+function withoutUnits(value: string) {
+  return value.replace(/°\s?C/g, "°")
+}
+
 function getRussianControllerMessage(
   message: string,
   categoryLabel: string,
   alarmLabel: string
 ) {
   const rawMessage = message.trim()
-  if (rawMessage && hasCyrillic(rawMessage) && !hasLatin(rawMessage)) {
+  if (rawMessage && hasCyrillic(rawMessage) && !hasLatin(withoutUnits(rawMessage))) {
     return rawMessage
   }
 
@@ -1645,7 +1656,7 @@ function ControllerCategoryIcon({
 }) {
   if (category === "temperature") return <Thermometer className={className} />
   if (category === "humidity") return <Droplets className={className} />
-  if (category === "glass_break") return <Hammer className={className} />
+  if (category === "incident" || category === "glass_break" || category === "digital input") return <Hammer className={className} />
   if (category === "controller_offline") return <WifiOff className={className} />
   if (category === "controller_online") return <Wifi className={className} />
   return <Activity className={className} />
@@ -2119,12 +2130,6 @@ function NotificationsContent() {
                   Датчики
                 </TabsTrigger>
               )}
-              {showStops && (
-                <TabsTrigger value="equipment" className="gap-2">
-                  <Cctv className="h-4 w-4" />
-                  Оборудование
-                </TabsTrigger>
-              )}
             </TabsList>
 
             <TabsContent value="camera">
@@ -2134,12 +2139,6 @@ function NotificationsContent() {
             {showStops && (
               <TabsContent value="controller">
                 <ControllerAlertsTab period={period} onPeriodChange={setPeriod} />
-              </TabsContent>
-            )}
-
-            {showStops && (
-              <TabsContent value="equipment">
-                <EquipmentTab />
               </TabsContent>
             )}
           </Tabs>

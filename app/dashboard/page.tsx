@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Thermometer,
   BusFront,
+  Cctv,
   Map,
   Users2,
   ShieldAlert,
@@ -41,6 +42,7 @@ import { StopKpiCurrentAnalytics } from "@/components/dashboard/stop-kpi-current
 import { StopLyingPersonAnalytics } from "@/components/dashboard/stop-lying-person-analytics"
 import { StopConditionCurrentAnalytics } from "@/components/dashboard/stop-condition-current-analytics"
 import { StopSensorAnalytics } from "@/components/dashboard/stop-sensor-analytics"
+import { StopEquipmentAnalytics } from "@/components/dashboard/stop-equipment-analytics"
 import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
 import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
 import { ConditionAnalytics } from "@/components/dashboard/condition-analytics"
@@ -70,6 +72,7 @@ type DashboardView =
   | "stop_passenger"
   | "stop_vandalism"
   | "stop_condition"
+  | "stop_equipment"
   | "stop_sensors"
   | "shore_security"
   | "shore_safety"
@@ -142,6 +145,13 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     stopModes: {
       current: StopKpiCurrentAnalytics,
     },
+  },
+  {
+    id: "stop_equipment",
+    label: "Оборудование",
+    icon: Cctv,
+    module: "stops",
+    component: StopEquipmentAnalytics,
   },
   {
     id: "stop_sensors",
@@ -251,7 +261,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city"]
-const STOPS_DASHBOARDS = ["stop_kpi", "stop_sensors", "stop_passenger", "stop_security", "stop_condition", "stop_districts", "stop_vandalism"]
+const STOPS_DASHBOARDS = ["stop_kpi", "stop_equipment", "stop_sensors", "stop_passenger", "stop_security", "stop_condition", "stop_districts", "stop_vandalism"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]
 const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]

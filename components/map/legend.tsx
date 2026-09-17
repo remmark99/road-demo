@@ -103,19 +103,17 @@ export function Legend() {
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#eab308]" />
-                  <span className="text-muted-foreground">Частично активна (что-то одно)</span>
+                  <span className="text-muted-foreground">Частично активна</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#9ca3af]" />
                   <span className="text-muted-foreground">Неактивна</span>
                 </div>
+                {/* Единый статус вместо «вандализма» и «отказа обогревателя»:
+                    датчик фиксирует отклонение, а не его причину. */}
                 <div className="flex items-center gap-2 text-xs">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#ef4444]" />
-                  <span className="text-muted-foreground">Вандализм (разбито стекло)</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#f97316]" />
-                  <span className="text-muted-foreground">Отказ обогревателя</span>
+                  <span className="text-muted-foreground">Инцидент</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#3b82f6]" />
@@ -135,7 +133,7 @@ export function Legend() {
                 />
                 <div className="flex justify-between text-[10px] text-muted-foreground mt-0.5">
                   <span>Мало</span>
-                  <span>Много событий</span>
+                  <span>Много инцидентов</span>
                 </div>
               </div>
             </div>
