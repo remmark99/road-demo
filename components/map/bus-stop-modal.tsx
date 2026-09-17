@@ -8,8 +8,14 @@ import { Button } from "@/components/ui/button"
 import type { Camera } from "@/lib/types"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Wifi, WifiOff, Thermometer, Droplets, Zap, AlertTriangle, ShieldAlert, BusFront, Hammer } from "lucide-react"
-import { fetchLatestMeasurements, subscribeMeasurements, type SensorReading } from "@/lib/api/measurements"
+import { Wifi, WifiOff, Thermometer, Droplets, AlertTriangle, ShieldAlert, BusFront, Hammer } from "lucide-react"
+import {
+    CLIMATE_ELEMENT,
+    GLASS_BREAK_ELEMENT,
+    fetchLatestMeasurements,
+    subscribeMeasurements,
+    type SensorReading,
+} from "@/lib/api/measurements"
 import { fetchControllerAlerts, type ControllerAlert } from "@/lib/api/controller-alerts"
 import type { BusStopSensorData } from "@/lib/api/bus-stops"
 import { ACTIVITY_STATUS_LABELS, resolveActivityStatus } from "@/lib/api/stop-activity"
@@ -105,18 +111,18 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
     </Dialog>
 
     // Determine equipment presence and online status based strictly on real readings & database status
-    const dht13 = realReadings.find((r) => r.element === 13) // Temperature & Humidity
-    const temp14 = realReadings.find((r) => r.element === 14) // Temp sensor 2
-    const dio1 = realReadings.find((r) => r.element === 1) // Digital input
+    // На остановке два датчика: разбитие стекла и температура + влажность.
+    const climate = realReadings.find((r) => r.element === CLIMATE_ELEMENT)
+    const glass = realReadings.find((r) => r.element === GLASS_BREAK_ELEMENT)
 
     const hasRealReadings = realReadings.some(
         (r) =>
             r.temperature !== null ||
             r.humidity !== null ||
-            r.digitalState !== null ||
+            r.glassBreak !== null ||
             r.temperatureAlarm !== null ||
             r.humidityAlarm !== null ||
-            r.digitalAlarm !== null
+            r.glassBreakAlarm !== null
     )
 
     // Датчики считаются рабочими, если контроллер прислал свежие показания;
@@ -128,24 +134,19 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
     const hasEquipment = hasRealReadings || cameras.length > 0 || camerasOnline || Boolean(busStop.sensor_data?.has_equipment)
 
     // Real metric values (no fallbacks to fake random values)
-    const tempOut = dht13?.temperature ?? undefined
-    const tempIn = temp14?.temperature ?? undefined
-    const humidity = dht13?.humidity ?? undefined
+    const temperature = climate?.temperature ?? undefined
+    const humidity = climate?.humidity ?? undefined
 
     // Real alarm conditions (derived strictly from active real alarms or non-normal statuses)
-    const glassBrokenAlarm = realReadings.some(
-        (r) => r.digitalAlarm === "alarm" || r.digitalAlarm === "critical"
-    ) || realAlerts.some((a) => a.category === "glass_break" && (a.alarm === "alarm" || a.alarm === "critical"))
-
-    const heaterFaultAlarm = realReadings.some(
-        (r) => r.element === 1 && (r.digitalAlarm === "critical" || r.digitalAlarm === "warning")
-    )
+    const glassBrokenAlarm = glass?.glassBreak === true
+        || realReadings.some((r) => r.glassBreakAlarm === "alarm" || r.glassBreakAlarm === "critical")
+        || realAlerts.some((a) => a.category === "glass_break" && (a.alarm === "alarm" || a.alarm === "critical"))
 
     const tempWarningAlarm = realReadings.some(
         (r) => r.temperatureAlarm === "warning" || r.temperatureAlarm === "critical"
     )
 
-    const hasAnyRealProblems = glassBrokenAlarm || heaterFaultAlarm || tempWarningAlarm
+    const hasAnyRealProblems = glassBrokenAlarm || tempWarningAlarm
 
     return (
         <Dialog open={!!busStop} onOpenChange={open => { if (!open) onClose() }}>
@@ -232,7 +233,6 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                     </div>
                                     <ul className="text-sm list-disc pl-5 space-y-1">
                                         {glassBrokenAlarm && <li>Зафиксирован вандализм (разбито стекло).</li>}
-                                        {heaterFaultAlarm && <li>Отказ системы обогрева остановки.</li>}
                                         {tempWarningAlarm && <li>Предупреждение по температуре.</li>}
                                     </ul>
                                 </div>
@@ -242,16 +242,9 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
                                     <Thermometer className="h-5 w-5 text-sky-500 mb-2" />
-                                    <div className="text-xs text-muted-foreground">Т. снаружи</div>
+                                    <div className="text-xs text-muted-foreground">Температура</div>
                                     <div className="font-medium mt-0.5">
-                                        {sensorsOnline && tempOut !== undefined ? `${tempOut.toFixed(1)}°C` : '—'}
-                                    </div>
-                                </div>
-                                <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
-                                    <Thermometer className="h-5 w-5 text-orange-500 mb-2" />
-                                    <div className="text-xs text-muted-foreground">Т. внутри</div>
-                                    <div className="font-medium mt-0.5">
-                                        {sensorsOnline && tempIn !== undefined ? `${tempIn.toFixed(1)}°C` : '—'}
+                                        {sensorsOnline && temperature !== undefined ? `${temperature.toFixed(1)}°C` : '—'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
@@ -262,17 +255,8 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
-                                    <Zap className={`h-5 w-5 mb-2 ${sensorsOnline && dio1?.digitalState ? 'text-amber-400' : 'text-muted-foreground'}`} />
-                                    <div className="text-xs text-muted-foreground">Обогрев</div>
-                                    <div className="font-medium mt-0.5">
-                                        {sensorsOnline && dio1?.digitalState !== null && dio1?.digitalState !== undefined
-                                            ? (dio1.digitalState ? 'Включен' : 'Отключен')
-                                            : '—'}
-                                    </div>
-                                </div>
-                                <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
                                     <Hammer className={`h-5 w-5 mb-2 ${sensorsOnline ? (glassBrokenAlarm ? 'text-red-500' : 'text-emerald-500') : 'text-muted-foreground'}`} />
-                                    <div className="text-xs text-muted-foreground">Датчик разбития</div>
+                                    <div className="text-xs text-muted-foreground">Разбитие стекла</div>
                                     <div className="font-medium mt-0.5">
                                         {sensorsOnline ? (glassBrokenAlarm ? 'Тревога' : 'Норма') : '—'}
                                     </div>

@@ -17,7 +17,10 @@ export const revalidate = 0
 const PAGE_SIZE = 1000
 const MAX_SOURCE_ROWS = 60_000
 const HISTORY_COLUMNS = "id,bus_stop_id,element,address,category,name,value,alarm,recorded_at"
-const VERIFIED_SENSOR_ELEMENTS = [1, 13, 14]
+// Разбитие стекла и совмещённый датчик температуры и влажности — всё, что
+// стоит на остановке. Свободные каналы контроллера в истории игнорируются:
+// строки по ним копились до того, как воркер перестал их писать.
+const VERIFIED_SENSOR_ELEMENTS = [1, 13]
 
 interface DatabaseHistoryRow {
     id: number
@@ -96,7 +99,7 @@ function normalizeRow(row: DatabaseHistoryRow): StopSensorHistoryRow {
         element: Number(row.element),
         address: Number(row.address ?? 0),
         category: row.category || "sensor",
-        name: row.name || `Датчик ${row.element}`,
+        name: row.name || "Датчик",
         value: row.value === null ? null : Number(row.value),
         alarm: row.alarm || "normal",
         recordedAt: row.recorded_at,

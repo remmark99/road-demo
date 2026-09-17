@@ -26,8 +26,10 @@ import {
   isControllerLinkAlert,
   ALARM_CONFIG,
   CATEGORY_LABELS,
+  FILTERABLE_CATEGORIES,
   type ControllerAlert,
 } from "@/lib/api/controller-alerts"
+import { CLIMATE_ELEMENT, GLASS_BREAK_ELEMENT } from "@/lib/api/measurements"
 import type { Alert, Camera } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -55,7 +57,6 @@ import {
   Filter,
   Camera as CameraIcon,
   Droplets,
-  Zap,
   Hammer,
   TriangleAlert,
   Mountain,
@@ -1639,7 +1640,7 @@ function ControllerCategoryIcon({
   if (category === "glass_break") return <Hammer className={className} />
   if (category === "controller_offline") return <WifiOff className={className} />
   if (category === "controller_online") return <Wifi className={className} />
-  return <Zap className={className} />
+  return <Activity className={className} />
 }
 
 function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
@@ -1747,7 +1748,7 @@ function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
               Датчик
             </div>
             <div className="flex flex-wrap gap-2">
-              {[13, 14].map((el) => {
+              {[GLASS_BREAK_ELEMENT, CLIMATE_ELEMENT].map((el) => {
                 const isSelected = selectedElements.includes(el)
                 return (
                   <Button
@@ -1757,7 +1758,9 @@ function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
                     className="gap-2"
                     onClick={() => toggleElement(el)}
                   >
-                    <Thermometer className="h-3.5 w-3.5" />
+                    {el === GLASS_BREAK_ELEMENT
+                      ? <Hammer className="h-3.5 w-3.5" />
+                      : <Thermometer className="h-3.5 w-3.5" />}
                     {getSensorLabel(el)}
                   </Button>
                 )
@@ -1773,7 +1776,8 @@ function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
               Категория
             </div>
             <div className="flex flex-wrap gap-2">
-              {Object.entries(CATEGORY_LABELS).map(([key, label]) => {
+              {FILTERABLE_CATEGORIES.map((key) => {
+                const label = CATEGORY_LABELS[key]
                 const isSelected = selectedCategories.includes(key)
                 return (
                   <Button
@@ -1869,7 +1873,7 @@ function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
               : null
             const categoryLabel =
               CATEGORY_LABELS[alert.category] || "Другая категория"
-            const unit = isControllerLinkAlert(alert) ? "мин" : alert.category === "temperature" ? "°C" : alert.category === "humidity" ? "%" : alert.category === "digital input" ? "В" : ""
+            const unit = isControllerLinkAlert(alert) ? "мин" : alert.category === "temperature" ? "°C" : alert.category === "humidity" ? "%" : ""
             const message = getRussianControllerMessage(
               alert.message,
               categoryLabel,

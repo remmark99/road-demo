@@ -34,9 +34,8 @@ export interface ControllerAlertsResult {
 }
 
 const SENSOR_LABELS: Record<number, string> = {
-    1: 'Датчик напряжения',
+    1: 'Датчик разбития стекла',
     13: 'Датчик температуры и влажности',
-    14: 'Датчик температуры',
 }
 
 export function getSensorLabel(element: number): string {
@@ -61,11 +60,25 @@ export const ALARM_CONFIG: Record<string, { label: string; color: string }> = {
 export const CATEGORY_LABELS: Record<string, string> = {
     temperature: 'Температура',
     humidity: 'Влажность',
-    'digital input': 'Напряжение',
+    'digital input': 'Разбитие стекла',
     'glass_break': 'Датчик разбития стекла',
     controller_offline: 'Контроллер не на связи',
     controller_online: 'Контроллер снова на связи',
 }
+
+/**
+ * Категории для кнопок фильтра. `digital input` остаётся в CATEGORY_LABELS,
+ * чтобы подписать старые записи, но кнопки для него нет: это тот же датчик
+ * разбития стекла, что и `glass_break`, и две одинаковые кнопки оператору
+ * только мешают.
+ */
+export const FILTERABLE_CATEGORIES = [
+    'temperature',
+    'humidity',
+    'glass_break',
+    'controller_offline',
+    'controller_online',
+] as const
 
 /**
  * Связь с самим контроллером (backend equipment-monitor), а не показание

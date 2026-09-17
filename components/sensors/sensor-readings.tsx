@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, useCallback } from "react"
-import { Thermometer, Droplets, AlertTriangle, Activity, Zap } from "lucide-react"
+import { Thermometer, Droplets, AlertTriangle, Activity, Hammer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import {
     Popover,
@@ -70,9 +70,9 @@ function SensorRow({ reading }: { reading: SensorReading }) {
         reading.temperatureAlarm === "critical" ||
         reading.humidityAlarm === "warning" ||
         reading.humidityAlarm === "critical" ||
-        reading.digitalAlarm === "warning" ||
-        reading.digitalAlarm === "critical" ||
-        reading.digitalState === false; // Usually false = not OK for sensors like DIO
+        reading.glassBreakAlarm === "warning" ||
+        reading.glassBreakAlarm === "critical" ||
+        reading.glassBreak === true;
 
     return (
         <div className="space-y-2">
@@ -113,16 +113,16 @@ function SensorRow({ reading }: { reading: SensorReading }) {
                         normalColor="text-indigo-500"
                     />
                 )}
-                {reading.digitalState !== null && (
+                {reading.glassBreak !== null && (
                     <div className="flex items-center justify-between">
                         <div className="flex items-center gap-1.5">
-                            <Zap className={`h-3.5 w-3.5 ${reading.digitalState ? "text-emerald-500" : "text-amber-500"}`} />
-                            <span className={`text-sm font-bold ${reading.digitalState ? "text-emerald-500" : "text-amber-500"}`}>
-                                {reading.digitalState ? "ОК" : "Авария"}
+                            <Hammer className={`h-3.5 w-3.5 ${reading.glassBreak ? "text-red-500" : "text-emerald-500"}`} />
+                            <span className={`text-sm font-bold ${reading.glassBreak ? "text-red-500" : "text-emerald-500"}`}>
+                                {reading.glassBreak ? "Тревога" : "Норма"}
                             </span>
                         </div>
                         <span className="text-[10px] text-muted-foreground/60 tabular-nums">
-                            {formatTime(reading.digitalUpdatedAt)}
+                            {formatTime(reading.glassBreakUpdatedAt)}
                         </span>
                     </div>
                 )}
@@ -161,8 +161,8 @@ export function SensorPopover({ busStopId }: { busStopId?: number } = {}) {
         (r) =>
             r.temperatureAlarm === "warning" || r.temperatureAlarm === "critical" ||
             r.humidityAlarm === "warning" || r.humidityAlarm === "critical" ||
-            r.digitalAlarm === "warning" || r.digitalAlarm === "critical" ||
-            r.digitalState === false
+            r.glassBreakAlarm === "warning" || r.glassBreakAlarm === "critical" ||
+            r.glassBreak === true
     )
 
     return (

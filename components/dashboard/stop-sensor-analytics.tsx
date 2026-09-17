@@ -2,18 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import {
-    Activity,
     AlertTriangle,
     Clock3,
     Database,
     Droplets,
     Gauge,
+    Hammer,
     RefreshCw,
     Thermometer,
-    Zap,
 } from "lucide-react"
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
 
+import { CLIMATE_ELEMENT, GLASS_BREAK_ELEMENT } from "@/lib/api/measurements"
 import {
     SENSOR_HISTORY_PERIODS,
     fetchStopSensorHistory,
@@ -49,11 +49,13 @@ const PERIOD_LABELS: Record<SensorHistoryHours, string> = {
     168: "7 дней",
 }
 
+// На остановке два датчика: разбитие стекла (сухой контакт на цифровом входе 1)
+// и совмещённый датчик температуры и влажности. Остальные каналы контроллера
+// свободны, и воркер их больше не пишет.
 const CATEGORY_META = {
     temperature: { label: "Температура", unit: "°C", color: "hsl(24, 95%, 53%)", icon: Thermometer },
     humidity: { label: "Влажность", unit: "%", color: "hsl(199, 89%, 48%)", icon: Droplets },
-    "voltage input": { label: "Напряжение", unit: "В", color: "hsl(262, 83%, 58%)", icon: Zap },
-    "digital input": { label: "Цифровые входы", unit: "", color: "hsl(142, 71%, 45%)", icon: Activity },
+    "digital input": { label: "Разбитие стекла", unit: "", color: "hsl(142, 71%, 45%)", icon: Hammer },
 } as const
 
 type KnownCategory = keyof typeof CATEGORY_META
@@ -61,7 +63,6 @@ type KnownCategory = keyof typeof CATEGORY_META
 const CHART_CATEGORIES: KnownCategory[] = [
     "temperature",
     "humidity",
-    "voltage input",
     "digital input",
 ]
 
@@ -104,17 +105,10 @@ function sensorDisplayName(sensor: {
     category: string
     name?: string
 }) {
-    if (sensor.element === 1 && sensor.category === "digital input") return "Датчик разбития стекла"
-    if (sensor.element >= 2 && sensor.element <= 5 && sensor.category === "digital input") {
-        return `Цифровой вход № ${sensor.element}`
-    }
-    if (sensor.element === 9 && sensor.category === "voltage input") return "Датчик напряжения № 1"
-    if (sensor.element === 10 && sensor.category === "voltage input") return "Датчик напряжения № 2"
-    if (sensor.element === 13) return "Датчик № 1"
-    if (sensor.element === 14) return "Датчик № 2"
-    return sensor.name?.trim() && !/[A-Za-z]/.test(sensor.name)
-        ? sensor.name
-        : `Датчик № ${sensor.element}`
+    if (sensor.element === GLASS_BREAK_ELEMENT) return "Датчик разбития стекла"
+    if (sensor.element === CLIMATE_ELEMENT) return "Датчик температуры и влажности"
+    // Строки старше фильтрации на бэкенде: имя из контроллера бывает латиницей.
+    return sensor.name?.trim() && !/[A-Za-z]/.test(sensor.name) ? sensor.name : "Датчик"
 }
 
 function alarmLabel(alarm: string | null | undefined) {
@@ -136,7 +130,7 @@ function deviceCountLabel(count: number) {
 
 function formatValue(category: string, value: number | null) {
     if (value === null) return "—"
-    if (category === "digital input") return value >= 0.5 ? "Включён" : "Выключен"
+    if (category === "digital input") return value >= 0.5 ? "Сработал" : "Норма"
     const unit = categoryUnit(category)
     return `${value.toLocaleString("ru-RU", { maximumFractionDigits: 1 })}${unit ? ` ${unit}` : ""}`
 }
@@ -218,7 +212,7 @@ function SensorChart({
                                 tickMargin={8}
                                 domain={category === "digital input" ? [0, 1] : ["auto", "auto"]}
                                 allowDecimals={category !== "digital input"}
-                                tickFormatter={category === "digital input" ? (value) => value ? "Вкл" : "Выкл" : undefined}
+                                tickFormatter={category === "digital input" ? (value) => value ? "Тревога" : "Норма" : undefined}
                             />
                             <ChartTooltip content={<ChartTooltipContent />} />
                             <ChartLegend content={<ChartLegendContent />} />
@@ -241,7 +235,7 @@ function SensorChart({
     )
 }
 
-function DigitalInputsCard({
+function GlassBreakCard({
     rows,
 }: {
     rows: StopSensorHistoryResponse["recent"]
@@ -276,11 +270,11 @@ function DigitalInputsCard({
         <Card>
             <CardHeader className="pb-2">
                 <CardTitle className="flex items-center gap-2 text-base">
-                    <Activity className="h-5 w-5 text-emerald-500" />
-                    Цифровые входы
+                    <Hammer className="h-5 w-5 text-emerald-500" />
+                    Разбитие стекла
                 </CardTitle>
                 <CardDescription>
-                    Последнее состояние каждого входа вместо малоинформативного графика.
+                    Последнее состояние датчика вместо малоинформативного графика.
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -431,7 +425,7 @@ export function StopSensorAnalytics() {
             )}
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Gauge className="h-4 w-4 text-primary" />Подтверждённые показатели</div><div className="mt-3 text-3xl font-semibold tabular-nums">{filteredSensors.length}</div><p className="mt-1 text-xs text-muted-foreground">{deviceCountLabel(physicalDeviceCount)}; датчик № 1 передаёт температуру и влажность</p></CardContent></Card>
+                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Gauge className="h-4 w-4 text-primary" />Подтверждённые показатели</div><div className="mt-3 text-3xl font-semibold tabular-nums">{filteredSensors.length}</div><p className="mt-1 text-xs text-muted-foreground">{deviceCountLabel(physicalDeviceCount)}; датчик температуры и влажности передаёт два показания</p></CardContent></Card>
                 <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Database className="h-4 w-4 text-sky-500" />Записей</div><div className="mt-3 text-3xl font-semibold tabular-nums">{filteredRowCount.toLocaleString("ru-RU")}</div><p className="mt-1 text-xs text-muted-foreground">В выбранном периоде</p></CardContent></Card>
                 <Card className={alarmCount ? "border-amber-500/30 bg-amber-500/[0.04]" : ""}><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className={`h-4 w-4 ${alarmCount ? "text-amber-500" : "text-emerald-500"}`} />Предупреждения контроллера</div><div className="mt-3 text-3xl font-semibold tabular-nums">{alarmCount}</div><p className="mt-1 text-xs text-muted-foreground">Каналы, где контроллер вернул статус «Предупреждение» или «Тревога»</p></CardContent></Card>
                 <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="h-4 w-4 text-violet-500" />Последняя запись</div><div className="mt-3 text-xl font-semibold tabular-nums">{formatDateTime(data?.lastRecordedAt ?? null)}</div><p className="mt-1 text-xs text-muted-foreground">Сургутское время · снимок раз в минуту</p></CardContent></Card>
@@ -449,7 +443,7 @@ export function StopSensorAnalytics() {
                     .filter((category) => selectedCategory === "all" || selectedCategory === category)
                     .map((category) => <SensorChart key={category} category={category} points={filteredSeries} hours={hours} />)}
                 {(selectedCategory === "all" || selectedCategory === "digital input") && (
-                    <DigitalInputsCard rows={filteredRecent} />
+                    <GlassBreakCard rows={filteredRecent} />
                 )}
             </div>
 

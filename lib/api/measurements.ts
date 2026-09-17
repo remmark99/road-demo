@@ -17,25 +17,32 @@ export interface SensorReading {
     label: string
     temperature: number | null
     humidity: number | null
-    digitalState: boolean | null
+    /** true — контакт разомкнут, стекло разбито. */
+    glassBreak: boolean | null
     temperatureAlarm: string | null
     humidityAlarm: string | null
-    digitalAlarm: string | null
+    glassBreakAlarm: string | null
     temperatureUpdatedAt: string | null
     humidityUpdatedAt: string | null
-    digitalUpdatedAt: string | null
+    glassBreakUpdatedAt: string | null
 }
 
+/**
+ * На остановке установлено ровно два датчика, остальные каналы контроллера —
+ * свободные клеммы, и воркер их больше не пишет (SUPPORTED_SENSORS в
+ * src/controller/glass_break_worker.py бэкенда).
+ */
+export const GLASS_BREAK_ELEMENT = 1
+export const CLIMATE_ELEMENT = 13
+
 const SENSOR_LABELS: Record<number, string> = {
-    1: 'Датчик DIO1',
-    13: 'Датчик 1',
-    14: 'Датчик 2',
+    [GLASS_BREAK_ELEMENT]: 'Датчик разбития стекла',
+    [CLIMATE_ELEMENT]: 'Датчик температуры и влажности',
 }
 
 const SENSOR_DESCRIPTIONS: Record<number, string> = {
-    1: 'Цифровой вход / Напряжение',
-    13: 'Датчик влажности и температуры',
-    14: 'Датчик температуры',
+    [GLASS_BREAK_ELEMENT]: 'Сухой контакт на стекле павильона',
+    [CLIMATE_ELEMENT]: 'Температура и влажность воздуха',
 }
 
 export interface StopSensorStateRow {
@@ -47,6 +54,57 @@ export interface StopSensorStateRow {
     value: number | null
     alarm: string | null
     updated_at: string | null
+}
+
+/** Один канал контроллера, приведённый к общему виду для обеих таблиц. */
+interface Channel {
+    value: number | null
+    alarm: string | null
+    at: string | null
+}
+
+function buildReadings(
+    glass: Channel | null,
+    temperature: Channel | null,
+    humidity: Channel | null,
+): SensorReading[] {
+    return [
+        {
+            element: GLASS_BREAK_ELEMENT,
+            label: SENSOR_LABELS[GLASS_BREAK_ELEMENT],
+            temperature: null,
+            humidity: null,
+            // Контроллер отдаёт 1 на сработавшем контакте — так же это читает воркер.
+            glassBreak: glass && glass.value !== null ? glass.value > 0.5 : null,
+            temperatureAlarm: null,
+            humidityAlarm: null,
+            glassBreakAlarm: glass?.alarm ?? null,
+            temperatureUpdatedAt: null,
+            humidityUpdatedAt: null,
+            glassBreakUpdatedAt: glass?.at ?? null,
+        },
+        {
+            element: CLIMATE_ELEMENT,
+            label: SENSOR_LABELS[CLIMATE_ELEMENT],
+            temperature: temperature?.value ?? null,
+            humidity: humidity?.value ?? null,
+            glassBreak: null,
+            temperatureAlarm: temperature?.alarm ?? null,
+            humidityAlarm: humidity?.alarm ?? null,
+            glassBreakAlarm: null,
+            temperatureUpdatedAt: temperature?.at ?? null,
+            humidityUpdatedAt: humidity?.at ?? null,
+            glassBreakUpdatedAt: null,
+        },
+    ]
+}
+
+function fromState(row: StopSensorStateRow | undefined): Channel | null {
+    return row ? { value: row.value, alarm: row.alarm, at: row.updated_at } : null
+}
+
+function fromMeasurement(row: Measurement | null): Channel | null {
+    return row ? { value: row.value ?? null, alarm: row.alarm ?? null, at: row.created_at ?? null } : null
 }
 
 /**
@@ -69,54 +127,15 @@ export async function fetchLatestMeasurements(busStopId?: number): Promise<Senso
     }
 
     const rows = data as StopSensorStateRow[]
-    const dio1 = rows.find((row) => row.element === 1 && row.category === 'digital input')
-        ?? rows.find((row) => row.element === 1)
-    const temp13 = rows.find((row) => row.element === 13 && row.category === 'temperature')
-    const hum13 = rows.find((row) => row.element === 13 && row.category === 'humidity')
-    const temp14 = rows.find((row) => row.element === 14 && row.category === 'temperature')
-        ?? rows.find((row) => row.element === 14)
 
-    return [
-        {
-            element: 1,
-            label: SENSOR_LABELS[1],
-            temperature: null,
-            humidity: null,
-            digitalState: dio1 && dio1.value !== null ? Boolean(dio1.value) : null,
-            temperatureAlarm: null,
-            humidityAlarm: null,
-            digitalAlarm: dio1?.alarm ?? null,
-            temperatureUpdatedAt: null,
-            humidityUpdatedAt: null,
-            digitalUpdatedAt: dio1?.updated_at ?? null,
-        },
-        {
-            element: 13,
-            label: SENSOR_LABELS[13],
-            temperature: temp13?.value ?? null,
-            humidity: hum13?.value ?? null,
-            digitalState: null,
-            temperatureAlarm: temp13?.alarm ?? null,
-            humidityAlarm: hum13?.alarm ?? null,
-            digitalAlarm: null,
-            temperatureUpdatedAt: temp13?.updated_at ?? null,
-            humidityUpdatedAt: hum13?.updated_at ?? null,
-            digitalUpdatedAt: null,
-        },
-        {
-            element: 14,
-            label: SENSOR_LABELS[14],
-            temperature: temp14?.value ?? null,
-            humidity: null,
-            digitalState: null,
-            temperatureAlarm: temp14?.alarm ?? null,
-            humidityAlarm: null,
-            digitalAlarm: null,
-            temperatureUpdatedAt: temp14?.updated_at ?? null,
-            humidityUpdatedAt: null,
-            digitalUpdatedAt: null,
-        },
-    ]
+    return buildReadings(
+        fromState(
+            rows.find((row) => row.element === GLASS_BREAK_ELEMENT && row.category === 'digital input')
+            ?? rows.find((row) => row.element === GLASS_BREAK_ELEMENT),
+        ),
+        fromState(rows.find((row) => row.element === CLIMATE_ELEMENT && row.category === 'temperature')),
+        fromState(rows.find((row) => row.element === CLIMATE_ELEMENT && row.category === 'humidity')),
+    )
 }
 
 /**
@@ -139,54 +158,17 @@ async function fetchLatestMeasurementsFallback(): Promise<SensorReading[]> {
         return data?.[0] ?? null
     }
 
-    const [dio1, temp13, hum13, temp14] = await Promise.all([
-        fetchLatestForElementCategory(1, 'digital input'),
-        fetchLatestForElementCategory(13, 'temperature'),
-        fetchLatestForElementCategory(13, 'humidity'),
-        fetchLatestForElementCategory(14, 'temperature'),
+    const [glass, temperature, humidity] = await Promise.all([
+        fetchLatestForElementCategory(GLASS_BREAK_ELEMENT, 'digital input'),
+        fetchLatestForElementCategory(CLIMATE_ELEMENT, 'temperature'),
+        fetchLatestForElementCategory(CLIMATE_ELEMENT, 'humidity'),
     ])
 
-    return [
-        {
-            element: 1,
-            label: SENSOR_LABELS[1],
-            temperature: null,
-            humidity: null,
-            digitalState: dio1 ? Boolean(dio1.value) : null,
-            temperatureAlarm: null,
-            humidityAlarm: null,
-            digitalAlarm: dio1?.alarm ?? null,
-            temperatureUpdatedAt: null,
-            humidityUpdatedAt: null,
-            digitalUpdatedAt: dio1?.created_at ?? null,
-        },
-        {
-            element: 13,
-            label: SENSOR_LABELS[13],
-            temperature: temp13?.value ?? null,
-            humidity: hum13?.value ?? null,
-            digitalState: null,
-            temperatureAlarm: temp13?.alarm ?? null,
-            humidityAlarm: hum13?.alarm ?? null,
-            digitalAlarm: null,
-            temperatureUpdatedAt: temp13?.created_at ?? null,
-            humidityUpdatedAt: hum13?.created_at ?? null,
-            digitalUpdatedAt: null,
-        },
-        {
-            element: 14,
-            label: SENSOR_LABELS[14],
-            temperature: temp14?.value ?? null,
-            humidity: null,
-            digitalState: null,
-            temperatureAlarm: temp14?.alarm ?? null,
-            humidityAlarm: null,
-            digitalAlarm: null,
-            temperatureUpdatedAt: temp14?.created_at ?? null,
-            humidityUpdatedAt: null,
-            digitalUpdatedAt: null,
-        },
-    ]
+    return buildReadings(
+        fromMeasurement(glass),
+        fromMeasurement(temperature),
+        fromMeasurement(humidity),
+    )
 }
 
 export { SENSOR_DESCRIPTIONS }
