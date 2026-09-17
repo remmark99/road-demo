@@ -1,5 +1,7 @@
 "use client"
 
+import { EventsExport } from '@/components/notifications/events-export'
+import { getAbandonedEpisode } from '@/lib/notifications/abandoned-episode'
 import { PeriodFilter } from '@/components/notifications/period-filter'
 import { CameraPlaceFilter } from '@/components/notifications/camera-place-filter'
 import { buildCameraPlaces, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
@@ -711,7 +713,7 @@ function ResultsHeader({
 // ═══════════════════════════════════════════════════════════════════════
 // Camera Alerts Tab
 // ═══════════════════════════════════════════════════════════════════════
-function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; places: CameraPlace[]; period: NotificationPeriod }) {
+function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras: Camera[]; places: CameraPlace[]; period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void }) {
   const searchParams = useSearchParams()
   const querySelectedTypes = useMemo(
     () => getQueryValues(searchParams, ["type", "types"]),
@@ -1283,6 +1285,11 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
         </CardContent>
       </Card>
 
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <PeriodFilter value={period} onChange={onPeriodChange} />
+        <EventsExport channel="cameras" period={period} filters={{types:(effectiveSelectedTypes.length ? effectiveSelectedTypes : allowedTypes).join(','),cameras:selectedCameras.join(','),search:cameraSearch}} />
+      </div>
+
       <ResultsHeader
         total={total}
         loading={loading}
@@ -1341,10 +1348,11 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
               ? lyingPersonEpisodesById.get(episodeId)
               : undefined
             const episodeIsOpen = episode?.status === "open"
-            const binEpisode = getBinEpisode(alert)
+            const abandonedEpisode = getAbandonedEpisode(alert)
+            const binEpisode = getBinEpisode(alert) || abandonedEpisode
             const timedEvent = binEpisode || episode
             const duration = timedEvent ? formatEventDuration(timedEvent.started_at,
-              timedEvent.status === 'open' ? new Date().toISOString() : timedEvent.ended_at || timedEvent.last_seen_at) : ['bin_full', 'lying_person'].includes(alert.alert_type) ? 'не определена' : null
+              timedEvent.status === 'open' ? new Date().toISOString() : timedEvent.ended_at || timedEvent.last_seen_at) : ['bin_full', 'lying_person', 'abandoned_object'].includes(alert.alert_type) ? 'не определена' : null
 
             return (
               <Card
@@ -1453,10 +1461,10 @@ function CameraAlertsTab({ cameras, places, period }: { cameras: Camera[]; place
                         {binEpisode ? (
                           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
                             {[
-                              { label: "До — переполненная урна",
+                              { label: abandonedEpisode ? "До — предмет оставлен" : "До — переполненная урна",
                                 url: binEpisode.first_image_url || alert.clip_path,
                                 time: binEpisode.first_image_at, empty: "Фото недоступно" },
-                              { label: "После — очищенная урна", url: binEpisode.closed_image_url,
+                              { label: abandonedEpisode ? "После — предмет убран" : "После — очищенная урна", url: binEpisode.closed_image_url,
                                 time: binEpisode.closed_image_at || binEpisode.ended_at, empty: binEpisode.status === "open" ? "Событие продолжается" : "Фото завершения недоступно" },
                             ].map(({ label, url, time, empty }) => <div key={label} className="space-y-1.5">
                               <div className="text-xs font-medium text-muted-foreground">{label}</div>
@@ -1643,7 +1651,7 @@ function ControllerCategoryIcon({
   return <Activity className={className} />
 }
 
-function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
+function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void }) {
   const [selectedElements, setSelectedElements] = useState<number[]>([])
   const [selectedAlarms, setSelectedAlarms] = useState<string[]>([])
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
@@ -1821,6 +1829,11 @@ function ControllerAlertsTab({ period }: { period: NotificationPeriod }) {
           </div>
         </CardContent>
       </Card>
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <PeriodFilter value={period} onChange={onPeriodChange} />
+        <EventsExport channel="sensors" period={period} filters={{elements:selectedElements.join(','),alarms:selectedAlarms.join(','),categories:selectedCategories.join(',')}} />
+      </div>
 
       <ResultsHeader
         total={total}
@@ -2093,7 +2106,6 @@ function NotificationsContent() {
             </p>
           </div>
 
-          {tab !== 'equipment' && <PeriodFilter value={period} onChange={setPeriod} />}
           {/* Tabs */}
           <Tabs value={tab} onValueChange={setTab} className="space-y-6">
             <TabsList>
@@ -2116,12 +2128,12 @@ function NotificationsContent() {
             </TabsList>
 
             <TabsContent value="camera">
-              <CameraAlertsTab cameras={cameras} places={places} period={period} />
+              <CameraAlertsTab cameras={cameras} places={places} period={period} onPeriodChange={setPeriod} />
             </TabsContent>
 
             {showStops && (
               <TabsContent value="controller">
-                <ControllerAlertsTab period={period} />
+                <ControllerAlertsTab period={period} onPeriodChange={setPeriod} />
               </TabsContent>
             )}
 
