@@ -10,7 +10,7 @@ import { Activity, Video, Radio, AlertTriangle, Crosshair, ChevronDown } from "l
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import type { Camera, MapFocusTarget } from "@/lib/types"
+import type { Camera, MapFocusTarget, StopEquipmentClass } from "@/lib/types"
 import type { LucideIcon } from "lucide-react"
 
 /** Один элемент раскрывающегося списка (камера или остановка с датчиками). */
@@ -187,6 +187,43 @@ function EquipmentRow({
     )
 }
 
+/**
+ * Строка разбивки по оснащению. Клик оставляет на карте только этот класс
+ * остановок, повторный клик по активной строке снимает фильтр.
+ */
+function ClassRow({
+    label,
+    value,
+    valueClass = "",
+    active,
+    onClick,
+}: {
+    label: string
+    value: number
+    valueClass?: string
+    active: boolean
+    onClick: () => void
+}) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-pressed={active}
+            title={active
+                ? "На карте только эти остановки — нажмите, чтобы показать все"
+                : "Показать на карте только эти остановки"}
+            className={`-mx-1.5 flex w-full items-center justify-between gap-2 rounded px-1.5 py-1 text-left transition-colors ${
+                active ? "bg-primary/10" : "hover:bg-muted"
+            }`}
+        >
+            <span className={`truncate ${active ? "font-medium text-foreground" : "text-muted-foreground"}`}>
+                {label}
+            </span>
+            <span className={`font-medium tabular-nums shrink-0 ${valueClass}`}>{value}</span>
+        </button>
+    )
+}
+
 function EquipmentRowSkeleton() {
     return (
         <div>
@@ -202,7 +239,17 @@ function EquipmentRowSkeleton() {
     )
 }
 
-export function BusStopsStats({ onFocusStop, historySnapshot = null }: { onFocusStop?: (target: MapFocusTarget) => void; historySnapshot?: StopHistorySnapshot | null }) {
+export function BusStopsStats({
+    onFocusStop,
+    historySnapshot = null,
+    stopClass = "all",
+    onStopClassChange,
+}: {
+    onFocusStop?: (target: MapFocusTarget) => void
+    historySnapshot?: StopHistorySnapshot | null
+    stopClass?: StopEquipmentClass
+    onStopClassChange?: (next: StopEquipmentClass) => void
+}) {
     const { modules, loading: modulesLoading } = useModuleAccess()
     const [liveData, setData] = useState<BusStopsGeoJSON | null>(null)
     const [liveCameras, setCameras] = useState<Camera[] | null>(null)
@@ -225,6 +272,9 @@ export function BusStopsStats({ onFocusStop, historySnapshot = null }: { onFocus
         const stops = new Map<number, StopInfo>()
         let camerasUnknown = 0, sensorsUnknown = 0
         let unequipped = 0
+        // Класс считается по оборудованию, как и has_equipment: у остановки
+        // могут быть только камеры, только датчики или и то, и другое.
+        let withCameras = 0, withSensors = 0
         let incidents = 0
         const sensorsOnline: FocusItem[] = []
         const sensorsOffline: FocusItem[] = []
@@ -248,6 +298,8 @@ export function BusStopsStats({ onFocusStop, historySnapshot = null }: { onFocus
             }
 
             if (sd.incident) incidents++
+            if ((sd.total_camera_count ?? 0) > 0) withCameras++
+            if (sd.has_controller) withSensors++
 
             if (sd.has_controller) {
                 const item: FocusItem = {
@@ -296,6 +348,8 @@ export function BusStopsStats({ onFocusStop, historySnapshot = null }: { onFocus
         return {
             camerasUnknown, sensorsUnknown,
             totalStops: data.features.length,
+            withCameras,
+            withSensors,
             unequipped,
             incidents,
             camerasOnline,
@@ -374,15 +428,32 @@ export function BusStopsStats({ onFocusStop, historySnapshot = null }: { onFocus
                     onSelect={handleSelect}
                 />
 
-                <div className="pt-3 border-t space-y-1.5 text-xs">
-                    <div className="flex justify-between items-center gap-2">
-                        <span className="text-muted-foreground truncate">Всего остановок</span>
-                        <span className="font-medium tabular-nums shrink-0">{stats.totalStops}</span>
-                    </div>
-                    <div className="flex justify-between items-center gap-2">
-                        <span className="text-muted-foreground truncate">Без оборудования</span>
-                        <span className="font-medium text-blue-500 tabular-nums shrink-0">{stats.unequipped}</span>
-                    </div>
+                <div className="pt-3 border-t space-y-0.5 text-xs">
+                    <ClassRow
+                        label="Всего остановок"
+                        value={stats.totalStops}
+                        active={stopClass === "all"}
+                        onClick={() => onStopClassChange?.("all")}
+                    />
+                    <ClassRow
+                        label="С камерами"
+                        value={stats.withCameras}
+                        active={stopClass === "cameras"}
+                        onClick={() => onStopClassChange?.(stopClass === "cameras" ? "all" : "cameras")}
+                    />
+                    <ClassRow
+                        label="С датчиками"
+                        value={stats.withSensors}
+                        active={stopClass === "sensors"}
+                        onClick={() => onStopClassChange?.(stopClass === "sensors" ? "all" : "sensors")}
+                    />
+                    <ClassRow
+                        label="Без оборудования"
+                        value={stats.unequipped}
+                        valueClass="text-blue-500"
+                        active={stopClass === "none"}
+                        onClick={() => onStopClassChange?.(stopClass === "none" ? "all" : "none")}
+                    />
                 </div>
 
                 {stats.incidents > 0 && (

@@ -14,7 +14,7 @@ import { fetchParksGeoJSON } from "@/lib/api/parks"
 import { fetchAnchorsGeoJSON } from "@/lib/api/anchors"
 import { fetchTkoSitesGeoJSON } from "@/lib/api/tko-sites"
 import { SHORELINE_GEOJSON } from "@/lib/mock/shoreline"
-import type { Camera, RoadStatus, AnchorsGeoJSON, TkoSitesGeoJSON, MapFocusTarget } from "@/lib/types"
+import type { Camera, RoadStatus, AnchorsGeoJSON, TkoSitesGeoJSON, MapFocusTarget, StopEquipmentClass } from "@/lib/types"
 
 import { VideoModal } from "./video-modal"
 import { BusStopModal, type SelectedBusStop } from "./bus-stop-modal"
@@ -170,6 +170,8 @@ interface SurgutMapProps {
   /** Остановка, к которой нужно приблизиться (выбор в боковой панели). */
   historySnapshot?: StopHistorySnapshot | null
   focusTarget?: MapFocusTarget | null
+  /** Выбранная строка разбивки в боковой панели — на карте остаётся только этот класс. */
+  stopClass?: StopEquipmentClass
 }
 
 // Build MapLibre expressions for road styling based on highway type
@@ -214,7 +216,7 @@ function getSimulatedStatusAtTime(osmId: number, time: Date): RoadStatus {
   return "dirty";
 }
 
-export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHoverSegment, focusTarget, historySnapshot = null }: SurgutMapProps) {
+export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHoverSegment, focusTarget, historySnapshot = null, stopClass = "all" }: SurgutMapProps) {
 
   const lastFocusRequest = useRef<number | null>(null)
   const mapContainer = useRef<HTMLDivElement>(null)
@@ -1777,6 +1779,15 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       const filteredFeatures = busStopsData.features.filter(f => {
         const sd: any = f.properties.sensor_data || {}
 
+        // Клик по строке разбивки показывает весь свой класс и перекрывает
+        // галочки статусов: иначе выбранная строка могла бы дать пустую карту
+        // (например, «Не в сети» по умолчанию выключено).
+        if (stopClass !== "all") {
+          if (stopClass === "cameras") return (sd.total_camera_count ?? 0) > 0
+          if (stopClass === "sensors") return sd.has_controller === true
+          return !sd.has_equipment
+        }
+
         if (sd.activity_status === "unknown") return true
         if (!sd.has_equipment) {
           return busStopFilters.unequipped
@@ -1808,7 +1819,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       source.setData(flatData as any)
       rawSource.setData(flatData as any)
     }
-  }, [busStopsData, cameras, mapLoaded, addBusStops, busStopFilters])
+  }, [busStopsData, cameras, mapLoaded, addBusStops, busStopFilters, stopClass])
 
   // Sync heatmap data to the GeoJSON source
   useEffect(() => {

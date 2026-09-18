@@ -9,7 +9,7 @@ import { Legend } from "@/components/map/legend"
 import { BusStopsStats } from "@/components/map/bus-stops-stats"
 import { Navigation } from "@/components/navigation"
 import { useModuleAccess } from "@/components/providers/module-context"
-import type { MapFocusTarget, RoadStatus } from "@/lib/types"
+import type { MapFocusTarget, RoadStatus, StopEquipmentClass } from "@/lib/types"
 
 export default function MapPage() {
   const { hasModule, loading: modulesLoading } = useModuleAccess()
@@ -19,6 +19,8 @@ export default function MapPage() {
   const [statusOverride, setStatusOverride] = useState<Record<string, RoadStatus>>({})
   const [hoveredSegmentId, setHoveredSegmentId] = useState<string | null>(null)
   const [focusTarget, setFocusTarget] = useState<MapFocusTarget | null>(null)
+  // Выбранная строка разбивки в правой панели («Всего» / «С камерами» / «С датчиками» / «Без оборудования»).
+  const [stopClass, setStopClass] = useState<StopEquipmentClass>("all")
 
   const handleTimeChange = useCallback((time: Date, statuses: Record<string, RoadStatus>, live: boolean) => {
     setSelectedTime(time)
@@ -41,12 +43,13 @@ export default function MapPage() {
               hoveredSegmentId={hoveredSegmentId}
               onHoverSegment={setHoveredSegmentId}
               focusTarget={focusTarget}
+              stopClass={stopClass}
             />
           </div>
 
           {/* Sidebar */}
           <div className="w-80 p-4 border-l border-border overflow-y-auto flex-shrink-0">
-            {hasModule('stops') && <BusStopsStats onFocusStop={setFocusTarget} historySnapshot={snapshot} />}
+            {hasModule('stops') && <BusStopsStats onFocusStop={setFocusTarget} historySnapshot={snapshot} stopClass={stopClass} onStopClassChange={setStopClass} />}
             <Legend />
             {hasModule('stops') && <MapReportButton />}
           </div>
