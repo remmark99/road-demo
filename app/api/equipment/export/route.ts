@@ -1,3 +1,4 @@
+import { stopRegister, registerSheets } from '@/lib/exports/stop-register'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import type { EquipmentOutage } from '@/lib/api/equipment'
@@ -43,8 +44,8 @@ export async function GET(request: NextRequest) {
     catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }) }
     try {
         const [cameras, geometry, history, outages, controllers, sensorEvents] = await Promise.all([
-            readAll<{ camera_index: number; bus_stop_id: number | null; lat: number; lng: number; name?: string }>((a, b) => supabase.from('cameras')
-                .select('camera_index,bus_stop_id,lat,lng,name').eq('module', 'stops').order('camera_index').range(a, b)),
+            readAll<{ camera_index: number; bus_stop_id: number | null; lat: number; lng: number; name?: string; description?:string }>((a, b) => supabase.from('cameras')
+                .select('camera_index,bus_stop_id,lat,lng,name,description').eq('module', 'stops').order('camera_index').range(a, b)),
             supabase.rpc('get_bus_stops_geojson'),
             readAll<MapInventoryPoint>((a, b) => supabase.from('map_inventory_history')
                 .select('recorded_at,cameras,stops,sensor_stops').lte('recorded_at', new Date(period.end).toISOString())
@@ -73,11 +74,12 @@ export async function GET(request: NextRequest) {
             if (camera.camera_index >= 10000) names[`camera:${camera.camera_index - 10000}`] = name
         }
         const days = buildMapInventoryDays(history, current, relevantOutages, period.start, period.end, names, sensorEvents.filter(e => e.bus_stop_id != null && stops.has(e.bus_stop_id)))
+        const inventory = stopRegister(geometry.data, cameras.filter(c=>ids.has(c.camera_index)), controllers)
         if (request.nextUrl.searchParams.get('format') === 'json') {
-            return NextResponse.json({ current, historyAvailable: history.length > 0, days }, { headers: { 'Cache-Control': 'private, no-store' } })
+            return NextResponse.json({ current, historyAvailable: history.length > 0, days, inventory }, { headers: { 'Cache-Control': 'private, no-store' } })
         }
         const faults = mapFaultsSheet(days)
-        const workbook = createXlsx([mapInventorySheet(days), ...(faults ? [faults] : [])])
+        const workbook = createXlsx([...registerSheets(inventory,cameras.filter(c=>ids.has(c.camera_index)),geometry.data),mapInventorySheet(days), ...(faults ? [faults] : [])])
         return new NextResponse(Buffer.from(workbook), { headers: {
             'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(mapReportFilename(from, to))}`,
@@ -85,6 +87,6 @@ export async function GET(request: NextRequest) {
         } })
     } catch (e) {
         console.error('Equipment export failed:', e instanceof Error ? e.message : 'unknown error')
-        return NextResponse.json({ error: 'Не удалось сформировать Excel. Проверьте доступность истории оборудования и повторите выгрузку.' }, { status: 503 })
+        return NextResponse.json({ error: e instanceof Error ? e.message : 'Не удалось сформировать отчёт' }, { status: 503 })
     }
 }

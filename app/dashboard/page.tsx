@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, type ComponentType } from "react"
+import dynamic from "next/dynamic"
 import { Navigation } from "@/components/navigation"
 import {
   BarChart3,
@@ -34,31 +35,33 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
-import { PassengerAnalytics } from "@/components/dashboard/passenger-analytics"
-import { StopCurrentLoadAnalytics } from "@/components/dashboard/stop-current-load-analytics"
-import { StopDistrictCurrentAnalytics } from "@/components/dashboard/stop-district-current-analytics"
-import { StopDistrictPlanAnalytics } from "@/components/dashboard/stop-district-plan-analytics"
-import { StopKpiCurrentAnalytics } from "@/components/dashboard/stop-kpi-current-analytics"
-import { StopLyingPersonAnalytics } from "@/components/dashboard/stop-lying-person-analytics"
-import { StopConditionCurrentAnalytics } from "@/components/dashboard/stop-condition-current-analytics"
-import { StopSensorAnalytics } from "@/components/dashboard/stop-sensor-analytics"
-import { StopEquipmentAnalytics } from "@/components/dashboard/stop-equipment-analytics"
-import { SecurityAnalytics } from "@/components/dashboard/security-analytics"
-import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
-import { ConditionAnalytics } from "@/components/dashboard/condition-analytics"
-import { ShoreSecurityAnalytics } from "@/components/dashboard/shore-security-analytics"
-import { ShoreSafetyAnalytics } from "@/components/dashboard/shore-safety-analytics"
-import { ShoreEmergencyAnalytics } from "@/components/dashboard/shore-emergency-analytics"
-import { ParkSecurityAnalytics } from "@/components/dashboard/park-security-analytics"
-import { ParkOperationsAnalytics } from "@/components/dashboard/park-operations-analytics"
-import { TransportRouteAnalytics } from "@/components/dashboard/transport-route-analytics"
-import { TransportServiceAnalytics } from "@/components/dashboard/transport-service-analytics"
-import { RoadCurrentAnalytics } from "@/components/dashboard/road-current-analytics"
-import { RoadEfficiencyMatrixAnalytics } from "@/components/dashboard/road-efficiency-matrix-analytics"
-import { RoadContractorsAnalytics } from "@/components/dashboard/road-contractors-analytics"
-import { RoadPrecipitationAnalytics } from "@/components/dashboard/road-precipitation-analytics"
-import { RoadCityAnalytics } from "@/components/dashboard/road-city-analytics"
+
 import { Skeleton } from "@/components/ui/skeleton"
+
+const PassengerAnalytics = dynamic(() => import("@/components/dashboard/passenger-analytics").then(m => m.PassengerAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const StopCurrentLoadAnalytics = dynamic(() => import("@/components/dashboard/stop-current-load-analytics").then(m => m.StopCurrentLoadAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const StopDistrictCurrentAnalytics = dynamic(() => import("@/components/dashboard/stop-district-current-analytics").then(m => m.StopDistrictCurrentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const StopDistrictPlanAnalytics = dynamic(() => import("@/components/dashboard/stop-district-plan-analytics").then(m => m.StopDistrictPlanAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const StopKpiCurrentAnalytics = dynamic(() => import("@/components/dashboard/stop-kpi-current-analytics").then(m => m.StopKpiCurrentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const StopLyingPersonAnalytics = dynamic(() => import("@/components/dashboard/stop-lying-person-analytics").then(m => m.StopLyingPersonAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const StopConditionCurrentAnalytics = dynamic(() => import("@/components/dashboard/stop-condition-current-analytics").then(m => m.StopConditionCurrentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const StopSensorAnalytics = dynamic(() => import("@/components/dashboard/stop-sensor-analytics").then(m => m.StopSensorAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const StopEquipmentAnalytics = dynamic(() => import("@/components/dashboard/stop-equipment-analytics").then(m => m.StopEquipmentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const SecurityAnalytics = dynamic(() => import("@/components/dashboard/security-analytics").then(m => m.SecurityAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const VandalismAnalytics = dynamic(() => import("@/components/dashboard/vandalism-analytics").then(m => m.VandalismAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const ConditionAnalytics = dynamic(() => import("@/components/dashboard/condition-analytics").then(m => m.ConditionAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const ShoreSecurityAnalytics = dynamic(() => import("@/components/dashboard/shore-security-analytics").then(m => m.ShoreSecurityAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const ShoreSafetyAnalytics = dynamic(() => import("@/components/dashboard/shore-safety-analytics").then(m => m.ShoreSafetyAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const ShoreEmergencyAnalytics = dynamic(() => import("@/components/dashboard/shore-emergency-analytics").then(m => m.ShoreEmergencyAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const ParkSecurityAnalytics = dynamic(() => import("@/components/dashboard/park-security-analytics").then(m => m.ParkSecurityAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const ParkOperationsAnalytics = dynamic(() => import("@/components/dashboard/park-operations-analytics").then(m => m.ParkOperationsAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const TransportRouteAnalytics = dynamic(() => import("@/components/dashboard/transport-route-analytics").then(m => m.TransportRouteAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const TransportServiceAnalytics = dynamic(() => import("@/components/dashboard/transport-service-analytics").then(m => m.TransportServiceAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const RoadCurrentAnalytics = dynamic(() => import("@/components/dashboard/road-current-analytics").then(m => m.RoadCurrentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const RoadEfficiencyMatrixAnalytics = dynamic(() => import("@/components/dashboard/road-efficiency-matrix-analytics").then(m => m.RoadEfficiencyMatrixAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const RoadContractorsAnalytics = dynamic(() => import("@/components/dashboard/road-contractors-analytics").then(m => m.RoadContractorsAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const RoadPrecipitationAnalytics = dynamic(() => import("@/components/dashboard/road-precipitation-analytics").then(m => m.RoadPrecipitationAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const RoadCityAnalytics = dynamic(() => import("@/components/dashboard/road-city-analytics").then(m => m.RoadCityAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 
 type DashboardView =
   | "general"

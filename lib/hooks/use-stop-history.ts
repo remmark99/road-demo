@@ -5,8 +5,9 @@ import { stopHistoryAt, type StopHistory } from '@/lib/stop-history'
 export function useStopHistory(at: Date | null, enabled: boolean) {
     const [history, setHistory] = useState<StopHistory | null>(null)
     const [error, setError] = useState<string | null>(null)
+    const historyEnabled = enabled && at !== null
     useEffect(() => {
-        if (!enabled) { setHistory(null); return }
+        if (!historyEnabled) { setHistory(null); return }
         const controller = new AbortController()
         const refresh = async () => {
             try {
@@ -21,8 +22,8 @@ export function useStopHistory(at: Date | null, enabled: boolean) {
         void refresh()
         const timer = setInterval(refresh, 60_000)
         return () => { controller.abort(); clearInterval(timer) }
-    }, [enabled])
+    }, [historyEnabled])
     const time = at?.getTime()
     const snapshot = useMemo(() => time == null ? null : stopHistoryAt(history, time), [history, time])
-    return { snapshot, loading: !history && !error, error }
+    return { snapshot, loading: historyEnabled && !history && !error, error }
 }

@@ -7,6 +7,7 @@ export interface MapInventoryDay { date: string; cameras: number | null; stops: 
 export interface MapInventoryReport {
     current: MapInventoryPoint
     historyAvailable: boolean
+    inventory?: import('./stop-register').RegisterStop[]
     days: MapInventoryDay[]
 }
 

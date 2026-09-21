@@ -1,3 +1,4 @@
+import { sensorCalendarBounds } from "@/lib/sensor-history-period"
 import { NextRequest, NextResponse } from "next/server"
 
 import {
@@ -69,7 +70,7 @@ function parseBusStopId(value: string | null) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 }
 
-function getBucketMinutes(hours: SensorHistoryHours) {
+function getBucketMinutes(hours: number) {
     if (hours <= 1) return 1
     if (hours <= 6) return 5
     if (hours <= 24) return 15
@@ -206,8 +207,15 @@ export async function GET(request: NextRequest) {
     const hours = parseHours(request.nextUrl.searchParams.get("hours"))
     const busStopId = parseBusStopId(request.nextUrl.searchParams.get("busStopId"))
     const category = request.nextUrl.searchParams.get("category")?.trim() || null
-    const to = new Date()
-    const from = new Date(to.getTime() - hours * 60 * 60 * 1000)
+    let to = new Date()
+    let from = new Date(to.getTime() - hours * 60 * 60 * 1000)
+    let rangeHours: number = hours
+    try {
+        const bounds = sensorCalendarBounds(request.nextUrl.searchParams.get("from"), request.nextUrl.searchParams.get("to"))
+        if (bounds) { from = bounds.from; to = bounds.to; rangeHours = bounds.hours }
+    } catch (error) {
+        return NextResponse.json({ error: (error as Error).message }, { status: 400 })
+    }
 
     try {
         const supabase = await createClient()
@@ -216,7 +224,7 @@ export async function GET(request: NextRequest) {
             .select(HISTORY_COLUMNS, { count: "exact" })
             .in("element", VERIFIED_SENSOR_ELEMENTS)
             .gte("recorded_at", from.toISOString())
-            .lte("recorded_at", to.toISOString())
+            .lt("recorded_at", to.toISOString())
             .order("recorded_at", { ascending: false })
             .range(0, PAGE_SIZE - 1)
 
@@ -240,7 +248,7 @@ export async function GET(request: NextRequest) {
                 .select(HISTORY_COLUMNS)
                 .in("element", VERIFIED_SENSOR_ELEMENTS)
                 .gte("recorded_at", from.toISOString())
-                .lte("recorded_at", to.toISOString())
+                .lt("recorded_at", to.toISOString())
                 .order("recorded_at", { ascending: false })
                 .range(start, end)
 
@@ -257,7 +265,7 @@ export async function GET(request: NextRequest) {
             ...pageResults.flat(),
         ].slice(0, sourceRows).map(normalizeRow)
         const stopIds = Array.from(new Set(rows.map((row) => row.busStopId))).sort((a, b) => a - b)
-        const bucketMinutes = getBucketMinutes(hours)
+        const bucketMinutes = getBucketMinutes(rangeHours)
         const payload: StopSensorHistoryResponse = {
             range: { from: from.toISOString(), to: to.toISOString() },
             bucketMinutes,

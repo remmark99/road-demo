@@ -7,6 +7,7 @@ import { ru } from "date-fns/locale"
 import {
     Bar,
     BarChart,
+    LabelList,
     CartesianGrid,
     XAxis,
     YAxis,
@@ -494,12 +495,14 @@ export function StopKpiCurrentAnalytics() {
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <ChartContainer config={districtCoverageConfig} className="h-[260px] w-full">
-                                    <BarChart data={districtChartRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
+                                    <BarChart data={districtChartRows} margin={{ left: 0, right: 12, top: 28, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                         <XAxis dataKey="districtName" tickLine={false} axisLine={false} tickMargin={8} />
-                                        <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} />
-                                        <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Bar dataKey="coveragePct" fill="var(--color-coveragePct)" radius={[5, 5, 0, 0]} />
+                                        <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
+                                        <ChartTooltip content={<ChartTooltipContent formatter={(_value, _name, item) => `${item.payload.coverageLabel} · ${item.payload.stops} ост.`} />} />
+                                        <Bar dataKey="coveragePct" fill="var(--color-coveragePct)" radius={[5, 5, 0, 0]}>
+                                            <LabelList dataKey="stops" position="top" formatter={(value: unknown) => `${value} ост.`} />
+                                        </Bar>
                                     </BarChart>
                                 </ChartContainer>
                                 <Table>
@@ -517,7 +520,7 @@ export function StopKpiCurrentAnalytics() {
                                                 <TableCell className="font-medium">{district.districtName}</TableCell>
                                                 <TableCell className="text-right tabular-nums">{integerFormat.format(district.stops)}</TableCell>
                                                 <TableCell className="text-right tabular-nums">{district.estimatedTotalLabel}</TableCell>
-                                                <TableCell className="text-right tabular-nums">{district.coverageLabel}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{district.coverageLabel} · {integerFormat.format(district.stops)} ост.</TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -530,7 +533,7 @@ export function StopKpiCurrentAnalytics() {
                         <CardHeader>
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="space-y-1.5">
-                                    <CardTitle className="text-base">Готовность остановок</CardTitle>
+                                    <CardTitle className="text-base">Сводка событий</CardTitle>
                                     <CardDescription>
                                         Операционная таблица по направлениям с онлайн-наблюдениями и событиями безопасности
                                     </CardDescription>
@@ -551,7 +554,6 @@ export function StopKpiCurrentAnalytics() {
                                         <TableHead>Остановка</TableHead>
                                         <TableHead>Район</TableHead>
                                         <TableHead className="text-right">Сейчас</TableHead>
-                                        <TableHead className="text-right">Пик</TableHead>
                                         <TableHead className="text-right">События</TableHead>
                                         <TableHead>Последние данные</TableHead>
                                         <TableHead className="text-right">Уведомления</TableHead>
@@ -574,7 +576,6 @@ export function StopKpiCurrentAnalytics() {
                                                 </TableCell>
                                                 <TableCell>{location.districtName}</TableCell>
                                                 <TableCell className="text-right tabular-nums">{integerFormat.format(location.currentPeople)}</TableCell>
-                                                <TableCell className="text-right tabular-nums">{integerFormat.format(location.peakPeople)}</TableCell>
                                                 <TableCell className="text-right tabular-nums">{integerFormat.format(location.safetyEvents)}</TableCell>
                                                 <TableCell>
                                                     <div className="flex flex-col">

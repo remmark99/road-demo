@@ -8,12 +8,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 function localDate(time: number) {
     return new Date(time + 5 * 3_600_000).toISOString().slice(0, 10)
 }
 
 export function EquipmentExport() {
+    const [equipment,setEquipment]=useState('all')
+    const [search,setSearch]=useState('')
     const [from, setFrom] = useState(() => localDate(Date.now() - 6 * 86400_000))
     const [to, setTo] = useState(() => localDate(Date.now()))
     const [busy, setBusy] = useState(false)
@@ -56,8 +59,12 @@ export function EquipmentExport() {
         } catch (e) { setError(e instanceof Error ? e.message : 'Не удалось скачать Excel') }
         finally { setBusy(false) }
     }
-    return <Card className="mb-6">
-        <CardContent className="space-y-3 p-4">
+    const inventory=(report?.inventory||[]).filter(s => {
+        const matches=equipment==='all'||equipment==='cameras'&&s.cameras>0||equipment==='sensors'&&s.sensors||equipment==='camera-only'&&s.cameras>0&&!s.sensors||equipment==='sensor-only'&&!s.cameras&&s.sensors||equipment==='none'&&!s.cameras&&!s.sensors
+        return matches && `${s.number} ${s.name} ${s.place}`.toLocaleLowerCase('ru').includes(search.trim().toLocaleLowerCase('ru'))
+    })
+    return <Card className="mb-6 min-w-0 max-w-full">
+        <CardContent className="min-w-0 space-y-3 p-4">
             <div>
                 <h2 className="font-semibold">Камеры и остановки на карте</h2>
                 <p className="mt-1 text-sm text-muted-foreground">Модуль «Остановки». Количество на конец дня, включая объекты без связи.</p>
@@ -72,13 +79,20 @@ export function EquipmentExport() {
                     {busy ? 'Формирование…' : 'Скачать Excel'}
                 </Button>
             </div>
-            <p className="text-xs text-muted-foreground">Время местное (UTC+5). Сегодня — на текущий момент. Время указывается только для проблем. Датчики считаются по оснащённым остановкам. В Excel: сводка «По дням» и подробности на листе «Сбои».</p>
+            <p className="text-xs text-muted-foreground">Время местное (UTC+5). Сегодня — на текущий момент. Время указывается только для проблем. Датчики считаются по оснащённым остановкам. В Excel: списки остановок по оснащению и список камер на момент выгрузки; «По дням» и «Сбои» — за выбранный период. Все листы — таблицы с фильтрами.</p>
             {loading && <p className="text-sm text-muted-foreground" role="status">Загрузка сводки…</p>}
             {report && <>
                 <div className="grid grid-cols-2 gap-3">
                     <div className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">Камер на карте сейчас</p><p className="mt-1 text-2xl font-semibold tabular-nums">{report.current.cameras}</p></div>
                     <div className="rounded-lg border p-3"><p className="text-sm text-muted-foreground">Остановок на карте сейчас</p><p className="mt-1 text-2xl font-semibold tabular-nums">{report.current.stops}</p></div>
                 </div>
+                <div className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1"><Label>Оснащение</Label><Select value={equipment} onValueChange={setEquipment}><SelectTrigger aria-label="Оснащение остановок" className="w-52"><SelectValue /></SelectTrigger><SelectContent>{[['all','Все остановки'],['cameras','Есть камеры'],['sensors','Есть датчики'],['camera-only','Только камеры'],['sensor-only','Только датчики'],['none','Нет оборудования']].map(([v,label])=><SelectItem key={v} value={v}>{label}</SelectItem>)}</SelectContent></Select></div>
+                    <div className="min-w-0 flex-1 basis-48 space-y-1"><Label htmlFor="register-search">Остановка, номер или адрес</Label><Input id="register-search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Поиск остановки" /></div>
+                </div>
+                <p className="text-sm text-muted-foreground">Текущее оснащение · Найдено: {inventory.length}. Excel содержит все группы на отдельных листах.</p>
+                <div className="max-h-80 overflow-auto rounded-lg border"><table className="w-full text-sm"><thead className="sticky top-0 bg-muted"><tr>{['№','Номер остановки','Остановка / место','Есть камеры','Есть датчики','Камеры'].map(h=><th key={h} className="p-3 text-left">{h}</th>)}</tr></thead><tbody>{inventory.map((s,i)=><tr key={s.id} className="border-t align-top even:bg-muted/20"><td className="p-3">{i+1}</td><td className="p-3 whitespace-nowrap">{s.number}</td><td className="p-3">{s.name}{s.place!==s.name&&<p className="text-xs text-muted-foreground">{s.place}</p>}</td><td className="p-3">{s.cameras?`Да (${s.cameras})`:'Нет'}</td><td className="p-3">{s.sensors?'Да':'Нет'}</td><td className="p-3 whitespace-pre-line">{s.cameraNames||'—'}</td></tr>)}{!inventory.length&&<tr><td colSpan={6} className="p-4 text-muted-foreground">Нет остановок по выбранным условиям.</td></tr>}</tbody></table></div>
+                <h3 className="pt-3 font-medium">История по дням</h3>
                 {report.days.some(day => day.cameras === null) && <p className="text-sm text-muted-foreground">Для прошлых дат без сохранённой истории количество не указано.</p>}
                 <div className="overflow-x-auto rounded-lg border">
                     <table className="w-full text-sm">

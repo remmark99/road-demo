@@ -1,3 +1,4 @@
+import { sessionRequest } from '../request-cache'
 import {
     resolveActivityStatus,
     type StopActivityEntry,
@@ -66,7 +67,7 @@ const OFFLINE_SENSOR_DATA: BusStopSensorData = {
     last_sensor_at: null,
 }
 
-let cachedGeoJSON: BusStopsGeoJSON | null = null
+
 
 export function toSensorData(entry: StopActivityEntry | undefined): BusStopSensorData {
     if (!entry) return { ...OFFLINE_SENSOR_DATA }
@@ -97,18 +98,14 @@ export function toSensorData(entry: StopActivityEntry | undefined): BusStopSenso
  */
 export async function fetchBusStopsGeoJSON(): Promise<BusStopsGeoJSON> {
     try {
-        let geoJSON = cachedGeoJSON
-
-        if (!geoJSON) {
-            const res = await fetch('/api/bus-stops')
-            if (!res.ok) throw new Error(`Failed to fetch bus stops: ${res.status}`)
-            geoJSON = await res.json() as BusStopsGeoJSON
-            cachedGeoJSON = geoJSON
-        }
-
-        // Activity is volatile, so it is re-read on every call while the
-        // geometry itself stays cached.
-        const activity = await fetchStopActivity()
+        const [geoJSON, activity] = await Promise.all([
+            sessionRequest('stop-geometry',60_000,async () => {
+                const res=await fetch('/api/bus-stops')
+                if(!res.ok)throw new Error(`Failed to fetch bus stops: ${res.status}`)
+                return res.json() as Promise<BusStopsGeoJSON>
+            }),
+            fetchStopActivity(),
+        ])
 
         return {
             ...geoJSON,
