@@ -1,3 +1,5 @@
+import { cameraPlace, coordinates } from '@/lib/exports/stop-register'
+import { getStopComplexByCameraIndex } from '@/lib/stop-analytics-config'
 import { readReportRows } from '@/lib/exports/read-report-rows'
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
@@ -29,10 +31,13 @@ export async function GET(request:NextRequest){
   const geometry=(admin||modules.includes('stops'))?await db.rpc('get_bus_stops_geojson'):{data:{features:[]},error:null}
   if(geometry.error)throw new Error('Не удалось прочитать адреса остановок')
   const stops=(geometry.data?.features||[]).map((f:{properties:Record<string,unknown>})=>f.properties)
-  const stopNames=new Map<number,string>(stops.map((p:{id:number;address?:string;name?:string})=>[p.id,p.address||p.name||'Адрес не указан']))
+  const stopNames=new Map<number,string>((geometry.data?.features||[]).map((f:{properties:{id:number;address?:string;name?:string;short_name?:string};geometry?:{coordinates?:number[]}})=>{
+   const place=f.properties.address?.trim()||f.properties.name?.trim()||coordinates(f.geometry?.coordinates?.[1],f.geometry?.coordinates?.[0])
+   return [f.properties.id,place?[place,f.properties.short_name?`№ ${f.properties.short_name}`:null].filter(Boolean).join(' · '):'']
+  }))
   let sheet
   if(channel==='cameras'){
-   const cameras=await readReportRows<Record<string,unknown>>((a,b)=>{let q=db.from('cameras').select('camera_index,bus_stop_id,module,name,description').order('camera_index').range(a,b);if(!admin)q=q.in('module',modules);return q})
+   const cameras=await readReportRows<Record<string,unknown>>((a,b)=>{let q=db.from('cameras').select('camera_index,bus_stop_id,module,name,description,lat,lng').order('camera_index').range(a,b);if(!admin)q=q.in('module',modules);return q})
    const places=buildCameraPlaces(cameras.map(c=>({cameraIndex:c.camera_index,busStopId:c.bus_stop_id,module:c.module,name:c.name,description:c.description}) as Camera),stops)
    const indexes=filteredCameraIndexes(places,params.get('search')||'',selected)
    const rows=indexes?.length===0?[]:await readReportRows<Alert>((a,b)=>{
@@ -46,7 +51,13 @@ export async function GET(request:NextRequest){
    })
    const ids=[...new Set(rows.filter(a=>a.alert_type==='lying_person').map(a=>a.metadata?.episode_id).filter((id):id is string=>typeof id==='string'))],episodes=new Map<string,LyingPersonEpisode>()
    for(let i=0;i<ids.length;i+=100){const {data,error}=await db.from('lying_person_episodes').select('*').in('id',ids.slice(i,i+100));if(error)throw new Error('Не удалось прочитать длительность событий');for(const e of data||[])episodes.set(e.id,e)}
-   sheet=cameraEventSheet(rows,episodes,a=>{const p=places.find(p=>p.cameraIndexes.includes(a.camera_index??-1)||(a.module_name==='stops'&&p.cameraIndexes.some(i=>i>=10000&&i-10000===a.camera_index)));return p?[p.label,p.detail].filter(Boolean).join(' · '):'Адрес не указан'},type=>ALERT_TYPE_CONFIG[type]?.label||'Другое событие')
+   sheet=cameraEventSheet(rows,episodes,a=>{
+    const camera=cameras.find(c=>c.module===a.module_name && (c.camera_index===a.camera_index || a.module_name==='stops'&&Number(c.camera_index)>=10000&&Number(c.camera_index)-10000===a.camera_index))
+    if(camera)return `${cameraPlace(camera as unknown as import('@/lib/exports/stop-register').RegisterCamera,geometry.data)} · Камера №${camera.camera_index}`
+    const complex=a.module_name==='stops'&&a.camera_index!=null?getStopComplexByCameraIndex(a.camera_index>=10000?a.camera_index-10000:a.camera_index):null
+    if(complex)return `${complex.stopName} · № ${complex.locationId} · Камера №${a.camera_index}`
+    throw new Error(`Для события ${a.id} не найдена камера №${a.camera_index}. Восстановите привязку в справочнике для полного отчёта.`)
+   },type=>ALERT_TYPE_CONFIG[type]?.label||'Другое событие')
   }else{
    const rows=await readReportRows<ControllerAlert>((a,b)=>{
     let q=db.from('controller_alerts').select('*').eq('module_name','stops').order('created_at').order('id').range(a,b)
@@ -57,7 +68,7 @@ export async function GET(request:NextRequest){
     if(categories.length)q=q.in('category',expandCategoryFilter(categories))
     return q
    })
-   sheet=sensorEventSheet(rows,a=>stopNames.get(a.bus_stop_id??-1)||'Адрес не указан',a=>{const name=CATEGORY_LABELS[a.category]||'Событие датчика';const unit=a.category==='temperature'?'°C':a.category==='humidity'?'%':a.category==='digital input'?'В':null;return unit&&Number.isFinite(a.value)?`${name}: ${a.value.toLocaleString('ru-RU')} ${unit}`:name},alarm=>ALARM_CONFIG[alarm]?.label||'Зафиксировано')
+   sheet=sensorEventSheet(rows,a=>{const place=stopNames.get(a.bus_stop_id??-1);if(!place)throw new Error(`Для события датчика ${a.id} не найдено место остановки №${a.bus_stop_id}. Заполните справочник.`);return place},a=>{const name=CATEGORY_LABELS[a.category]||'Событие датчика';const unit=a.category==='temperature'?'°C':a.category==='humidity'?'%':a.category==='digital input'?'В':null;return unit&&Number.isFinite(a.value)?`${name}: ${a.value.toLocaleString('ru-RU')} ${unit}`:name},alarm=>ALARM_CONFIG[alarm]?.label||'Зафиксировано')
   }
   const day=(v:string)=>v.split('-').reverse().join('.')
   const period=from&&to?`с ${day(from)} по ${day(to)}`:from?`с ${day(from)}`:to?`по ${day(to)}`:'за всё время'

@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
     AlertTriangle,
     Clock3,
@@ -21,6 +21,7 @@ import {
     type StopSensorHistoryResponse,
     type StopSensorSeriesPoint,
 } from "@/lib/api/stop-sensor-history"
+import { SensorCalendarPeriod } from "./sensor-calendar-period"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -85,7 +86,7 @@ function formatDateTime(value: string | null) {
     }).format(new Date(value))
 }
 
-function formatChartTime(value: string, hours: SensorHistoryHours) {
+function formatChartTime(value: string, hours: number) {
     return new Intl.DateTimeFormat("ru-RU", hours > 24
         ? { timeZone: "Asia/Yekaterinburg", day: "2-digit", month: "2-digit", hour: "2-digit" }
         : { timeZone: "Asia/Yekaterinburg", hour: "2-digit", minute: "2-digit" }
@@ -154,7 +155,7 @@ function SensorChart({
 }: {
     category: KnownCategory
     points: StopSensorSeriesPoint[]
-    hours: SensorHistoryHours
+    hours: number
 }) {
     const meta = CATEGORY_META[category]
     const Icon = meta.icon
@@ -307,6 +308,8 @@ function GlassBreakCard({
 
 export function StopSensorAnalytics() {
     const [hours, setHours] = useState<SensorHistoryHours>(24)
+    const [period, setPeriod] = useState<{ from: string; to: string } | null>(null)
+    const requestId = useRef(0)
     const [selectedStop, setSelectedStop] = useState("all")
     const [selectedCategory, setSelectedCategory] = useState("all")
     const [selectedTableSensor, setSelectedTableSensor] = useState("all")
@@ -316,20 +319,22 @@ export function StopSensorAnalytics() {
     const [error, setError] = useState<string | null>(null)
 
     const loadData = useCallback(async () => {
+        const id = ++requestId.current
         setLoading(true)
         setError(null)
         try {
-            setData(await fetchStopSensorHistory({ hours }))
+            const result = await fetchStopSensorHistory({ hours, ...period })
+            if (id === requestId.current) setData(result)
         } catch (loadError) {
-            setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить историю")
+            if (id === requestId.current) { setData(null); setError(loadError instanceof Error ? loadError.message : "Не удалось загрузить историю") }
         } finally {
-            setLoading(false)
+            if (id === requestId.current) setLoading(false)
         }
-    }, [hours])
+    }, [hours, period])
 
     useEffect(() => {
         const timer = window.setTimeout(() => void loadData(), 0)
-        return () => window.clearTimeout(timer)
+        return () => { window.clearTimeout(timer); requestId.current++ }
     }, [loadData])
 
     const stopId = selectedStop === "all" ? null : Number(selectedStop)
@@ -371,7 +376,7 @@ export function StopSensorAnalytics() {
             <div className="space-y-5 p-4 md:p-6">
                 <Skeleton className="h-20 w-full" />
                 <div className="grid gap-4 md:grid-cols-4">{Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-28" />)}</div>
-                <div className="grid gap-5 xl:grid-cols-2"><Skeleton className="h-80" /><Skeleton className="h-80" /></div>
+                <div className="grid gap-5 xl:grid-cols-3"><Skeleton className="h-80" /><Skeleton className="h-80" /><Skeleton className="h-80" /></div>
             </div>
         )
     }
@@ -382,8 +387,8 @@ export function StopSensorAnalytics() {
                 <div>
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">История датчиков</h2>
-                        <Badge variant={isStale ? "destructive" : "secondary"}>
-                            {isStale ? "Нет свежих данных" : "Данные поступают"}
+                        <Badge variant={!period && isStale ? "destructive" : "secondary"}>
+                            {period ? "Выбранный период" : isStale ? "Нет свежих данных" : "Данные поступают"}
                         </Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -392,12 +397,13 @@ export function StopSensorAnalytics() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
-                    <Select value={String(hours)} onValueChange={(value) => setHours(Number(value) as SensorHistoryHours)}>
-                        <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
+                    <Select value={period ? "" : String(hours)} onValueChange={(value) => { setPeriod(null); setHours(Number(value) as SensorHistoryHours) }}>
+                        <SelectTrigger className="w-[130px]"><SelectValue placeholder="Свой период" /></SelectTrigger>
                         <SelectContent>
                             {SENSOR_HISTORY_PERIODS.map((period) => <SelectItem key={period} value={String(period)}>{PERIOD_LABELS[period]}</SelectItem>)}
                         </SelectContent>
                     </Select>
+                    <SensorCalendarPeriod value={period} onChange={setPeriod} />
                     <Select value={selectedStop} onValueChange={setSelectedStop}>
                         <SelectTrigger className="w-[210px]"><SelectValue placeholder="Все остановки" /></SelectTrigger>
                         <SelectContent>
@@ -437,11 +443,11 @@ export function StopSensorAnalytics() {
                 </div>
             )}
 
-            <div className="grid gap-5 xl:grid-cols-2">
+            <div className={`grid gap-5 ${selectedCategory === "all" ? "xl:grid-cols-3" : "grid-cols-1"}`}>
                 {CHART_CATEGORIES
                     .filter((category) => category !== "digital input")
                     .filter((category) => selectedCategory === "all" || selectedCategory === category)
-                    .map((category) => <SensorChart key={category} category={category} points={filteredSeries} hours={hours} />)}
+                    .map((category) => <SensorChart key={category} category={category} points={filteredSeries} hours={data ? (Date.parse(data.range.to) - Date.parse(data.range.from)) / 3600_000 : hours} />)}
                 {(selectedCategory === "all" || selectedCategory === "digital input") && (
                     <GlassBreakCard rows={filteredRecent} />
                 )}

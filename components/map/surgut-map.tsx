@@ -1893,13 +1893,13 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
   // Fetch heatmap data when dependencies change
   useEffect(() => {
-    if (!hasModule('stops')) return
+    if (!hasModule('stops') || !showHeatmap) return
     if (heatmapMode === "safety") {
       fetchBusStopHeatmapData(heatmapTimeWindow, heatmapAlertTypes).then(setHeatmapData)
     } else {
       fetchBusStopOccupancyHeatmapData(heatmapTimeWindow).then(setOccupancyData)
     }
-  }, [hasModule, heatmapMode, heatmapTimeWindow, heatmapAlertTypes])
+  }, [hasModule, showHeatmap, heatmapMode, heatmapTimeWindow, heatmapAlertTypes])
 
   // Auto-refresh heatmap data every 5 minutes
   useEffect(() => {

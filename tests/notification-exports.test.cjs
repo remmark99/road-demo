@@ -33,10 +33,10 @@ test('sensor recovery shows the measured outage; point measurements do not inven
  assert.equal(sheet.rows[1][2],'04.09.2026 06:00');assert.equal(sheet.rows[1][3],'04.09.2026 07:00');assert.equal(sheet.rows[1][4],'1 ч.')
  assert.equal(sheet.rows[2][3],'—');assert.equal(sheet.rows[2][4],'Не определена')
 })
-function endpoint({user={id:'user'},profile={role:'user',modules:['stops']},rows=[]}={}){
+function endpoint({user={id:'user'},profile={role:'user',modules:['stops']},rows=[],cameras=[],features=[]}={}){
  const calls=[]
- const db={auth:{getUser:async()=>({data:{user},error:null})},rpc:async()=>({data:{features:[]},error:null}),from(table){
-  const state={a:0,b:999};const query=new Proxy({}, {get(_,key){if(key==='then')return resolve=>resolve({data:table==='profiles'?profile:table==='alerts_with_bin_episodes'||table==='controller_alerts'?rows.slice(state.a,state.b+1):[],error:null});return(...args)=>{calls.push([table,key,...args]);if(key==='range'){state.a=args[0];state.b=args[1]}return query}}});return query
+ const db={auth:{getUser:async()=>({data:{user},error:null})},rpc:async()=>({data:{features},error:null}),from(table){
+  const state={a:0,b:999};const query=new Proxy({}, {get(_,key){if(key==='then')return resolve=>resolve({data:table==='profiles'?profile:table==='cameras'?cameras:table==='alerts_with_bin_episodes'||table==='controller_alerts'?rows.slice(state.a,state.b+1):[],error:null});return(...args)=>{calls.push([table,key,...args]);if(key==='range'){state.a=args[0];state.b=args[1]}return query}}});return query
  }}
  const mod=load('app/api/notifications/export/route.ts',{'@/lib/supabase/server':{createClient:async()=>db},'@/lib/api/alerts':{ALERT_TYPE_CONFIG:{}},'@/lib/api/controller-alerts':{CATEGORY_LABELS:{},ALARM_CONFIG:{}}})
  return {calls,...mod}
@@ -56,4 +56,16 @@ test('report reads every page and fails closed when a page is unavailable',async
  const {readReportRows}=load('lib/exports/read-report-rows.ts'),rows=Array.from({length:1001},(_,id)=>({id})),pages=[]
  assert.equal((await readReportRows(async(a,b)=>{pages.push(a);return {data:rows.slice(a,b+1),error:null}})).length,1001)
  assert.deepEqual(pages,[0,1000]);await assert.rejects(readReportRows(async()=>({data:null,error:{message:'offline'}})))
+})
+
+test('camera export resolves pipeline aliases within the event module and rejects missing locations',async()=>{
+ const rows=[{id:'a',alert_type:'smoking',module_name:'stops',camera_index:7,timestamp:'2026-09-03T12:00:00Z'}]
+ const cameras=[{camera_index:7,module:'roads',description:'Чужой адрес'}, {camera_index:10007,module:'stops',description:'Нужный адрес',lat:61,lng:73}]
+ const req={nextUrl:new URL('http://local/api/notifications/export?channel=cameras')}
+ const result=await endpoint({rows,cameras}).GET(req)
+ assert.equal(result.status,200)
+ const xml=strFromU8(unzipSync(new Uint8Array(await result.arrayBuffer()))['xl/worksheets/sheet1.xml'])
+ assert.ok(xml.includes('Нужный адрес'));assert.ok(!xml.includes('Чужой адрес'))
+ const missing=await endpoint({rows:[{...rows[0],module_name:'roads',camera_index:999999}]}).GET(req)
+ assert.equal(missing.status,503);assert.ok((await missing.json()).error.includes('999999'))
 })

@@ -1,3 +1,4 @@
+import { sessionRequest } from '../request-cache'
 import {
     indexEquipmentStatus,
     monitoredCameraOnline,
@@ -236,9 +237,11 @@ export function buildStopActivity({
 
 export async function fetchStopActivity(): Promise<StopActivityResponse> {
     try {
+        return await sessionRequest('stop-activity',10_000,async () => {
         const res = await fetch('/api/stop-activity', { cache: 'no-store' })
         if (!res.ok) throw new Error(`Failed to fetch stop activity: ${res.status}`)
         return await res.json() as StopActivityResponse
+        })
     } catch (error) {
         console.error('Error fetching stop activity:', error)
         return { freshnessMs: STOP_ACTIVITY_FRESHNESS_MS, stops: {} }

@@ -1,3 +1,4 @@
+import { sessionRequest } from '../request-cache'
 import { fetchStopSafetyAlerts, type StopSafetyAlert } from "@/lib/api/alerts"
 import {
     fetchBusynessWindows,
@@ -242,7 +243,11 @@ export async function fetchStopCameras(): Promise<StopCameraRow[]> {
     return (data ?? []) as StopCameraRow[]
 }
 
-export async function fetchStopCurrentAnalyticsData(range: RangeBounds): Promise<StopCurrentAnalyticsData> {
+export function fetchStopCurrentAnalyticsData(range: RangeBounds): Promise<StopCurrentAnalyticsData> {
+    const endKey = Math.abs(Date.now()-range.to.getTime()) < 30_000 ? `live:${Math.floor(range.to.getTime()/15_000)}` : range.to.toISOString()
+    return sessionRequest(`stop-analytics:${range.from.toISOString()}:${endKey}`,15_000,()=>loadStopCurrentAnalyticsData(range))
+}
+async function loadStopCurrentAnalyticsData(range: RangeBounds): Promise<StopCurrentAnalyticsData> {
     const [stops, initialBusynessResult, initialAlerts, cameras] = await Promise.all([
         fetchCurrentStops(),
         fetchBusynessWindows({ from: range.from, to: range.to }),
@@ -264,14 +269,10 @@ export async function fetchStopCurrentAnalyticsData(range: RangeBounds): Promise
                 to: endOfLocalDay(latestDate),
             }
             displayedRange = fallbackRange
-            busynessResult = await fetchBusynessWindows({
-                from: fallbackRange.from,
-                to: fallbackRange.to,
-            })
-            alerts = await fetchStopSafetyAlerts({
-                from: fallbackRange.from,
-                to: fallbackRange.to,
-            })
+            ;[busynessResult, alerts] = await Promise.all([
+                fetchBusynessWindows({ from: fallbackRange.from, to: fallbackRange.to }),
+                fetchStopSafetyAlerts({ from: fallbackRange.from, to: fallbackRange.to }),
+            ])
         }
     }
 

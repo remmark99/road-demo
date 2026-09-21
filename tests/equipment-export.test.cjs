@@ -92,7 +92,7 @@ test('XLSX preserves numeric counts, empty unknown values and safe literal strin
 const { buildMapInventoryDays, mapCameraIds } = load('lib/exports/map-inventory.ts')
 function client({user=true,access=true,fail=false,cameras=[],history=[],outages=[],controllers=[],sensorEvents=[],stopIds=[],missingHistory=false}={}) {
     return {auth:{getUser:async()=>({data:{user:user?{id:'test'}:null},error:null})},
-        rpc:async()=>({data:{features:stopIds.map(id=>({properties:{id}}))},error:fail?'unavailable':null}),
+        rpc:async()=>({data:{features:stopIds.map(id=>({properties:{id,name:`Остановка ${id}`,address:`Улица ${id}`},geometry:{coordinates:[73,61]}}))},error:fail?'unavailable':null}),
         from(table){
         let from=0,to=999
         const chain={select(){return chain},eq(){return chain},order(){return chain},gte(){return chain},lte(){return chain},lt(){return chain},range(a,b){from=a;to=b;return chain},
@@ -120,9 +120,9 @@ test('map report reads all objects, counts offline objects and exports one row p
     assert.match(disposition,/^attachment; filename\*=UTF-8''/)
     assert.equal(decodeURIComponent(disposition.split("UTF-8''")[1]),'Отчёт об остановках с 11.09.2026 по 11.09.2026.xlsx')
     const files=unzipSync(new Uint8Array(await response.arrayBuffer()))
-    const sheet=strFromU8(files['xl/worksheets/sheet1.xml'])
+    const sheet=strFromU8(files['xl/worksheets/sheet8.xml'])
     assert.match(sheet,/<v>1001<\/v>/)
-    assert.equal(Object.keys(files).filter(name => /^xl\/worksheets\/sheet\d+\.xml$/.test(name)).length, 1)
+    assert.equal(Object.keys(files).filter(name => /^xl\/worksheets\/sheet\d+\.xml$/.test(name)).length, 8)
     assert.equal((sheet.match(/<row /g)||[]).length,2)
     assert.match(sheet,/11\.09\.2026/)
     const json=await (await request(options,'from=2026-09-11&to=2026-09-11&format=json')).json()
@@ -178,7 +178,7 @@ test('daily report names locations and deduplicates repeated sensor faults withi
     const days=buildMapInventoryDays([{...current,recorded_at:iso(0)}],current,[outage(1,130,iso(7),iso(8))],at(0),at(24),{'camera:130':'Никольский — камера №130','controller:10':'Никольский'},sensorEvents)
     assert.equal(days[0].sensor_stops,10)
     assert.equal(days[0].failures,2)
-    assert.equal(days[0].events.filter(e=>e.includes('разбитие стекла')).length,1)
+    assert.equal(days[0].events.filter(e=>e.includes('инцидент')).length,1)
     assert.match(days[0].note,/Никольский/)
 })
 
