@@ -2,7 +2,7 @@
 import { useRef, useState } from 'react'
 import { DateRangePicker } from '@/components/date-range-picker'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { notificationDate, notificationPeriodBounds, type NotificationPeriod } from '@/lib/notifications/feed-filters'
+import { notificationDate, type NotificationPeriod } from '@/lib/notifications/feed-filters'
 
 export function PeriodFilter({ value, onChange }: { value: NotificationPeriod; onChange: (value: NotificationPeriod) => void }) {
   const [open, setOpen] = useState(false)
@@ -15,6 +15,6 @@ export function PeriodFilter({ value, onChange }: { value: NotificationPeriod; o
       <SelectTrigger aria-label="Период уведомлений" className="h-9 w-[145px]"><SelectValue /></SelectTrigger>
       <SelectContent onCloseAutoFocus={event => { if (!custom.current) return; custom.current = false; event.preventDefault(); setOpen(true) }}>{[['all','Всё время'],['today','Сегодня'],['yesterday','Вчера'],['week','Неделя'],['month','Месяц'],['custom','Свой период']].map(([key,label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
     </Select>
-    <DateRangePicker value={value} onChange={onChange} validate={notificationPeriodBounds} label={preset === 'custom' ? undefined : 'Выбрать даты'} open={open} onOpenChange={setOpen} />
+    <DateRangePicker value={value} onChange={onChange} label={preset === 'custom' ? undefined : 'Период'} open={open} onOpenChange={setOpen} />
   </div>
 }

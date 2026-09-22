@@ -21,7 +21,6 @@ import {
     type StopSensorHistoryResponse,
     type StopSensorSeriesPoint,
 } from "@/lib/api/stop-sensor-history"
-import { sensorCalendarBounds } from "@/lib/sensor-history-period"
 import { DateRangePicker } from "@/components/date-range-picker"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -404,7 +403,7 @@ export function StopSensorAnalytics() {
                             {SENSOR_HISTORY_PERIODS.map((period) => <SelectItem key={period} value={String(period)}>{PERIOD_LABELS[period]}</SelectItem>)}
                         </SelectContent>
                     </Select>
-                    <DateRangePicker value={period} onChange={setPeriod} validate={range => sensorCalendarBounds(range.from, range.to)} />
+                    <DateRangePicker value={period} onChange={setPeriod} />
                     <Select value={selectedStop} onValueChange={setSelectedStop}>
                         <SelectTrigger className="w-[210px]"><SelectValue placeholder="Все остановки" /></SelectTrigger>
                         <SelectContent>
