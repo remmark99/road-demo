@@ -41,7 +41,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 const PassengerAnalytics = dynamic(() => import("@/components/dashboard/passenger-analytics").then(m => m.PassengerAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const StopCurrentLoadAnalytics = dynamic(() => import("@/components/dashboard/stop-current-load-analytics").then(m => m.StopCurrentLoadAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const StopDistrictCurrentAnalytics = dynamic(() => import("@/components/dashboard/stop-district-current-analytics").then(m => m.StopDistrictCurrentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const StopDistrictPlanAnalytics = dynamic(() => import("@/components/dashboard/stop-district-plan-analytics").then(m => m.StopDistrictPlanAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const StopKpiCurrentAnalytics = dynamic(() => import("@/components/dashboard/stop-kpi-current-analytics").then(m => m.StopKpiCurrentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const StopLyingPersonAnalytics = dynamic(() => import("@/components/dashboard/stop-lying-person-analytics").then(m => m.StopLyingPersonAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const StopConditionCurrentAnalytics = dynamic(() => import("@/components/dashboard/stop-condition-current-analytics").then(m => m.StopConditionCurrentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
@@ -168,10 +167,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     label: "Микрорайоны",
     icon: Map,
     module: "stops",
-    stopModes: {
-      current: StopDistrictCurrentAnalytics,
-      plan: StopDistrictPlanAnalytics,
-    },
+    component: StopDistrictCurrentAnalytics,
   },
   {
     id: "stop_security",

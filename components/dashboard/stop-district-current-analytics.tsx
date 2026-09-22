@@ -413,7 +413,7 @@ export function StopDistrictCurrentAnalytics() {
             ) : !error && data ? (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <KpiCard
-                        title="Микрорайонов в витрине"
+                        title="Микрорайонов"
                         value={integerFormat.format(districtSummaries.length)}
                         caption="по сопоставлению остановок"
                         detail={`${integerFormat.format(activeDistricts.length)} с онлайн-данными или событиями`}
