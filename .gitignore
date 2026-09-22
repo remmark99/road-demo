@@ -44,3 +44,6 @@ next-env.d.ts
 # AI
 directives/
 /docs/
+
+# map basemap mirror (npm run map:fetch)
+/public/map/

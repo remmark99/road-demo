@@ -1,0 +1,8 @@
+{
+  "center": { "lng": 73.396344, "lat": 61.253954 },
+  "mapBoxKm": 20,
+  "tileBoxKm": 24,
+  "minZoom": 10,
+  "maxZoom": 19,
+  "tileMaxZoom": 14
+}

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { historicalCameras, historicalStops, type StopHistorySnapshot } from "@/lib/stop-history"
 import { useMapPreference } from "@/lib/hooks/use-map-preference"
+import { MAP_MAX_BOUNDS, MIN_ZOOM, MAX_ZOOM } from "@/lib/map-bounds"
+import { loadMapStyle } from "@/lib/map-style"
 import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
@@ -35,13 +37,6 @@ const statusColors: Record<RoadStatus, string> = {
   warning: "#f59e0b",
   unknown: "#6b7280"
 }
-
-// OpenFreeMap serves the Positron / Dark Matter styles without an API key.
-// CARTO's raster basemaps now watermark unauthenticated tiles.
-const getMapStyle = (isDark: boolean) =>
-  isDark
-    ? "https://tiles.openfreemap.org/styles/dark"
-    : "https://tiles.openfreemap.org/styles/positron"
 
 // Generate FOV polygon coordinates using proper geodesic math
 function generateFovPolygon(
@@ -231,6 +226,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [hoveredCamera, setHoveredCamera] = useState<Camera | null>(null)
   const [showAllFov, setShowAllFov] = useMapPreference("showAllFov", false)
   const [mapLoaded, setMapLoaded] = useState(false)
+  const [mapStyle, setMapStyle] = useState<Awaited<ReturnType<typeof loadMapStyle>> | null>(null)
   const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
   const [liveBusStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
   const cameras = useMemo(() => historicalCameras(liveCameras, historySnapshot), [liveCameras, historySnapshot])
@@ -1447,7 +1443,9 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     if (lastThemeRef.current === isDark) return
 
     lastThemeRef.current = isDark
-    map.current.setStyle(getMapStyle(isDark))
+    loadMapStyle(isDark)
+      .then(style => map.current?.setStyle(style))
+      .catch(error => console.error(error))
 
     map.current.once("style.load", () => {
       addParks()
@@ -1462,17 +1460,29 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     })
   }, [isDark, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline, addTkoSites, mapLoaded])
 
+  // Локальный стиль надо сначала забрать и дописать в нём origin, поэтому
+  // карта создаётся только после его загрузки — см. lib/map-style.ts.
+  useEffect(() => {
+    const initialDark = document.documentElement.classList.contains("dark")
+    loadMapStyle(initialDark)
+      .then(setMapStyle)
+      .catch(error => console.error(error))
+  }, [])
+
   // Initialize map - this should only run once
   useEffect(() => {
-    if (!mapContainer.current || map.current) return
-
-    const initialDark = document.documentElement.classList.contains("dark")
+    if (!mapContainer.current || map.current || !mapStyle) return
 
     map.current = new maplibregl.Map({
       container: mapContainer.current,
-      style: getMapStyle(initialDark),
+      style: mapStyle,
       center: [city.lng, city.lat],
-      zoom: city.zoom
+      zoom: city.zoom,
+      // Подложка скачана только на прямоугольник вокруг Сургута — за его
+      // границами тайлов нет, поэтому туда и не пускаем.
+      maxBounds: MAP_MAX_BOUNDS,
+      minZoom: MIN_ZOOM,
+      maxZoom: MAX_ZOOM
     })
 
     map.current.addControl(new maplibregl.NavigationControl(), "top-right")
@@ -1510,7 +1520,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       map.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [mapStyle])
 
   // Fly to city when it changes
   useEffect(() => {
