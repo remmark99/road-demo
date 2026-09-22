@@ -1,3 +1,4 @@
+import { sessionRequest, rangeRequestKey } from '../request-cache'
 import { createClient } from "@/lib/supabase/client"
 
 export interface StopConditionWindowRow {
@@ -99,7 +100,10 @@ function unavailableResult(limit: number): FetchStopConditionWindowsResult {
     }
 }
 
-export async function fetchStopConditionWindows({
+export function fetchStopConditionWindows(options: FetchStopConditionWindowsOptions): Promise<FetchStopConditionWindowsResult> {
+ return sessionRequest(`condition:${rangeRequestKey(options.from, options.to)}:${JSON.stringify([options.locationIds, options.limit])}`, 15_000, () => loadStopConditionWindows(options))
+}
+async function loadStopConditionWindows({
     from,
     to,
     locationIds,
@@ -170,7 +174,10 @@ export async function fetchLatestStopConditionWindow(): Promise<StopConditionWin
     return ((data ?? [])[0] ?? null) as StopConditionWindowRow | null
 }
 
-export async function fetchStopTrashOverflowAlerts({
+export function fetchStopTrashOverflowAlerts(options: { from: Date; to: Date; limit?: number }): Promise<StopTrashOverflowAlertRow[]> {
+ return sessionRequest(`trash:${rangeRequestKey(options.from, options.to)}:${options.limit}`, 15_000, () => loadStopTrashOverflowAlerts(options))
+}
+async function loadStopTrashOverflowAlerts({
     from,
     to,
     limit = DEFAULT_ALERT_LIMIT,

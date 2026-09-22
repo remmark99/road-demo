@@ -1,3 +1,4 @@
+import { eventCameraModule } from '@/lib/exports/event-camera'
 import { cameraPlace, coordinates } from '@/lib/exports/stop-register'
 import { getStopComplexByCameraIndex } from '@/lib/stop-analytics-config'
 import { readReportRows } from '@/lib/exports/read-report-rows'
@@ -52,9 +53,10 @@ export async function GET(request:NextRequest){
    const ids=[...new Set(rows.filter(a=>a.alert_type==='lying_person').map(a=>a.metadata?.episode_id).filter((id):id is string=>typeof id==='string'))],episodes=new Map<string,LyingPersonEpisode>()
    for(let i=0;i<ids.length;i+=100){const {data,error}=await db.from('lying_person_episodes').select('*').in('id',ids.slice(i,i+100));if(error)throw new Error('Не удалось прочитать длительность событий');for(const e of data||[])episodes.set(e.id,e)}
    sheet=cameraEventSheet(rows,episodes,a=>{
-    const camera=cameras.find(c=>c.module===a.module_name && (c.camera_index===a.camera_index || a.module_name==='stops'&&Number(c.camera_index)>=10000&&Number(c.camera_index)-10000===a.camera_index))
+    const module = eventCameraModule(a)
+    const camera=cameras.find(c=>c.module===module && (c.camera_index===a.camera_index || module==='stops'&&Number(c.camera_index)>=10000&&Number(c.camera_index)-10000===a.camera_index))
     if(camera)return `${cameraPlace(camera as unknown as import('@/lib/exports/stop-register').RegisterCamera,geometry.data)} · Камера №${camera.camera_index}`
-    const complex=a.module_name==='stops'&&a.camera_index!=null?getStopComplexByCameraIndex(a.camera_index>=10000?a.camera_index-10000:a.camera_index):null
+    const complex=module==='stops'&&a.camera_index!=null?getStopComplexByCameraIndex(a.camera_index>=10000?a.camera_index-10000:a.camera_index):null
     if(complex)return `${complex.stopName} · № ${complex.locationId} · Камера №${a.camera_index}`
     throw new Error(`Для события ${a.id} не найдена камера №${a.camera_index}. Восстановите привязку в справочнике для полного отчёта.`)
    },type=>ALERT_TYPE_CONFIG[type]?.label||'Другое событие')

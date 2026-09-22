@@ -67,8 +67,8 @@ export function buildMapInventoryDays(history: MapInventoryPoint[], current: Map
 
 export function mapInventorySheet(days: MapInventoryDay[]): Sheet {
     return { name: 'По дням', columnWidths: [16, 19, 22, 25, 18, 90], wrapColumns: [3, 4, 5], rows: [
-        ['Дата', 'Камер на карте', 'Остановок на карте', 'Из них с датчиками', 'Сбоев за день', 'Что произошло'],
-        ...days.map(d => [d.date.replace(/^(\d{4})-(\d{2})-(\d{2})/, '$3.$2.$1'), d.cameras ?? 'Нет истории', d.stops ?? 'Нет истории', d.sensor_stops ?? 'Нет истории', d.failures, [d.caption, d.events.length ? 'Список остановок и время — на листе «Сбои».' : 'Сбоев не зарегистрировано.'].filter(Boolean).join('\n')]),
+        ['Дата', 'Камеры', 'Остановки', 'С датчиками', 'Сбои', 'Примечание'],
+        ...days.map(d => [d.date.replace(/^(\d{4})-(\d{2})-(\d{2})/, '$3.$2.$1'), d.cameras ?? 'Нет истории', d.stops ?? 'Нет истории', d.sensor_stops ?? 'Нет истории', d.failures, d.cameras === null ? 'Нет истории' : d.failures ? 'См. лист «Сбои»' : '—']),
     ] }
 }
 

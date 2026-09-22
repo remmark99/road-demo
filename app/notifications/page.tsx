@@ -5,7 +5,7 @@ import { getAbandonedEpisode } from '@/lib/notifications/abandoned-episode'
 import { PeriodFilter } from '@/components/notifications/period-filter'
 import { CameraPlaceFilter } from '@/components/notifications/camera-place-filter'
 import { buildCameraPlaces, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
-import { fetchBusStopsGeoJSON, type BusStopProperties } from '@/lib/api/bus-stops'
+import { fetchStopDirectory, type BusStopProperties } from '@/lib/api/bus-stops'
 import { formatCameraConfidence, closedEpisodeImage } from '@/lib/notifications/camera-evidence'
 import { getBinEpisode } from "@/lib/bin-episodes"
 
@@ -19,7 +19,7 @@ import {
   ALERT_CATEGORIES,
   type LyingPersonEpisode,
 } from "@/lib/api/alerts"
-import { fetchCameras } from "@/lib/api/cameras"
+import { fetchCameraDirectory } from "@/lib/api/cameras"
 import { STOP_TRASH_OVERFLOW_ALERT_TYPES } from "@/lib/api/stop-condition-windows"
 import {
   fetchControllerAlerts,
@@ -518,6 +518,8 @@ function MediaPhoto({ src, alt }: { src: string; alt: string }) {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
+        loading="lazy"
+        decoding="async"
         alt=""
         aria-hidden
         className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-xl"
@@ -525,6 +527,8 @@ function MediaPhoto({ src, alt }: { src: string; alt: string }) {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
+        loading="lazy"
+        decoding="async"
         alt={alt}
         className="relative h-full w-full object-contain"
         onClick={(event) => event.stopPropagation()}
@@ -648,7 +652,7 @@ function Pagination({
   return (
     <div className="flex items-center justify-between mt-6">
       <div className="text-sm text-muted-foreground">
-        Страница {page + 1} из {totalPages}
+        Страница {page + 1}
       </div>
       <div className="flex items-center gap-2">
         <Button
@@ -693,7 +697,7 @@ function ResultsHeader({
           "Загрузка..."
         ) : (
           <>
-            Найдено:{" "}
+            Показано:{" "}
             <span className="font-medium text-foreground">{total}</span>{" "}
             уведомлений
           </>
@@ -838,6 +842,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             ...bounds,
             cameraIndexes: effectiveCameras,
             limit: pageSize,
+            countExact: false,
             offset: page * pageSize,
           })
 
@@ -1302,7 +1307,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
       </div>
 
       <ResultsHeader
-        total={total}
+        total={alerts.length}
         loading={loading}
         pageSize={pageSize}
         setPageSize={(value) => {
@@ -1687,6 +1692,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
       alarms: selectedAlarms.length > 0 ? selectedAlarms : undefined,
       categories: selectedCategories.length > 0 ? selectedCategories : undefined,
       limit: pageSize,
+            countExact: false,
       offset: page * pageSize,
     }).then((result) => {
       if (cancelled) return
@@ -1847,7 +1853,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
       </div>
 
       <ResultsHeader
-        total={total}
+        total={alerts.length}
         loading={loading}
         pageSize={pageSize}
         setPageSize={(value) => {
@@ -2092,8 +2098,8 @@ function NotificationsContent() {
   useEffect(() => {
     if (modulesLoading) return
     let cancelled = false
-    fetchCameras(modules).then(value => { if (!cancelled) setCameras(value) })
-    if (modules.includes('stops')) fetchBusStopsGeoJSON().then(value => { if (!cancelled) setStops(value.features.map(feature => feature.properties)) })
+    fetchCameraDirectory(modules).then(value => { if (!cancelled) setCameras(value) }).catch(() => { if (!cancelled) setCameras([]) })
+    if (modules.includes('stops')) fetchStopDirectory().then(value => { if (!cancelled) setStops(value.features.map(feature => feature.properties)) }).catch(() => { if (!cancelled) setStops([]) })
     else setStops([])
     return () => { cancelled = true }
   }, [modules, modulesLoading])

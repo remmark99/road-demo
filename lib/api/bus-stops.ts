@@ -122,3 +122,11 @@ export async function fetchBusStopsGeoJSON(): Promise<BusStopsGeoJSON> {
         return { type: 'FeatureCollection', features: [] }
     }
 }
+
+export function fetchStopDirectory(): Promise<BusStopsGeoJSON> {
+    return sessionRequest('stop-geometry', 60_000, async () => {
+        const response = await fetch('/api/bus-stops')
+        if (!response.ok) throw new Error('Не удалось загрузить остановки')
+        return response.json() as Promise<BusStopsGeoJSON>
+    })
+}

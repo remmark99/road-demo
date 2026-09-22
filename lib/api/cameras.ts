@@ -1,3 +1,4 @@
+import { sessionRequest } from '../request-cache'
 import { supabase } from '../supabase'
 import type { Camera } from '../types'
 import { indexEquipmentStatus, monitoredCameraOnline, type EquipmentStatusRow } from '../equipment-status'
@@ -157,4 +158,15 @@ export async function updateCamera(
     }
 
     return true
+}
+
+export function fetchCameraDirectory(allowedModules: string[]): Promise<Camera[]> {
+    if (!allowedModules.length) return Promise.resolve([])
+    return sessionRequest(`camera-directory:${[...allowedModules].sort().join(',')}`, 60_000, async () => {
+        const { data, error } = await supabase.from('cameras')
+            .select('camera_index,bus_stop_id,module,name,description,lat,lng')
+            .in('module', allowedModules).order('camera_index')
+        if (error) throw new Error('Не удалось загрузить справочник камер')
+        return (data || []).map(row => mapCameraRow(row as CameraRow))
+    })
 }

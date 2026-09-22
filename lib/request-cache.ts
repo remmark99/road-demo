@@ -21,3 +21,10 @@ export async function sessionRequest<T>(key:string,ttl:number,read:()=>Promise<T
  if(!session)return read()
  return cached(session.access_token,key,ttl,read)
 }
+
+/** Live windows tolerate the same short staleness as their cache TTL. */
+export function rangeRequestKey(from?: Date, to?: Date) {
+ const live = to && Math.abs(Date.now() - to.getTime()) < 30_000
+ const key = (date?: Date) => date ? live ? Math.floor(date.getTime()/15_000) : date.toISOString() : null
+ return JSON.stringify([key(from), key(to)])
+}

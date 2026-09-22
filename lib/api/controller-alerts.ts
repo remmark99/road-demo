@@ -1,3 +1,4 @@
+import { sessionRequest } from '../request-cache'
 import { supabase } from '../supabase'
 
 export interface ControllerAlert {
@@ -16,6 +17,7 @@ export interface ControllerAlert {
 }
 
 export interface FetchControllerAlertsOptions {
+    countExact?: boolean
     fromInclusive?: string
     toExclusive?: string
     elements?: number[]
@@ -129,17 +131,18 @@ export function getControllerAlertSourceLabel(
     return isControllerLinkAlert(alert) ? 'Контроллер' : getSensorLabel(alert.element)
 }
 
-export async function fetchControllerAlerts(
-    options: FetchControllerAlertsOptions = {}
-): Promise<ControllerAlertsResult> {
+export function fetchControllerAlerts(options: FetchControllerAlertsOptions = {}): Promise<ControllerAlertsResult> {
+    return sessionRequest(`controller-alerts:${JSON.stringify(options)}`, 15_000, () => loadfetchControllerAlerts(options))
+}
+async function loadfetchControllerAlerts(options: FetchControllerAlertsOptions): Promise<ControllerAlertsResult> {
     const { elements, alarms, categories, busStopId, fromInclusive, toExclusive, limit = 25, offset = 0 } = options
 
     const build = (withBusStopId: boolean) => {
         let query = supabase
             .from('controller_alerts')
-            .select('*', { count: 'exact' })
+            .select('*', options.countExact === false ? {} : { count: 'exact' })
             .order('created_at', { ascending: false })
-            .range(offset, offset + limit - 1)
+            .range(offset, offset + limit - (options.countExact === false ? 0 : 1))
 
         if (fromInclusive) query = query.gte('created_at', fromInclusive)
         if (toExclusive) query = query.lt('created_at', toExclusive)
@@ -178,8 +181,8 @@ export async function fetchControllerAlerts(
     }
 
     return {
-        alerts: data || [],
-        total: count || 0,
-        hasMore: (offset + limit) < (count || 0),
+        alerts: (data || []).slice(0, limit),
+        total: options.countExact === false ? offset + (data?.length || 0) : count || 0,
+        hasMore: options.countExact === false ? (data?.length || 0) > limit : (offset + limit) < (count || 0),
     }
 }

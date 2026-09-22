@@ -1,3 +1,4 @@
+import { sessionRequest, rangeRequestKey } from '../request-cache'
 import { createClient } from "@/lib/supabase/client"
 
 export interface BusynessWindowRow {
@@ -50,7 +51,10 @@ export function getBusStopIdFromLocationId(locationId: string): number | null {
     return Number.isInteger(id) ? id : null
 }
 
-export async function fetchBusynessWindows({
+export function fetchBusynessWindows(options: FetchBusynessWindowsOptions): Promise<FetchBusynessWindowsResult> {
+    return sessionRequest(`busyness:${rangeRequestKey(options.from, options.to)}:${JSON.stringify([options.locationIds, options.limit])}`, 15_000, () => loadBusynessWindows(options))
+}
+async function loadBusynessWindows({
     from,
     to,
     locationIds,

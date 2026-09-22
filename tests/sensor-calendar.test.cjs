@@ -44,6 +44,6 @@ test('API applies exclusive calendar bounds to every page and rejects malformed 
 test('Excel has a neutral header and neutral table style',()=>{
  const {createXlsx}=load('lib/exports/xlsx.ts'),{unzipSync,strFromU8}=require('fflate')
  const files=unzipSync(createXlsx([{name:'Сводка',rows:[['Остановка'],['Никольский']]}]))
- assert.match(strFromU8(files['xl/styles.xml']),/FFE7E6E6/)
- assert.match(strFromU8(files['xl/tables/table1.xml']),/TableStyleLight1/)
+ assert.match(strFromU8(files['xl/styles.xml']),/FFFFFFFF/)
+ assert.match(strFromU8(files['xl/tables/table1.xml']),/showRowStripes="0"/)
 })

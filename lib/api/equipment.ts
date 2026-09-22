@@ -1,3 +1,4 @@
+import { sessionRequest } from '../request-cache'
 import { createClient } from '@/lib/supabase/client'
 
 // Таблицы пишет backend-сервис equipment-monitor (bus_stop_analytics),
@@ -52,7 +53,10 @@ function describeError(error: { code?: string; message?: string }): string {
     return 'Не удалось загрузить данные об оборудовании'
 }
 
-export async function fetchEquipmentState(): Promise<EquipmentResult<EquipmentState>> {
+export function fetchEquipmentState(): Promise<EquipmentResult<EquipmentState>> {
+ return sessionRequest('equipment-state', 15_000, loadEquipmentState)
+}
+async function loadEquipmentState(): Promise<EquipmentResult<EquipmentState>> {
     const { data, error } = await supabase
         .from('equipment_state')
         .select('*')
@@ -67,7 +71,10 @@ export async function fetchEquipmentState(): Promise<EquipmentResult<EquipmentSt
 }
 
 /** Отключения, пересекающиеся с [from, to): начались до `to` и не закончились до `from`. */
-export async function fetchEquipmentOutages(
+export function fetchEquipmentOutages(from: Date, to: Date): Promise<EquipmentResult<EquipmentOutage>> {
+ return sessionRequest(`equipment-outages:${from.toISOString()}:${to.toISOString()}`, 15_000, () => loadEquipmentOutages(from, to))
+}
+async function loadEquipmentOutages(
     from: Date,
     to: Date
 ): Promise<EquipmentResult<EquipmentOutage>> {

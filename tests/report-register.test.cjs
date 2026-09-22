@@ -30,13 +30,13 @@ test('inventory groups overlap deliberately; exclusive groups partition stops an
  assert.ok(cameraPlace({...cameras[0],bus_stop_id:null,description:null},geometry).includes('61.000000'))
  assert.throws(()=>cameraPlace({...cameras[0],bus_stop_id:null,lat:null,lng:null},geometry),/нет места установки/)
 })
-test('every Excel sheet has a unique editable table with filters, banding and frozen header, including empty groups',()=>{
+test('every Excel sheet has a unique editable table with filters, borders and frozen header, including empty groups',()=>{
  const sheets=registerSheets(stopRegister(geometry,cameras,controllers),cameras,geometry)
  sheets.push({name:'Пустой',rows:[['Место','Событие']]})
  const files=unzipSync(createXlsx(sheets))
  for(let i=1;i<=sheets.length;i++){
   const table=strFromU8(files[`xl/tables/table${i}.xml`]),sheet=strFromU8(files[`xl/worksheets/sheet${i}.xml`])
-  assert.ok(table.includes(`displayName="Report${i}"`));assert.ok(table.includes('<autoFilter'));assert.ok(table.includes('showRowStripes="1"'))
+  assert.ok(table.includes(`displayName="Report${i}"`));assert.ok(table.includes('<autoFilter'));assert.ok(table.includes('showRowStripes="0"'))
   assert.ok(sheet.includes('state="frozen"'));assert.ok(sheet.includes('<tablePart r:id="table"'))
   assert.ok(files[`xl/worksheets/_rels/sheet${i}.xml.rels`])
  }
