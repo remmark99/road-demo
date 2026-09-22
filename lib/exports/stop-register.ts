@@ -24,6 +24,6 @@ export function stopRegister(geometry:BusStopsGeoJSON,cameras:RegisterCamera[],c
 }
 export function registerSheets(stops:RegisterStop[],cameras:RegisterCamera[],geometry:BusStopsGeoJSON):Sheet[] {
  const header=['№','Номер','Остановка','Адрес','Камеры','Датчики']
- const sheet=(name:string,items:RegisterStop[]):Sheet=>({name,columnWidths:[7,14,32,44,12,12],wrapColumns:[2,3],rows:[header,...items.map((s,i)=>[i+1,s.number,s.name,s.place,s.cameras,s.sensors?'Да':'Нет'])]})
- return [sheet('Все остановки',stops),sheet('Есть камеры',stops.filter(s=>s.cameras>0)),sheet('Есть датчики',stops.filter(s=>s.sensors)),sheet('Только камеры',stops.filter(s=>s.cameras>0&&!s.sensors)),sheet('Только датчики',stops.filter(s=>!s.cameras&&s.sensors)),sheet('Нет оборудования',stops.filter(s=>!s.cameras&&!s.sensors)),{name:'Камеры',columnWidths:[10,18,32,55,20],wrapColumns:[2,3],rows:[['№','Камера','Название','Место','Остановка'],...cameras.map((c,i)=>[i+1,c.camera_index,c.name?.trim()||`Камера №${c.camera_index}`,cameraPlace(c,geometry),stops.find(s=>s.id===c.bus_stop_id)?.number||'Вне остановки'])]}]
+ const sheet=(name:string,items:RegisterStop[]):Sheet=>({name,columnWidths:[7,14,32,44,12,12],wrapColumns:[2,3],rows:[header,...items.map((s,i)=>[i+1,s.number,s.name,s.place,s.cameras?'Да':'Нет',s.sensors?'Да':'Нет'])]})
+ return [sheet('Все остановки',stops),{name:'Камеры',columnWidths:[10,18,32,55,20],wrapColumns:[2,3],rows:[['№','Камера','Название','Место','Остановка'],...cameras.map((c,i)=>[i+1,c.camera_index,c.name?.trim()||`Камера №${c.camera_index}`,cameraPlace(c,geometry),stops.find(s=>s.id===c.bus_stop_id)?.number||'Вне остановки'])]}]
 }

@@ -57,15 +57,15 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
   })
 
   return (
-    <div className="bg-card border border-border rounded-lg p-4">
-      <div className="flex items-center gap-4 mb-4">
+    <div className="bg-card border border-border rounded-xl p-3 shadow-md">
+      <div className="flex flex-wrap items-center gap-2">
         {/* Date Range Picker */}
         <Popover>
           <PopoverTrigger asChild>
             <Button
               variant="outline"
               size="sm"
-              className="justify-start text-left font-normal min-w-[250px]"
+              className="justify-start text-left font-normal h-8"
             >
               <CalendarIcon className="mr-2 h-4 w-4" />
               {dateRange?.from ? (
@@ -78,7 +78,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
                   format(dateRange.from, "dd MMM yyyy", { locale: ru })
                 )
               ) : (
-                <span>Последние 7 дней</span>
+                <span>7 дней</span>
               )}
             </Button>
           </PopoverTrigger>
@@ -89,7 +89,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
               defaultMonth={dateRange?.from}
               selected={dateRange}
               onSelect={handleDateRangeSelect}
-              numberOfMonths={2}
+              numberOfMonths={1}
               locale={ru}
             />
           </PopoverContent>
@@ -97,19 +97,19 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
 
         {/* Playback Controls */}
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" onClick={skipBackward}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Назад по времени" onClick={skipBackward}>
             <SkipBack className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={togglePlay}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={isPlaying ? "Пауза" : "Воспроизвести историю"} onClick={togglePlay}>
             {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
           </Button>
-          <Button variant="ghost" size="icon" onClick={skipForward}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Вперёд по времени" onClick={skipForward}>
             <SkipForward className="h-4 w-4" />
           </Button>
         </div>
 
         {/* Slider */}
-        <div className="flex-1">
+        <div className="order-last basis-full pt-1">
           <Slider
             value={value}
             onValueChange={handleSliderChange}
@@ -121,9 +121,9 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
         </div>
 
         {/* Current Time Display */}
-        <div className="flex items-center gap-2 min-w-[160px] justify-end">
+        <div className="flex items-center gap-1 ml-auto justify-end">
           <Clock className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-mono">
+          <span className="text-xs tabular-nums">
             {isLive ? (
               <span className="flex items-center gap-1">
                 <span className="h-2 w-2 rounded-full bg-road-clean animate-pulse" />
@@ -136,10 +136,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
         </div>
       </div>
 
-      <div className="flex justify-between text-xs text-muted-foreground">
-        <span>{formatTime(startTime)} · местное время (UTC+5)</span>
-        <span>{formatTime(endTime)}</span>
-      </div>
+
     </div>
   )
 }

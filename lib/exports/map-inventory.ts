@@ -73,7 +73,33 @@ export function mapInventorySheet(days: MapInventoryDay[]): Sheet {
 }
 
 
-export function mapFaultsSheet(days: MapInventoryDay[]): Sheet | null {
-    const events = days.flatMap(day => day.events.map(event => [day.date.split('-').reverse().join('.'), event]))
-    return events.length ? { name: 'Сбои', columnWidths: [16, 110], wrapColumns: [1], rows: [['Дата', 'Что произошло и где'], ...events] } : null
+export function mapFaultsSheet(outages: EquipmentOutage[], names: Record<string,string>, start: number, end: number, sensorEvents: DailySensorEvent[]): Sheet | null {
+    type Group = { place: string; equipment: string; problem: string; first: number; last: number | null; open: boolean; removed: boolean; devices: Set<string> }
+    const groups = new Map<string, Group>()
+    const add = (place: string, equipment: string, problem: string, device: string, first: number, last: number | null, open: boolean, removed = false) => {
+        const key = JSON.stringify([place,equipment,problem])
+        const row = groups.get(key) ?? {place,equipment,problem,first,last,open:false,removed:true,devices:new Set<string>()}
+        row.first = Math.min(row.first, first)
+        if (last !== null) row.last = Math.max(row.last ?? last, last)
+        row.open ||= open; row.removed &&= removed
+        row.devices.add(device); groups.set(key,row)
+    }
+    for (const o of outages) {
+        const first = Date.parse(o.started_at), last = o.ended_at ? Date.parse(o.ended_at) : null
+        if (!Number.isFinite(first) || first >= end || (last !== null && last <= start)) continue
+        const device = `${o.equipment_type}:${o.equipment_id >= 10000 && o.equipment_type === 'camera' ? o.equipment_id - 10000 : o.equipment_id}`
+        const place = names[`controller:${o.bus_stop_id}`] || names[`location:${o.location_id}`] || names[device] || (o.equipment_type === 'camera' ? `Камера №${o.equipment_id}` : `Остановка №${o.equipment_id}`)
+        const open = last === null || last >= end
+        add(place,o.equipment_type === 'camera' ? 'Камеры' : 'Датчики','Нет связи',device,first,open ? null : last,open,o.resolution === 'removed')
+    }
+    const categories: Record<string,string> = {temperature:'Температура вне нормы',humidity:'Влажность вне нормы',glass_break:'Срабатывание датчика стекла',incident:'Сигнал датчика','digital input':'Сигнал датчика'}
+    for (const event of sensorEvents) {
+        const time = Date.parse(event.created_at)
+        if (time < start || time >= end || !['warning','critical','alarm'].includes(event.alarm) || ['controller_offline','controller_online'].includes(event.category)) continue
+        const device = `${event.bus_stop_id}:${event.element}`
+        add(names[`controller:${event.bus_stop_id}`] || `Остановка №${event.bus_stop_id}`, 'Датчики', categories[event.category] || 'Сигнал датчика',device,time,null,false)
+    }
+    const time = (value:number|null) => value === null ? '—' : equipmentLocalTime(value).replace(/^(\d{4})-(\d{2})-(\d{2})/,'$3.$2.$1')
+    const rows = [...groups.values()].sort((a,b)=>a.place.localeCompare(b.place,'ru',{numeric:true}) || a.problem.localeCompare(b.problem,'ru'))
+    return rows.length ? {name:'Сбои',columnWidths:[36,18,28,22,26,24],wrapColumns:[0,2,5],rows:[['Место','Оборудование','Проблема','Первое появление','Последнее восстановление','Статус'],...rows.map(r=>[r.place,`${r.equipment} (${r.devices.size})`,r.problem,time(r.first),r.open ? '—' : time(r.last),r.open ? 'Нет связи' : r.problem !== 'Нет связи' ? 'Зафиксировано' : r.removed ? 'Снято с контроля' : 'Связь восстановлена'])]} : null
 }

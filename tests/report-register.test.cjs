@@ -22,11 +22,13 @@ const {unzipSync,strFromU8}=require('fflate')
 const geometry={type:'FeatureCollection',features:[1,2,3,4].map(id=>({type:'Feature',properties:{id,name:`Остановка ${id}`,short_name:`86-${id}`,address:`Улица ${id}`},geometry:{type:'Point',coordinates:[73,61]}}))}
 const cameras=[1,2].map(id=>({camera_index:10000+id,bus_stop_id:id,name:`Камера ${id}`,lat:61,lng:73}))
 const controllers=[1,3].map(id=>({id,has_controller:true,ip_address:null}))
-test('inventory groups overlap deliberately; exclusive groups partition stops and offline equipment remains included',()=>{
+test('inventory uses two sheets and yes/no equipment filters including offline devices',()=>{
  const rows=stopRegister(geometry,cameras,controllers),sheets=registerSheets(rows,cameras,geometry)
- assert.deepEqual(sheets.map(s=>s.rows.length-1),[4,2,2,1,1,1,2])
+ assert.deepEqual(sheets.map(s=>s.rows.length-1),[4,2])
+ assert.deepEqual(sheets[0].rows.slice(1).map(row=>row[4]),['Да','Да','Нет','Нет']);
+ assert.deepEqual(sheets.map(s=>s.name),['Все остановки','Камеры']);
  assert.equal(rows[0].number,'86-1');assert.equal(rows[0].equipment,'Камеры и датчики')
- assert.ok(sheets[6].rows[1][3].includes('Улица 1'))
+ assert.ok(sheets[1].rows[1][3].includes('Улица 1'))
  assert.ok(cameraPlace({...cameras[0],bus_stop_id:null,description:null},geometry).includes('61.000000'))
  assert.throws(()=>cameraPlace({...cameras[0],bus_stop_id:null,lat:null,lng:null},geometry),/нет места установки/)
 })
@@ -40,7 +42,8 @@ test('every Excel sheet has a unique editable table with filters, borders and fr
   assert.ok(sheet.includes('state="frozen"'));assert.ok(sheet.includes('<tablePart r:id="table"'))
   assert.ok(files[`xl/worksheets/_rels/sheet${i}.xml.rels`])
  }
- const empty=strFromU8(files['xl/tables/table8.xml']);assert.ok(empty.includes('ref="A1:B2"'))
+ const styles=strFromU8(files['xl/styles.xml']);assert.equal((styles.match(/horizontal="center" vertical="center"/g)||[]).length,3);assert.equal((styles.match(/FF808080/g)||[]).length,4);
+ const empty=strFromU8(files['xl/tables/table3.xml']);assert.ok(empty.includes('ref="A1:B2"'))
 })
 test('short cache coalesces concurrent reads, isolates sessions/parameters, expires and retries failures',async()=>{
  const {createRequestCache}=load('lib/request-cache.ts',{'./supabase/client':{createClient:()=>{throw Error('pure test')}}})
