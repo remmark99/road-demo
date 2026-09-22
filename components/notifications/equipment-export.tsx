@@ -15,7 +15,7 @@ function localDate(time: number) {
     return new Date(time + 5 * 3_600_000).toISOString().slice(0, 10)
 }
 
-export function EquipmentExport() {
+export function EquipmentExport({ compact = false }: { compact?: boolean }) {
     const [equipment,setEquipment]=useState('all')
     const [search,setSearch]=useState('')
     const [from, setFrom] = useState(() => localDate(Date.now() - 6 * 86400_000))
@@ -25,6 +25,7 @@ export function EquipmentExport() {
     const [report, setReport] = useState<MapInventoryReport | null>(null)
     const [loading, setLoading] = useState(false)
     useEffect(() => {
+        if (compact) return
         setReport(null)
         setError(null)
         const controller = new AbortController()
@@ -38,7 +39,7 @@ export function EquipmentExport() {
             .catch(e => { if (!controller.signal.aborted) setError(e.message) })
             .finally(() => { if (!controller.signal.aborted) setLoading(false) })
         return () => controller.abort()
-    }, [])
+    }, [compact])
     async function download() {
         setBusy(true)
         setError(null)
@@ -63,11 +64,7 @@ export function EquipmentExport() {
         const matches=equipment==='all'||equipment==='cameras'&&s.cameras>0||equipment==='sensors'&&s.sensors||equipment==='camera-only'&&s.cameras>0&&!s.sensors||equipment==='sensor-only'&&!s.cameras&&s.sensors||equipment==='none'&&!s.cameras&&!s.sensors
         return matches && `${s.number} ${s.name} ${s.place}`.toLocaleLowerCase('ru').includes(search.trim().toLocaleLowerCase('ru'))
     })
-    return <Card className="mb-6 min-w-0 max-w-full">
-        <CardContent className="min-w-0 space-y-3 p-4">
-            <div>
-                <h2 className="font-semibold">Камеры и остановки на карте</h2>
-            </div>
+    const downloadControls = (
             <div className="flex flex-wrap items-end gap-3">
                 <div className="space-y-1"><Label htmlFor="equipment-export-from">С</Label>
                     <Input id="equipment-export-from" type="date" value={from} max={to} disabled={busy} onChange={e => setFrom(e.target.value)} /></div>
@@ -78,6 +75,14 @@ export function EquipmentExport() {
                     {busy ? 'Формирование…' : 'Скачать Excel'}
                 </Button>
             </div>
+    )
+    if (compact) return <div className="mb-4">{downloadControls}{error && <p role="alert" className="mt-2 text-sm text-destructive">{error}</p>}</div>
+    return <Card className="mb-6 min-w-0 max-w-full">
+        <CardContent className="min-w-0 space-y-3 p-4">
+            <div>
+                <h2 className="font-semibold">Камеры и остановки на карте</h2>
+            </div>
+            {downloadControls}
             {loading && <p className="text-sm text-muted-foreground" role="status">Загрузка сводки…</p>}
             {report && <>
                 <div className="grid grid-cols-2 gap-3">

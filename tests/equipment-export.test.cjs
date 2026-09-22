@@ -81,8 +81,8 @@ test('unlinked cameras and conflicting offline evidence cannot inflate totals', 
 test('XLSX preserves numeric counts, empty unknown values and safe literal strings', () => {
     const buffer=createXlsx([{name:'По часам',rows:[['Начало','Камеры','Неизвестно','Название'],['2026-09-11 10:00',2,null,'=HYPERLINK("bad") & <test>']]}])
     const files=unzipSync(buffer), sheet=strFromU8(files['xl/worksheets/sheet1.xml'])
-    assert.match(sheet,/<c r="B2"><v>2<\/v><\/c>/)
-    assert.match(sheet,/<c r="C2"\/>/)
+    assert.match(sheet,/<c r="B2" s="3"><v>2<\/v><\/c>/)
+    assert.match(sheet,/<c r="C2" s="3"\/>/)
     assert.match(sheet,/t="inlineStr"/)
     assert.doesNotMatch(sheet,/<f>/)
     assert.match(sheet,/&amp; &lt;test&gt;/)

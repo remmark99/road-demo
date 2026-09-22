@@ -250,6 +250,7 @@ export function StopKpiCurrentAnalytics() {
     const [directory, setDirectory] = useState<BusStopsGeoJSON | null>(null)
     const [districts, setDistricts] = useState<StopDistrict[] | null>(null)
     const [currentCameras, setCurrentCameras] = useState<StopCameraRow[] | null>(null)
+    const [showAllDistricts, setShowAllDistricts] = useState(false)
     const [coverageError, setCoverageError] = useState(false)
     useEffect(() => {
         let cancelled = false
@@ -388,7 +389,6 @@ export function StopKpiCurrentAnalytics() {
                                 {coverageError && <p role="status" className="text-sm text-muted-foreground">Не удалось загрузить границы микрорайонов</p>}
                                 {!coverageError && (!directory || !districts) && <Skeleton className="h-64 w-full" />}
                                 {districts && directory && coverage.ambiguous > 0 && <p className="text-sm text-muted-foreground">На границах нескольких районов: {coverage.ambiguous}</p>}
-                                {districts && directory && coverage.unassigned > 0 && <p className="text-sm text-muted-foreground">Вне внесённых границ: {coverage.unassigned}</p>}
                                 {directory && activity && districtChartRows.length > 0 && <ChartContainer config={districtCoverageConfig} className="h-[260px] w-full">
                                     <BarChart data={districtChartRows} margin={{ left: 0, right: 12, top: 28, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
@@ -410,7 +410,7 @@ export function StopKpiCurrentAnalytics() {
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {districtChartRows.map((district) => (
+                                        {(showAllDistricts ? districtChartRows : districtChartRows.slice(0, 5)).map((district) => (
                                             <TableRow key={district.districtId}>
                                                 <TableCell className="font-medium">{district.districtName}</TableCell>
                                                 <TableCell className="text-right tabular-nums">{activity ? integerFormat.format(district.equipped) : "—"}</TableCell>
@@ -420,6 +420,7 @@ export function StopKpiCurrentAnalytics() {
                                         ))}
                                     </TableBody>
                                 </Table>
+                                {districtChartRows.length > 5 && <Button variant="ghost" size="sm" aria-expanded={showAllDistricts} onClick={() => setShowAllDistricts(v => !v)}>{showAllDistricts ? 'Свернуть' : `Показать все (${districtChartRows.length})`}</Button>}
                             </CardContent>
                         </Card>
                     </div>

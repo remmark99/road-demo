@@ -1,3 +1,4 @@
+import { readReportRows } from '../exports/read-report-rows'
 import { sessionRequest } from '../request-cache'
 import { createClient } from '@/lib/supabase/client'
 
@@ -78,17 +79,17 @@ async function loadEquipmentOutages(
     from: Date,
     to: Date
 ): Promise<EquipmentResult<EquipmentOutage>> {
-    const { data, error } = await supabase
-        .from('equipment_outages')
-        .select('*')
-        .lt('started_at', to.toISOString())
-        .or(`ended_at.is.null,ended_at.gt."${from.toISOString()}"`)
-        .order('started_at', { ascending: false })
-        .limit(2000)
-
-    if (error) {
-        console.error('Error fetching equipment outages:', error)
-        return { data: [], error: describeError(error) }
+    try {
+        const data = await readReportRows<EquipmentOutage>((start, end) => supabase
+            .from('equipment_outages')
+            .select('*')
+            .lt('started_at', to.toISOString())
+            .or(`ended_at.is.null,ended_at.gt."${from.toISOString()}"`)
+            .order('started_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(start, end))
+        return { data, error: null }
+    } catch {
+        return { data: [], error: 'Не удалось загрузить историю отключений' }
     }
-    return { data: (data || []) as EquipmentOutage[], error: null }
 }
