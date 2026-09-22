@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "NODE_OPTIONS=--dns-result-order=ipv4first NODE_EXTRA_CA_CERTS=./certs/russian_trusted_root_ca_pem.crt next dev",
+    "prebuild": "npm run map:fetch",
     "build": "NODE_OPTIONS=--dns-result-order=ipv4first NODE_EXTRA_CA_CERTS=./certs/russian_trusted_root_ca_pem.crt next build",
     "start": "NODE_OPTIONS=--dns-result-order=ipv4first NODE_EXTRA_CA_CERTS=./certs/russian_trusted_root_ca_pem.crt next start",
     "map:fetch": "NODE_EXTRA_CA_CERTS=./certs/russian_trusted_root_ca_pem.crt node scripts/fetch-map-tiles.mjs",
