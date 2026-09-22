@@ -17,10 +17,7 @@ import {
     Bell,
     BusFront,
     Camera,
-    CheckCircle2,
     ExternalLink,
-    MapPin,
-    Target,
     Video,
 } from "lucide-react"
 
@@ -44,27 +41,29 @@ import {
     TableRow,
 } from "@/components/ui/table"
 import {
-    buildStopDistrictSummaries,
     buildStopLocationSummaries,
     fetchStopCurrentAnalyticsData,
+    fetchStopCameras,
+    type StopCameraRow,
     type RangeBounds,
     type StopCurrentAnalyticsData,
 } from "@/lib/api/stop-current-analytics"
 import {
     getStopComplexByLocationId,
-    STOP_CITY_TOTAL,
-    STOP_EQUIPPED_COUNT,
-    STOP_EQUIPMENT_PLAN_TARGET,
-    STOP_LIVE_CAMERA_COUNT,
-    STOP_OPERATIONAL_COUNT,
     STOP_SAFETY_ALERT_TYPES,
 } from "@/lib/stop-analytics-config"
+import { fetchStopActivity, type StopActivityResponse } from "@/lib/api/stop-activity"
+import { fetchEquipmentState, type EquipmentState } from "@/lib/api/equipment"
+import { indexEquipmentStatus, monitoredCameraOnline } from "@/lib/equipment-status"
+import { fetchStopDirectory, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
+import { fetchStopDistricts } from "@/lib/api/stop-districts"
+import { exactStopCoverage, type StopDistrict } from "@/lib/stop-coverage"
 import { cn } from "@/lib/utils"
 
 type KpiTone = "normal" | "success" | "attention" | "high"
 
 const districtCoverageConfig = {
-    coveragePct: { label: "Оценка покрытия", color: "hsl(221, 83%, 53%)" },
+    coveragePct: { label: "Покрытие", color: "hsl(221, 83%, 53%)" },
 } satisfies ChartConfig
 
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
@@ -181,15 +180,11 @@ function formatFreshness(iso: string | null) {
 function KpiCard({
     title,
     value,
-    caption,
-    detail,
     icon: Icon,
     tone = "normal",
 }: {
     title: string
     value: string
-    caption: string
-    detail: string
     icon: typeof BusFront
     tone?: KpiTone
 }) {
@@ -221,10 +216,7 @@ function KpiCard({
                     <Icon className="h-5 w-5" />
                 </div>
             </CardHeader>
-            <CardContent className="space-y-1">
-                <p className="text-sm text-muted-foreground">{caption}</p>
-                <p className="text-xs font-medium text-foreground">{detail}</p>
-            </CardContent>
+
         </Card>
     )
 }
@@ -247,45 +239,34 @@ function LoadingGrid() {
     )
 }
 
-function ProgressRow({
-    label,
-    value,
-    pct,
-    tone = "normal",
-}: {
-    label: string
-    value: string
-    pct: number
-    tone?: KpiTone
-}) {
-    return (
-        <div className="space-y-1">
-            <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">{label}</span>
-                <span className="font-medium">{value}</span>
-            </div>
-            <div className="h-2 rounded-full bg-muted">
-                <div
-                    className={cn(
-                        "h-full rounded-full",
-                        tone === "success" && "bg-emerald-500",
-                        tone === "attention" && "bg-amber-500",
-                        tone === "high" && "bg-red-500",
-                        tone === "normal" && "bg-primary",
-                    )}
-                    style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
-                />
-            </div>
-        </div>
-    )
-}
-
 export function StopKpiCurrentAnalytics() {
     const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
     const [data, setData] = useState<StopCurrentAnalyticsData | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
+    const [activity, setActivity] = useState<StopActivityResponse | null>(null)
+    const [equipment, setEquipment] = useState<EquipmentState[] | null>(null)
+    const [directory, setDirectory] = useState<BusStopsGeoJSON | null>(null)
+    const [districts, setDistricts] = useState<StopDistrict[] | null>(null)
+    const [currentCameras, setCurrentCameras] = useState<StopCameraRow[] | null>(null)
+    const [coverageError, setCoverageError] = useState(false)
+    useEffect(() => {
+        let cancelled = false
+        const load = async () => {
+            await Promise.allSettled([
+                fetchStopActivity().then(state => { if (!cancelled) setActivity(Object.keys(state.stops).length ? state : null) }),
+                fetchEquipmentState().then(devices => { if (!cancelled) setEquipment(devices.error ? null : devices.data) }),
+                fetchStopDirectory().then(stops => { if (!cancelled) setDirectory(stops) }),
+                fetchStopCameras().then(cameras => { if (!cancelled) setCurrentCameras(cameras) }),
+                fetchStopDistricts().then(rows => { if (!cancelled) { setDistricts(rows); setCoverageError(false) } })
+                    .catch(() => { if (!cancelled) setCoverageError(true) }),
+            ])
+        }
+        void load()
+        const timer = window.setInterval(() => { void load() }, 60_000)
+        return () => { cancelled = true; window.clearInterval(timer) }
+    }, [])
     const range = useMemo(() => getRangeBounds(timeRange), [timeRange])
 
     useEffect(() => {
@@ -314,29 +295,19 @@ export function StopKpiCurrentAnalytics() {
         () => data ? buildStopLocationSummaries(data) : [],
         [data],
     )
-    const districtSummaries = useMemo(
-        () => data ? buildStopDistrictSummaries(data) : [],
-        [data],
-    )
     const latestAt = locationSummaries
         .map((location) => location.latestAt)
         .filter((value): value is string => Boolean(value))
         .sort((a, b) => b.localeCompare(a))[0] ?? null
-    const liveStopIds = new Set(
-        locationSummaries
-            .filter((location) => location.windows > 0 && location.stopId !== null)
-            .map((location) => location.stopId)
-            .filter((stopId): stopId is number => stopId !== null)
-    )
-    const totalStops = data?.stops.length ?? 0
-    const cityStopTotal = Math.max(totalStops, STOP_CITY_TOTAL)
-    const readyPct = STOP_EQUIPMENT_PLAN_TARGET > 0 ? (STOP_EQUIPPED_COUNT / STOP_EQUIPMENT_PLAN_TARGET) * 100 : 0
-    const operationalPct = STOP_EQUIPPED_COUNT > 0 ? (STOP_OPERATIONAL_COUNT / STOP_EQUIPPED_COUNT) * 100 : 0
-    const liveDataPct = STOP_EQUIPPED_COUNT > 0 ? (liveStopIds.size / STOP_EQUIPPED_COUNT) * 100 : 0
-    const districtChartRows = districtSummaries
-        .slice()
-        .sort((a, b) => b.coveragePct - a.coveragePct)
-        .slice(0, 8)
+    const coverage = useMemo(() => exactStopCoverage(directory ?? { type: 'FeatureCollection', features: [] }, districts ?? [], activity), [directory, districts, activity])
+    const districtChartRows = coverage.rows
+    const cityStopTotal = directory?.features.length ?? 0
+    const cameraStatus = indexEquipmentStatus(equipment).cameras
+    const stopIds = new Set((directory?.features ?? []).map(stop => stop.properties.id))
+    const cameras = (currentCameras ?? []).filter(c => c.module === 'stops' && (c.bus_stop_id != null ? stopIds.has(c.bus_stop_id) : c.lat != null && c.lng != null))
+    const camerasOnline = cameras.filter(c => monitoredCameraOnline(cameraStatus, c.camera_index) ?? c.status === 'online').length
+    const sensors = Object.values(activity?.stops ?? {}).filter(s => s.has_controller)
+    const sensorsOnline = sensors.filter(s => s.sensors_online).length
     const safetyNotificationsHref = buildNotificationsHref({
         types: STOP_SAFETY_ALERT_TYPES,
     })
@@ -358,9 +329,7 @@ export function StopKpiCurrentAnalytics() {
                             онлайн-данные
                         </Badge>
                     </div>
-                    <p className="max-w-3xl text-sm text-muted-foreground">
-                        Сводка текущего состояния остановок по данным камер, загруженности и событий безопасности.
-                    </p>
+
                 </div>
                 <div className="text-sm text-muted-foreground lg:text-right">
                     <div>Период: {formatDateTime(data?.displayedRange.from.toISOString() ?? range.from.toISOString())} - {formatDateTime(data?.displayedRange.to.toISOString() ?? range.to.toISOString())}</div>
@@ -384,52 +353,17 @@ export function StopKpiCurrentAnalytics() {
                 </Card>
             )}
 
-            {loading && !data ? (
+            {!directory ? (
                 <LoadingGrid />
-            ) : !error && data ? (
+            ) : (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                    <KpiCard
-                        title="Остановок в городе"
-                        value={integerFormat.format(cityStopTotal)}
-                        caption="городской справочник"
-                        detail="полный городской реестр"
-                        icon={BusFront}
-                        tone="normal"
-                    />
-                    <KpiCard
-                        title="План оснащения"
-                        value={integerFormat.format(STOP_EQUIPMENT_PLAN_TARGET)}
-                        caption="план дооснащения"
-                        detail={`${integerFormat.format(STOP_EQUIPMENT_PLAN_TARGET)} остановок планируется дооснастить`}
-                        icon={MapPin}
-                        tone="attention"
-                    />
-                    <KpiCard
-                        title="Готово"
-                        value={integerFormat.format(STOP_EQUIPPED_COUNT)}
-                        caption="оснащено сейчас"
-                        detail={`${integerFormat.format(STOP_EQUIPPED_COUNT)} из ${integerFormat.format(STOP_EQUIPMENT_PLAN_TARGET)} плановых`}
-                        icon={Target}
-                        tone="success"
-                    />
-                    <KpiCard
-                        title="Живые камеры"
-                        value={integerFormat.format(STOP_LIVE_CAMERA_COUNT)}
-                        caption="камер в системе"
-                        detail="на 10 оснащенных остановках"
-                        icon={Camera}
-                        tone="success"
-                    />
-                    <KpiCard
-                        title="Исправность"
-                        value={`${integerFormat.format(operationalPct)}%`}
-                        caption="доступно сейчас"
-                        detail={`${integerFormat.format(STOP_OPERATIONAL_COUNT)} из ${integerFormat.format(STOP_EQUIPPED_COUNT)} остановок в строю`}
-                        icon={CheckCircle2}
-                        tone="success"
-                    />
+                    <KpiCard title="Остановок в городе" value={integerFormat.format(cityStopTotal)} icon={BusFront} />
+                    <KpiCard title="Камеры в сети" value={equipment && currentCameras ? integerFormat.format(camerasOnline) : '—'} icon={Camera} tone="success" />
+                    <KpiCard title="Камеры не в сети" value={equipment && currentCameras ? integerFormat.format(cameras.length - camerasOnline) : '—'} icon={Camera} tone="attention" />
+                    <KpiCard title="Остановки с датчиками в сети" value={activity ? integerFormat.format(sensorsOnline) : '—'} icon={BusFront} tone="success" />
+                    <KpiCard title="Остановки с датчиками не в сети" value={activity ? integerFormat.format(sensors.length - sensorsOnline) : '—'} icon={BusFront} tone="attention" />
                 </div>
-            ) : null}
+            )}
 
             {error && (
                 <Card className="border-red-500/30 bg-red-500/[0.04]">
@@ -443,84 +377,45 @@ export function StopKpiCurrentAnalytics() {
                 </Card>
             )}
 
-            {data && (
-                <>
-                    <div className="grid gap-6 xl:grid-cols-12">
-                        <Card className="xl:col-span-5">
+            <>
+                    <div>
+                        <Card>
                             <CardHeader>
-                                <CardTitle className="text-base">Оснащение и исправность</CardTitle>
-                                <CardDescription>
-                                    Городской справочник, оснащение и текущая доступность
-                                </CardDescription>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <ProgressRow
-                                    label="Всего остановок в городе"
-                                    value={integerFormat.format(cityStopTotal)}
-                                    pct={100}
-                                />
-                                <ProgressRow
-                                    label="Готово сейчас"
-                                    value={`${integerFormat.format(STOP_EQUIPPED_COUNT)} из ${integerFormat.format(STOP_EQUIPMENT_PLAN_TARGET)}`}
-                                    pct={readyPct}
-                                    tone="success"
-                                />
-                                <ProgressRow
-                                    label="Живые камеры в системе"
-                                    value={integerFormat.format(STOP_LIVE_CAMERA_COUNT)}
-                                    pct={100}
-                                    tone="success"
-                                />
-                                <ProgressRow
-                                    label="Исправность оснащенных"
-                                    value={`${integerFormat.format(STOP_OPERATIONAL_COUNT)} из ${integerFormat.format(STOP_EQUIPPED_COUNT)} (${integerFormat.format(operationalPct)}%)`}
-                                    pct={operationalPct}
-                                    tone="success"
-                                />
-                                <ProgressRow
-                                    label="Онлайн-данные за период"
-                                    value={`${integerFormat.format(liveStopIds.size)} из ${integerFormat.format(STOP_EQUIPPED_COUNT)}`}
-                                    pct={liveDataPct}
-                                    tone={liveStopIds.size === STOP_EQUIPPED_COUNT ? "success" : "attention"}
-                                />
-                            </CardContent>
-                        </Card>
+                                <CardTitle className="text-base">Покрытие по микрорайонам</CardTitle>
 
-                        <Card className="xl:col-span-7">
-                            <CardHeader>
-                                <CardTitle className="text-base">Покрытие по районам</CardTitle>
-                                <CardDescription>
-                                    Доля подключенных остановок от примерного количества остановок в районе
-                                </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                <ChartContainer config={districtCoverageConfig} className="h-[260px] w-full">
+                                {coverageError && <p role="status" className="text-sm text-muted-foreground">Не удалось загрузить границы микрорайонов</p>}
+                                {!coverageError && (!directory || !districts) && <Skeleton className="h-64 w-full" />}
+                                {districts && directory && coverage.ambiguous > 0 && <p className="text-sm text-muted-foreground">На границах нескольких районов: {coverage.ambiguous}</p>}
+                                {districts && directory && coverage.unassigned > 0 && <p className="text-sm text-muted-foreground">Вне внесённых границ: {coverage.unassigned}</p>}
+                                {directory && activity && districtChartRows.length > 0 && <ChartContainer config={districtCoverageConfig} className="h-[260px] w-full">
                                     <BarChart data={districtChartRows} margin={{ left: 0, right: 12, top: 28, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                         <XAxis dataKey="districtName" tickLine={false} axisLine={false} tickMargin={8} />
                                         <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
-                                        <ChartTooltip content={<ChartTooltipContent formatter={(_value, _name, item) => `${item.payload.coverageLabel} · ${item.payload.stops} ост.`} />} />
+                                        <ChartTooltip content={<ChartTooltipContent formatter={(_value, _name, item) => `${Number(item.payload.coveragePct).toFixed(1)}% · ${item.payload.equipped} из ${item.payload.total} ост.`} />} />
                                         <Bar dataKey="coveragePct" fill="var(--color-coveragePct)" radius={[5, 5, 0, 0]}>
-                                            <LabelList dataKey="stops" position="top" formatter={(value: unknown) => `${value} ост.`} />
+                                            <LabelList dataKey="equipped" position="top" formatter={(value: unknown) => `${value} ост.`} />
                                         </Bar>
                                     </BarChart>
-                                </ChartContainer>
+                                </ChartContainer>}
                                 <Table>
                                     <TableHeader>
                                         <TableRow>
                                             <TableHead>Район</TableHead>
-                                            <TableHead className="text-right">Подключено</TableHead>
-                                            <TableHead className="text-right">Всего примерно</TableHead>
+                                            <TableHead className="text-right">Оснащено</TableHead>
+                                            <TableHead className="text-right">Всего</TableHead>
                                             <TableHead className="text-right">Покрытие</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {districtChartRows.map((district) => (
-                                            <TableRow key={district.districtName}>
+                                            <TableRow key={district.districtId}>
                                                 <TableCell className="font-medium">{district.districtName}</TableCell>
-                                                <TableCell className="text-right tabular-nums">{integerFormat.format(district.stops)}</TableCell>
-                                                <TableCell className="text-right tabular-nums">{district.estimatedTotalLabel}</TableCell>
-                                                <TableCell className="text-right tabular-nums">{district.coverageLabel} · {integerFormat.format(district.stops)} ост.</TableCell>
+                                                <TableCell className="text-right tabular-nums">{activity ? integerFormat.format(district.equipped) : "—"}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{district.total}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{activity && district.total > 0 ? `${district.coveragePct.toLocaleString("ru-RU", {maximumFractionDigits: 1})}%` : "—"}</TableCell>
                                             </TableRow>
                                         ))}
                                     </TableBody>
@@ -529,14 +424,12 @@ export function StopKpiCurrentAnalytics() {
                         </Card>
                     </div>
 
-                    <Card>
+                    {data && <Card>
                         <CardHeader>
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="space-y-1.5">
                                     <CardTitle className="text-base">Сводка событий</CardTitle>
-                                    <CardDescription>
-                                        Операционная таблица по направлениям с онлайн-наблюдениями и событиями безопасности
-                                    </CardDescription>
+
                                 </div>
                                 <Button asChild variant="outline" size="sm" className="shrink-0">
                                     <Link href={safetyNotificationsHref}>
@@ -597,9 +490,8 @@ export function StopKpiCurrentAnalytics() {
                                 </TableBody>
                             </Table>
                         </CardContent>
-                    </Card>
+                    </Card>}
                 </>
-            )}
         </div>
     )
 }

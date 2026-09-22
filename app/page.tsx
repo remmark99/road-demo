@@ -35,7 +35,7 @@ export default function MapPage() {
       <div className="pt-14 h-screen flex flex-col overflow-hidden">
         <div className="flex-1 flex min-h-0">
           {/* Map area */}
-          <div className="flex-1 relative p-4">
+          <div className="flex-1 min-w-0 relative p-2">
             <SurgutMap
               selectedTime={selectedTime}
               historySnapshot={snapshot}
@@ -45,23 +45,29 @@ export default function MapPage() {
               focusTarget={focusTarget}
               stopClass={stopClass}
             />
+            <details className="absolute top-4 right-14 z-20 md:hidden">
+              <summary className="cursor-pointer rounded border bg-card px-3 py-2 text-sm shadow">Информация</summary>
+              <div className="absolute right-0 mt-2 max-h-[65vh] w-72 overflow-y-auto rounded-lg border bg-background p-3 shadow-lg">
+                {hasModule('stops') && <BusStopsStats onFocusStop={setFocusTarget} historySnapshot={snapshot} stopClass={stopClass} onStopClassChange={setStopClass} />}
+                <Legend />
+                {hasModule('stops') && <MapReportButton />}
+              </div>
+            </details>
+            <div className="absolute bottom-8 left-4 right-4 z-10 max-w-xl">
+              {historyTime && (historyError || historyLoading) && <p className="mb-1 rounded border bg-background px-2 py-1 text-xs" role="status">{historyError || 'Загрузка истории…'}</p>}
+              <TimelineSlider onTimeChange={handleTimeChange} />
+            </div>
           </div>
 
           {/* Sidebar */}
-          <div className="w-80 p-4 border-l border-border overflow-y-auto flex-shrink-0">
+          <div className="hidden md:block w-72 p-3 border-l border-border overflow-y-auto flex-shrink-0">
             {hasModule('stops') && <BusStopsStats onFocusStop={setFocusTarget} historySnapshot={snapshot} stopClass={stopClass} onStopClassChange={setStopClass} />}
             <Legend />
             {hasModule('stops') && <MapReportButton />}
           </div>
         </div>
 
-        {/* Timeline */}
-        <div className="p-4 pr-20 border-t border-border">
-          {historyTime && hasModule('stops') && <p className="mb-2 text-xs text-muted-foreground" role="status">
-            {historyError || (historyLoading ? 'Загрузка истории связи…' : 'История связи остановок. Фиолетовым — нет данных на выбранное время. Состав объектов на карте — текущий.')}
-          </p>}
-          <TimelineSlider onTimeChange={handleTimeChange} />
-        </div>
+
       </div>
     </main>
   )

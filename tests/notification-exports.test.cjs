@@ -58,7 +58,7 @@ test('report reads every page and fails closed when a page is unavailable',async
  assert.deepEqual(pages,[0,1000]);await assert.rejects(readReportRows(async()=>({data:null,error:{message:'offline'}})))
 })
 
-test('camera export resolves pipeline aliases within the event module and rejects missing locations',async()=>{
+test('camera export resolves pipeline aliases within the event module and preserves events for deleted cameras',async()=>{
  const rows=[{id:'a',alert_type:'smoking',module_name:'stops',camera_index:7,timestamp:'2026-09-03T12:00:00Z'}]
  const cameras=[{camera_index:7,module:'roads',description:'Чужой адрес'}, {camera_index:10007,module:'stops',description:'Нужный адрес',lat:61,lng:73}]
  const req={nextUrl:new URL('http://local/api/notifications/export?channel=cameras')}
@@ -67,7 +67,7 @@ test('camera export resolves pipeline aliases within the event module and reject
  const xml=strFromU8(unzipSync(new Uint8Array(await result.arrayBuffer()))['xl/worksheets/sheet1.xml'])
  assert.ok(xml.includes('Нужный адрес'));assert.ok(!xml.includes('Чужой адрес'))
  const missing=await endpoint({rows:[{...rows[0],module_name:'roads',camera_index:999999}]}).GET(req)
- assert.equal(missing.status,503);assert.ok((await missing.json()).error.includes('999999'))
+ assert.equal(missing.status,200);assert.match(strFromU8(unzipSync(new Uint8Array(await missing.arrayBuffer()))['xl/worksheets/sheet1.xml']),/Камера №999999/)
 })
 
 test('legacy smoking camera 145 resolves by recorded stop, never the roads camera with same index', async()=>{
@@ -80,4 +80,15 @@ test('legacy smoking camera 145 resolves by recorded stop, never the roads camer
  const {eventCameraModule}=load('lib/exports/event-camera.ts')
  assert.equal(eventCameraModule({...row,metadata:{location_id:'36-23'}}),'smoking_detector')
  assert.equal(eventCameraModule({...row,module_name:'roads'}),'roads')
+})
+
+ test('empty camera selection exports all events without an empty database filter',async()=>{
+ const rows=[7,8].map(camera_index=>({id:String(camera_index),alert_type:'smoking',module_name:'stops',camera_index,timestamp:'2026-09-03T12:00:00Z'}))
+ for(const suffix of ['', '&cameras=']){
+  const api=endpoint({rows}),res=await api.GET({nextUrl:new URL('http://local/?channel=cameras'+suffix)})
+  assert.equal(res.status,200)
+  const xml=strFromU8(unzipSync(new Uint8Array(await res.arrayBuffer()))['xl/worksheets/sheet1.xml'])
+  assert.match(xml,/Камера №7/);assert.match(xml,/Камера №8/)
+  assert.ok(!api.calls.some(c=>c[1]==='in'&&c[2]==='camera_index'))
+ }
 })
