@@ -22,7 +22,8 @@ const UPSTREAM = "https://tiles.openfreemap.org"
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..")
 const OUT = path.join(ROOT, "public", "map")
 const CONCURRENCY = 6
-const RETRIES = 3
+const RETRIES = 5
+const REQUEST_TIMEOUT_MS = 30_000
 
 const FORCE = process.argv.includes("--force")
 const cfg = JSON.parse(readFileSync(path.join(ROOT, "lib", "map-bounds.json"), "utf8"))
@@ -61,13 +62,19 @@ async function fetchBuf(url) {
   let lastErr
   for (let attempt = 1; attempt <= RETRIES; attempt++) {
     try {
-      const res = await fetch(url, { headers: { "accept-encoding": "identity" } })
+      const res = await fetch(url, {
+        headers: { "accept-encoding": "identity" },
+        // Без таймаута зависшее соединение держит выкачку бесконечно: на
+        // плохом канале это выглядит как намертво вставший скрипт.
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      })
       if (res.status === 404) return null
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       return Buffer.from(await res.arrayBuffer())
     } catch (err) {
       lastErr = err
-      if (attempt < RETRIES) await new Promise(r => setTimeout(r, 500 * attempt))
+      // Экспоненциальная пауза: канал до апстрима бывает недоступен пачками.
+      if (attempt < RETRIES) await new Promise(r => setTimeout(r, 500 * 2 ** (attempt - 1)))
     }
   }
   throw new Error(`${url}: ${lastErr?.message ?? "unknown error"}`)
@@ -190,7 +197,10 @@ async function main() {
     await save(path.join("styles", `${name}.json`), Buffer.from(JSON.stringify(localized)), true)
   }
 
-  await save(
+  // Манифест переписываем только когда что-то реально скачалось: иначе холостой
+  // прогон менял бы fetchedAt и пачкал рабочую копию (тайлы лежат в репозитории).
+  const manifestStale = stats.saved > 0 || FORCE || !(await exists("manifest.json", false))
+  if (manifestStale) await save(
     "manifest.json",
     Buffer.from(
       JSON.stringify(
