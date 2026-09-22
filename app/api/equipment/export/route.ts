@@ -68,7 +68,10 @@ export async function GET(request: NextRequest) {
         const monitoredIds = new Set([...ids].flatMap(id => id >= 10000 ? [id, id - 10000] : [id]))
         const relevantOutages = outages.filter(o => o.equipment_type === 'camera' ? monitoredIds.has(o.equipment_id) : stops.has(o.bus_stop_id ?? o.equipment_id))
         const names: Record<string, string> = {}
-        for (const feature of geometry.data.features) names[`controller:${feature.properties.id}`] = feature.properties.name || `Остановка №${feature.properties.id}`
+        for (const feature of geometry.data.features) {
+            names[`controller:${feature.properties.id}`] = `${feature.properties.name || 'Остановка'} · № ${feature.properties.short_name || feature.properties.id}`
+            if (feature.properties.short_name) names[`location:${feature.properties.short_name}`] = names[`controller:${feature.properties.id}`]
+        }
         for (const camera of cameras) {
             const name = `${names[`controller:${camera.bus_stop_id}`] || camera.name || 'Камера'} — камера №${camera.camera_index >= 10000 ? camera.camera_index - 10000 : camera.camera_index}`
             names[`camera:${camera.camera_index}`] = name
@@ -79,7 +82,7 @@ export async function GET(request: NextRequest) {
         if (inventoryOnly || request.nextUrl.searchParams.get('format') === 'json') {
             return NextResponse.json({ current, historyAvailable: history.length > 0, days, inventory }, { headers: { 'Cache-Control': 'private, no-store' } })
         }
-        const faults = mapFaultsSheet(days)
+        const faults = mapFaultsSheet(relevantOutages, names, period.start, period.end, sensorEvents.filter(e => e.bus_stop_id != null && stops.has(e.bus_stop_id)))
         const workbook = createXlsx([...registerSheets(inventory,cameras.filter(c=>ids.has(c.camera_index)),geometry.data),mapInventorySheet(days), ...(faults ? [faults] : [])])
         return new NextResponse(Buffer.from(workbook), { headers: {
             'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

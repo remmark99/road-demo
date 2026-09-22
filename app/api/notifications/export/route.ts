@@ -55,10 +55,13 @@ export async function GET(request:NextRequest){
    sheet=cameraEventSheet(rows,episodes,a=>{
     const module = eventCameraModule(a)
     const camera=cameras.find(c=>c.module===module && (c.camera_index===a.camera_index || module==='stops'&&Number(c.camera_index)>=10000&&Number(c.camera_index)-10000===a.camera_index))
-    if(camera)return `${cameraPlace(camera as unknown as import('@/lib/exports/stop-register').RegisterCamera,geometry.data)} · Камера №${camera.camera_index}`
+    if(camera){
+     try { return `${cameraPlace(camera as unknown as import('@/lib/exports/stop-register').RegisterCamera,geometry.data)} · Камера №${camera.camera_index}` }
+     catch { return camera.name?.toString().trim() || `Камера №${camera.camera_index}` }
+    }
     const complex=module==='stops'&&a.camera_index!=null?getStopComplexByCameraIndex(a.camera_index>=10000?a.camera_index-10000:a.camera_index):null
     if(complex)return `${complex.stopName} · № ${complex.locationId} · Камера №${a.camera_index}`
-    throw new Error(`Для события ${a.id} не найдена камера №${a.camera_index}. Восстановите привязку в справочнике для полного отчёта.`)
+    return a.camera_index != null ? `Камера №${a.camera_index}` : 'Городская камера'
    },type=>ALERT_TYPE_CONFIG[type]?.label||'Другое событие')
   }else{
    const rows=await readReportRows<ControllerAlert>((a,b)=>{
