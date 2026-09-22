@@ -1,4 +1,4 @@
-import { sessionRequest } from '../request-cache'
+import { sessionRequest, rangeRequestKey } from '../request-cache'
 import { fetchStopSafetyAlerts, type StopSafetyAlert } from "@/lib/api/alerts"
 import {
     fetchBusynessWindows,
@@ -229,7 +229,10 @@ export async function fetchCurrentStops(): Promise<CurrentStopInfo[]> {
     return currentStopsPromise
 }
 
-export async function fetchStopCameras(): Promise<StopCameraRow[]> {
+export function fetchStopCameras(): Promise<StopCameraRow[]> {
+    return sessionRequest('analytics-cameras', 30_000, loadStopCameras)
+}
+async function loadStopCameras(): Promise<StopCameraRow[]> {
     const supabase = createClient()
     const { data, error } = await supabase
         .from("cameras")
@@ -244,8 +247,7 @@ export async function fetchStopCameras(): Promise<StopCameraRow[]> {
 }
 
 export function fetchStopCurrentAnalyticsData(range: RangeBounds): Promise<StopCurrentAnalyticsData> {
-    const endKey = Math.abs(Date.now()-range.to.getTime()) < 30_000 ? `live:${Math.floor(range.to.getTime()/15_000)}` : range.to.toISOString()
-    return sessionRequest(`stop-analytics:${range.from.toISOString()}:${endKey}`,15_000,()=>loadStopCurrentAnalyticsData(range))
+    return sessionRequest(`stop-analytics:${rangeRequestKey(range.from, range.to)}`,15_000,()=>loadStopCurrentAnalyticsData(range))
 }
 async function loadStopCurrentAnalyticsData(range: RangeBounds): Promise<StopCurrentAnalyticsData> {
     const [stops, initialBusynessResult, initialAlerts, cameras] = await Promise.all([

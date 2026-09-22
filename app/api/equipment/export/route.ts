@@ -43,18 +43,19 @@ export async function GET(request: NextRequest) {
     try { period = parseEquipmentPeriod(from, to, now) }
     catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }) }
     try {
+        const inventoryOnly = request.nextUrl.searchParams.get('format') === 'inventory'
         const [cameras, geometry, history, outages, controllers, sensorEvents] = await Promise.all([
             readAll<{ camera_index: number; bus_stop_id: number | null; lat: number; lng: number; name?: string; description?:string }>((a, b) => supabase.from('cameras')
                 .select('camera_index,bus_stop_id,lat,lng,name,description').eq('module', 'stops').order('camera_index').range(a, b)),
             supabase.rpc('get_bus_stops_geojson'),
-            readAll<MapInventoryPoint>((a, b) => supabase.from('map_inventory_history')
+            inventoryOnly ? Promise.resolve([]) : readAll<MapInventoryPoint>((a, b) => supabase.from('map_inventory_history')
                 .select('recorded_at,cameras,stops,sensor_stops').lte('recorded_at', new Date(period.end).toISOString())
                 .order('recorded_at').order('id').range(a, b), true),
-            readAll<EquipmentOutage>((a, b) => supabase.from('equipment_outages')
+            inventoryOnly ? Promise.resolve([]) : readAll<EquipmentOutage>((a, b) => supabase.from('equipment_outages')
                 .select('id,equipment_type,equipment_id,bus_stop_id,location_id,started_at,detected_at,ended_at,resolution')
-                .lt('started_at', new Date(period.end).toISOString()).order('id').range(a, b)),
+                .lt('started_at', new Date(period.end).toISOString()).or(`ended_at.is.null,ended_at.gt.${new Date(period.start).toISOString()}`).order('id').range(a, b)),
             readAll<{ id: number; ip_address: string | null; has_controller: boolean | null }>((a, b) => supabase.from('bus_stops').select('id,ip_address,has_controller').order('id').range(a, b)),
-            readAll<DailySensorEvent>((a, b) => supabase.from('controller_alerts').select('created_at,bus_stop_id,category,alarm,element')
+            inventoryOnly ? Promise.resolve([]) : readAll<DailySensorEvent>((a, b) => supabase.from('controller_alerts').select('created_at,bus_stop_id,category,alarm,element')
                 .gte('created_at', new Date(period.start).toISOString()).lt('created_at', new Date(period.end).toISOString()).order('created_at').order('id').range(a, b)),
         ])
         if (geometry.error || !Array.isArray(geometry.data?.features)) throw new Error('Не удалось прочитать объекты карты')
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
         }
         const days = buildMapInventoryDays(history, current, relevantOutages, period.start, period.end, names, sensorEvents.filter(e => e.bus_stop_id != null && stops.has(e.bus_stop_id)))
         const inventory = stopRegister(geometry.data, cameras.filter(c=>ids.has(c.camera_index)), controllers)
-        if (request.nextUrl.searchParams.get('format') === 'json') {
+        if (inventoryOnly || request.nextUrl.searchParams.get('format') === 'json') {
             return NextResponse.json({ current, historyAvailable: history.length > 0, days, inventory }, { headers: { 'Cache-Control': 'private, no-store' } })
         }
         const faults = mapFaultsSheet(days)

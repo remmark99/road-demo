@@ -90,12 +90,13 @@ test('XLSX preserves numeric counts, empty unknown values and safe literal strin
 })
 
 const { buildMapInventoryDays, mapCameraIds } = load('lib/exports/map-inventory.ts')
-function client({user=true,access=true,fail=false,cameras=[],history=[],outages=[],controllers=[],sensorEvents=[],stopIds=[],missingHistory=false}={}) {
+function client({queried=[],user=true,access=true,fail=false,cameras=[],history=[],outages=[],controllers=[],sensorEvents=[],stopIds=[],missingHistory=false}={}) {
     return {auth:{getUser:async()=>({data:{user:user?{id:'test'}:null},error:null})},
         rpc:async()=>({data:{features:stopIds.map(id=>({properties:{id,name:`Остановка ${id}`,address:`Улица ${id}`},geometry:{coordinates:[73,61]}}))},error:fail?'unavailable':null}),
         from(table){
+        queried.push(table)
         let from=0,to=999
-        const chain={select(){return chain},eq(){return chain},order(){return chain},gte(){return chain},lte(){return chain},lt(){return chain},range(a,b){from=a;to=b;return chain},
+        const chain={select(){return chain},eq(){return chain},order(){return chain},gte(){return chain},lte(){return chain},lt(){return chain},or(){return chain},range(a,b){from=a;to=b;return chain},
             single:async()=>({data:{role:'user',modules:access?['stops']:[]},error:null}),
             then(resolve,reject){return Promise.resolve({data:(table==='cameras'?cameras:table==='map_inventory_history'?history:table==='bus_stops'?controllers:table==='controller_alerts'?sensorEvents:outages).slice(from,to+1),error:fail?'unavailable':missingHistory && table==='map_inventory_history'?{code:'PGRST205'}:null}).then(resolve,reject)}}
         return chain
@@ -218,4 +219,12 @@ test('merged live camera lookup does not confuse road IDs with VMS camera IDs',(
     assert.equal(monitoredCameraOnline(statuses,10131),true)
     assert.equal(monitoredCameraOnline(statuses,130),null)
     assert.equal(monitoredCameraOnline(statuses,1000),null)
+})
+
+test('inventory preview never queries historical inventory, outages or sensor events', async()=>{
+ const queried=[],db=client({queried,stopIds:[1]})
+ const {GET}=load('app/api/equipment/export/route.ts',{'@/lib/supabase/server':{createClient:async()=>db}})
+ const res=await GET({nextUrl:new URL('http://local/?from=2026-09-01&to=2026-09-02&format=inventory')})
+ assert.equal(res.status,200);assert.equal((await res.json()).inventory.length,1)
+ for(const table of ['map_inventory_history','equipment_outages','controller_alerts'])assert.ok(!queried.includes(table),table)
 })

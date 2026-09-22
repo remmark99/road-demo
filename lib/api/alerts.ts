@@ -1,3 +1,4 @@
+import { sessionRequest, rangeRequestKey } from '../request-cache'
 import { supabase } from '../supabase'
 import type { Alert } from '../types'
 import {
@@ -7,6 +8,7 @@ import {
 } from "@/lib/stop-analytics-config"
 
 export interface FetchAlertsOptions {
+    countExact?: boolean
     fromInclusive?: string
     toExclusive?: string
     types?: string[]        // filter by alert_type
@@ -82,16 +84,19 @@ export type LyingPersonAlertMetadata = StopSafetyAlertMetadata
 type StopSafetyAlertRow = Omit<StopSafetyAlert, "alert_type"> & { alert_type: string }
 export type LyingPersonAlert = StopSafetyAlert
 
-export async function fetchAlerts(options: FetchAlertsOptions = {}): Promise<AlertsResult> {
+export function fetchAlerts(options: FetchAlertsOptions = {}): Promise<AlertsResult> {
+    return sessionRequest(`alerts:${JSON.stringify(options)}`, 15_000, () => loadfetchAlerts(options))
+}
+async function loadfetchAlerts(options: FetchAlertsOptions): Promise<AlertsResult> {
     const { types, cameraIndexes, fromInclusive, toExclusive, limit = 25, offset = 0 } = options
 
     let query = supabase
         .from('alerts_with_bin_episodes')
-        .select('*', { count: 'exact' })
+        .select('*', options.countExact === false ? {} : { count: 'exact' })
         .order('bin_episode_active', { ascending: false })
         .order('timestamp', { ascending: false })
         .order('id', { ascending: false })
-        .range(offset, offset + limit - 1)
+        .range(offset, offset + limit - (options.countExact === false ? 0 : 1))
 
     if (fromInclusive) query = query.gte('timestamp', fromInclusive)
     if (toExclusive) query = query.lt('timestamp', toExclusive)
@@ -120,9 +125,9 @@ export async function fetchAlerts(options: FetchAlertsOptions = {}): Promise<Ale
     }
 
     return {
-        alerts: data || [],
-        total: count || 0,
-        hasMore: (offset + limit) < (count || 0)
+        alerts: (data || []).slice(0, limit),
+        total: options.countExact === false ? offset + (data?.length || 0) : count || 0,
+        hasMore: options.countExact === false ? (data?.length || 0) > limit : (offset + limit) < (count || 0)
     }
 }
 
@@ -174,7 +179,11 @@ export async function fetchAlertTypes(): Promise<string[]> {
     return Array.from(types)
 }
 
-export async function fetchStopSafetyAlerts(options: FetchStopSafetyAlertsOptions | number = {}): Promise<StopSafetyAlert[]> {
+export function fetchStopSafetyAlerts(options: FetchStopSafetyAlertsOptions | number = {}): Promise<StopSafetyAlert[]> {
+    const o = typeof options === 'number' ? { limit: options } : options
+    return sessionRequest(`safety:${rangeRequestKey(o.from, o.to)}:${JSON.stringify([o.types, o.limit])}`, 15_000, () => loadStopSafetyAlerts(options))
+}
+async function loadStopSafetyAlerts(options: FetchStopSafetyAlertsOptions | number = {}): Promise<StopSafetyAlert[]> {
     const resolvedOptions: FetchStopSafetyAlertsOptions = typeof options === "number"
         ? { limit: options }
         : options
