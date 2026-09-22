@@ -101,7 +101,7 @@ interface DashboardDefinition {
 
 const STOP_ANALYTICS_MODES: { id: StopAnalyticsMode; label: string }[] = [
   { id: "current", label: "Текущее состояние" },
-  { id: "plan", label: "План" },
+  { id: "plan", label: "Демо" },
 ]
 
 const DASHBOARDS: readonly DashboardDefinition[] = [
