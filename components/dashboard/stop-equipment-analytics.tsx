@@ -9,8 +9,6 @@ import {
   Camera as CameraIcon,
   Loader2,
   Router,
-  WifiOff,
-  type LucideIcon,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -26,6 +24,9 @@ import {
   type EquipmentState,
   type EquipmentType,
 } from "@/lib/api/equipment"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { fetchStopDirectory, type BusStopProperties } from "@/lib/api/bus-stops"
+import { equipmentLocalTime } from "@/lib/exports/equipment-hours"
 import { getStopComplexByLocationId } from "@/lib/stop-analytics-config"
 
 const REFRESH_INTERVAL_MS = 60_000
@@ -39,7 +40,7 @@ function deviceKey(type: EquipmentType, id: number): DeviceKey {
 }
 
 function deviceLabel(type: EquipmentType, id: number) {
-  return type === "camera" ? `Камера ${id}` : "Контроллер"
+  return type === "camera" ? `Камера ${id}` : "Датчики"
 }
 
 function plural(n: number, forms: [string, string, string]) {
@@ -64,12 +65,9 @@ function formatDurationMs(ms: number) {
   return restHours > 0 ? `${days} дн. ${restHours} ч.` : `${days} дн.`
 }
 
-/** Время внутри выбранного дня, дата с временем — за его пределами. */
-function formatMoment(iso: string, day: Date) {
-  const date = new Date(iso)
-  return isSameDay(date, day)
-    ? format(date, "HH:mm", { locale: ru })
-    : format(date, "d MMM HH:mm", { locale: ru })
+/** All equipment timestamps use the city timezone (UTC+5). */
+function formatMoment(iso: string) {
+  return equipmentLocalTime(Date.parse(iso)).replace(/^(\d{4})-(\d{2})-(\d{2})/, '$3.$2.$1')
 }
 
 function outageDurationMs(outage: EquipmentOutage, now: number) {
@@ -79,8 +77,11 @@ function outageDurationMs(outage: EquipmentOutage, now: number) {
 
 function stopLabel(
   item: { location_id: string | null; bus_stop_id: number | null },
-  state: EquipmentState | undefined
+  state: EquipmentState | undefined,
+  stops: BusStopProperties[]
 ) {
+  const stop = stops.find(s => s.id === (item.bus_stop_id ?? state?.bus_stop_id))
+  if (stop) return [stop.name, stop.short_name ? `№ ${stop.short_name}` : null, stop.address].filter(Boolean).join(' · ')
   const complex = getStopComplexByLocationId(item.location_id ?? state?.location_id)
   if (complex) return complex.stopName
   if (state?.stop_name) return state.stop_name
@@ -93,41 +94,9 @@ function DeviceIcon({ type, className }: { type: EquipmentType; className: strin
   return type === "camera" ? <CameraIcon className={className} /> : <Router className={className} />
 }
 
-function SummaryCard({
-  Icon,
-  title,
-  value,
-  total,
-  caption,
-  alert,
-}: {
-  Icon: LucideIcon
-  title: string
-  value: number
-  total: number
-  caption: string
-  alert: boolean
-}) {
-  return (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Icon className="h-4 w-4" />
-          {title}
-        </div>
-        <div className="mt-2 flex items-baseline gap-1.5">
-          <span className={`text-3xl font-semibold tabular-nums ${alert ? "text-red-400" : ""}`}>
-            {value}
-          </span>
-          <span className="text-sm text-muted-foreground">из {total}</span>
-        </div>
-        <div className="mt-1 text-xs text-muted-foreground">{caption}</div>
-      </CardContent>
-    </Card>
-  )
-}
-
 export function StopEquipmentAnalytics() {
+  const [deviceType, setDeviceType] = useState<EquipmentType>("camera")
+  const [stops, setStops] = useState<BusStopProperties[]>([])
   const [day, setDay] = useState<Date>(() => startOfDay(new Date()))
   const [showShort, setShowShort] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
@@ -139,11 +108,17 @@ export function StopEquipmentAnalytics() {
 
   useEffect(() => {
     let cancelled = false
+    fetchStopDirectory().then(data => { if (!cancelled) setStops(data.features.map(f => f.properties)) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
 
     const load = async () => {
       const [stateResult, outageResult] = await Promise.all([
         fetchEquipmentState(),
-        fetchEquipmentOutages(day, addDays(day, 1)),
+        fetchEquipmentOutages(new Date(`${format(day, 'yyyy-MM-dd')}T00:00:00+05:00`), new Date(`${format(addDays(day, 1), 'yyyy-MM-dd')}T00:00:00+05:00`)),
       ])
       if (cancelled) return
 
@@ -154,8 +129,9 @@ export function StopEquipmentAnalytics() {
       setLoading(false)
     }
 
-    load()
-    const timer = window.setInterval(load, REFRESH_INTERVAL_MS)
+    const refresh = () => load().catch(() => { if (!cancelled) { setError('Не удалось загрузить оборудование'); setLoading(false) } })
+    void refresh()
+    const timer = window.setInterval(refresh, REFRESH_INTERVAL_MS)
     return () => {
       cancelled = true
       window.clearInterval(timer)
@@ -172,12 +148,6 @@ export function StopEquipmentAnalytics() {
   const today = new Date(now)
   const isToday = isSameDay(day, today)
   const isYesterday = isSameDay(day, subDays(today, 1))
-  const dayCaption = isToday
-    ? "не работало сегодня"
-    : isYesterday
-      ? "не работало вчера"
-      : `не работало ${format(day, "d MMMM", { locale: ru })}`
-
   const stateByKey = useMemo(
     () => new Map(states.map((s) => [deviceKey(s.equipment_type, s.equipment_id), s])),
     [states]
@@ -186,30 +156,27 @@ export function StopEquipmentAnalytics() {
   const visibleOutages = useMemo(
     () =>
       outages
+        .filter(o => o.equipment_type === deviceType)
         .filter((o) => showShort || outageDurationMs(o, now) >= SHORT_OUTAGE_MS)
         .sort((a, b) => {
           // Незакрытые — сверху, дальше по началу, свежие первыми.
           if ((a.ended_at === null) !== (b.ended_at === null)) return a.ended_at === null ? -1 : 1
           return Date.parse(b.started_at) - Date.parse(a.started_at)
         }),
-    [outages, showShort, now]
+    [outages, showShort, now, deviceType]
   )
 
-  const inventory = {
-    camera: states.filter((s) => s.equipment_type === "camera").length,
-    controller: states.filter((s) => s.equipment_type === "controller").length,
-  }
-  const affected = (type: EquipmentType) =>
-    new Set(visibleOutages.filter((o) => o.equipment_type === type).map((o) => o.equipment_id))
-      .size
   const offlineNow = states
-    .filter((s) => s.status === "offline")
+    .filter((s) => s.equipment_type === deviceType && s.status === "offline")
     .sort((a, b) => Date.parse(a.status_since ?? "") - Date.parse(b.status_since ?? ""))
-  const unknownCount = states.filter((s) => s.status === "unknown").length
+  const unknownCount = states.filter((s) => s.equipment_type === deviceType && s.status === "unknown").length
 
   return (
     <div className="p-4 md:p-6">
-      <EquipmentExport />
+      <EquipmentExport compact />
+      <Tabs value={deviceType} onValueChange={value => setDeviceType(value as EquipmentType)} className="mb-4">
+        <TabsList aria-label="Тип оборудования"><TabsTrigger value="camera">Камеры</TabsTrigger><TabsTrigger value="controller">Датчики</TabsTrigger></TabsList>
+      <div role="tabpanel" aria-label={deviceType === "camera" ? "Камеры" : "Датчики"}>
       <Card className="mb-6">
         <CardContent className="flex flex-wrap items-center gap-3 p-4">
           <div className="flex flex-wrap items-center gap-2">
@@ -272,33 +239,6 @@ export function StopEquipmentAnalytics() {
         </div>
       ) : (
         <>
-          <div className="mb-6 grid gap-4 sm:grid-cols-3">
-            <SummaryCard
-              Icon={CameraIcon}
-              title="Камеры"
-              value={affected("camera")}
-              total={inventory.camera}
-              caption={dayCaption}
-              alert={affected("camera") > 0}
-            />
-            <SummaryCard
-              Icon={Router}
-              title="Контроллеры"
-              value={affected("controller")}
-              total={inventory.controller}
-              caption={dayCaption}
-              alert={affected("controller") > 0}
-            />
-            <SummaryCard
-              Icon={WifiOff}
-              title="Не работает сейчас"
-              value={offlineNow.length}
-              total={inventory.camera + inventory.controller}
-              caption="камеры и контроллеры без связи"
-              alert={offlineNow.length > 0}
-            />
-          </div>
-
           <h2 className="mb-3 text-base font-semibold">Сейчас не в сети</h2>
           {offlineNow.length === 0 ? (
             <Card className="mb-6">
@@ -317,10 +257,10 @@ export function StopEquipmentAnalytics() {
                       <DeviceIcon type={state.equipment_type} className="h-4 w-4 text-red-400" />
                       {deviceLabel(state.equipment_type, state.equipment_id)}
                     </div>
-                    <div className="truncate md:col-span-4">{stopLabel(state, state)}</div>
+                    <div className="break-words md:col-span-4">{stopLabel(state, state, stops)}</div>
                     <div className="text-muted-foreground md:col-span-3">
                       {state.status_since
-                        ? `нет связи с ${format(new Date(state.status_since), "d MMM HH:mm", { locale: ru })}`
+                        ? `нет связи с ${formatMoment(state.status_since)}`
                         : "нет связи"}
                     </div>
                     <div className="font-medium tabular-nums md:col-span-2 md:text-right">
@@ -341,10 +281,10 @@ export function StopEquipmentAnalytics() {
             <Card>
               <CardContent className="p-4 text-sm text-muted-foreground">
                 Отключений не было
-                {!showShort && outages.length > 0 && (
+                {!showShort && outages.some(o => o.equipment_type === deviceType) && (
                   <>
                     {" "}
-                    (скрыто кратковременных обрывов: {outages.length} — включите переключатель
+                    (скрыто кратковременных обрывов: {outages.filter(o => o.equipment_type === deviceType).length} — включите переключатель
                     выше)
                   </>
                 )}
@@ -372,10 +312,10 @@ export function StopEquipmentAnalytics() {
                         />
                         {deviceLabel(outage.equipment_type, outage.equipment_id)}
                       </div>
-                      <div className="truncate md:col-span-3">{stopLabel(outage, state)}</div>
+                      <div className="break-words md:col-span-3">{stopLabel(outage, state, stops)}</div>
                       <div className="text-muted-foreground md:col-span-3">
-                        {formatMoment(outage.started_at, day)} —{" "}
-                        {outage.ended_at ? formatMoment(outage.ended_at, day) : "сейчас"}
+                        {formatMoment(outage.started_at)} —{" "}
+                        {outage.ended_at ? formatMoment(outage.ended_at) : "сейчас"}
                       </div>
                       <div className="font-medium tabular-nums md:col-span-2">
                         {formatDurationMs(outageDurationMs(outage, now))}
@@ -389,7 +329,7 @@ export function StopEquipmentAnalytics() {
                           <Badge variant="outline" className="text-muted-foreground">
                             Снято с контроля
                           </Badge>
-                        ) : null}
+                        ) : <Badge variant="outline">Восстановлено</Badge>}
                       </div>
                     </CardContent>
                   </Card>
@@ -406,6 +346,8 @@ export function StopEquipmentAnalytics() {
           )}
         </>
       )}
+      </div>
+      </Tabs>
     </div>
   )
 }

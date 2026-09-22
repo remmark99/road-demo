@@ -40,5 +40,17 @@ test('white workbook uses thin borders on normal, header and wrapped cells witho
  const files=unzipSync(createXlsx([{name:'Сводка',rows:[['Место','Количество'],['Тест',3]],wrapColumns:[0]}]))
  const styles=strFromU8(files['xl/styles.xml']);assert.match(styles,/<left style="thin">/);assert.match(styles,/<bottom style="thin">/)
  assert.equal((styles.match(/applyBorder="1"/g)||[]).length,3)
+ assert.match(styles,/<cellXfs count="4"><xf xfId="0" fontId="0" fillId="0" borderId="0"\/>/);
+ assert.match(strFromU8(files['xl/worksheets/sheet1.xml']),/r="B2" s="3"/);
  assert.match(styles,/FFFFFFFF/);assert.match(strFromU8(files['xl/tables/table1.xml']),/showRowStripes="0"/)
+})
+
+test('equipment history reads every page and keeps deterministic ordering',async()=>{
+ const rows=Array.from({length:1001},(_,id)=>({id})),calls=[];let from=0,to=999
+ const query=new Proxy({}, {get(_,key){if(key==='then')return resolve=>resolve({data:rows.slice(from,to+1),error:null});return(...args)=>{calls.push([key,...args]);if(key==='range'){[from,to]=args}return query}}})
+ const api=load('lib/api/equipment.ts',{'@/lib/supabase/client':{createClient:()=>({from:()=>query})},'../request-cache':{sessionRequest:(_key,_ttl,fn)=>fn()}})
+ const result=await api.fetchEquipmentOutages(new Date('2026-09-21T19:00:00Z'),new Date('2026-09-22T19:00:00Z'))
+ assert.equal(result.error,null);assert.equal(result.data.length,1001)
+ assert.deepEqual(calls.filter(c=>c[0]==='range').map(c=>c.slice(1)),[[0,999],[1000,1999]])
+ assert.ok(calls.some(c=>c[0]==='order'&&c[1]==='id'))
 })
