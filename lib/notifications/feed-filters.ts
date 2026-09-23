@@ -2,13 +2,13 @@ import type { Camera } from '@/lib/types'
 import type { BusStopProperties } from '@/lib/api/bus-stops'
 import { getStopComplexByCameraIndex } from '@/lib/stop-analytics-config'
 
-export interface NotificationPeriod { from: string; to: string }
+export interface NotificationPeriod { from: string; to: string; start?: string; end?: string }
 const DAY = 86_400_000
 const OFFSET = 5 * 3_600_000
 export function notificationDate(now = Date.now()) {
   return new Date(now + OFFSET).toISOString().slice(0, 10)
 }
-export function notificationPeriodBounds({ from, to }: NotificationPeriod) {
+export function notificationPeriodBounds({ from, to, start: exactStart, end: exactEnd }: NotificationPeriod) {
   function start(date: string) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('Укажите корректную дату')
     const utc = Date.parse(`${date}T00:00:00Z`)
@@ -18,6 +18,13 @@ export function notificationPeriodBounds({ from, to }: NotificationPeriod) {
   const lower = from ? start(from) : undefined
   const upper = to ? start(to) + DAY : undefined
   if (lower !== undefined && upper !== undefined && lower >= upper) throw new Error('Начало периода должно быть не позже окончания')
+  if (exactStart || exactEnd) {
+    const iso = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/
+    if (!iso.test(exactStart || '') || !iso.test(exactEnd || '')) throw new Error('Некорректный интервал времени')
+    const a = Date.parse(exactStart || ''), b = Date.parse(exactEnd || '')
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a >= b || lower === undefined || upper === undefined || a < lower || b > upper) throw new Error('Некорректный интервал времени')
+    return { fromInclusive: new Date(a).toISOString(), toExclusive: new Date(b).toISOString() }
+  }
   return { fromInclusive: lower === undefined ? undefined : new Date(lower).toISOString(), toExclusive: upper === undefined ? undefined : new Date(upper).toISOString() }
 }
 export function formatEventDuration(start: string, end: string) {

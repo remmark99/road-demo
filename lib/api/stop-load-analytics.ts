@@ -9,6 +9,7 @@ export interface StopLoadLocationHourRow {
     avgPeople: number
     peakPeople: number
     windows: number
+    sampleCount?: number
 }
 
 export interface StopLoadLocationSummary {
@@ -65,7 +66,7 @@ export async function fetchStopLoadAnalytics(range: StopLoadRange): Promise<Stop
     const response = await fetch(`/api/stop-load-analytics?${params.toString()}`)
 
     if (!response.ok) {
-        throw new Error(`Failed to fetch stop load analytics: ${response.status}`)
+        throw new Error("Не удалось загрузить пассажирскую аналитику. Попробуйте ещё раз.")
     }
 
     const data = await response.json() as StopLoadAnalyticsResponse

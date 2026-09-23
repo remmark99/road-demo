@@ -747,6 +747,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
     [searchParams]
   )
   const initialAlertId = searchParams.get("alertId")
+  const sourceModule = searchParams.get("module") || undefined
   const { hasModule } = useModuleAccess()
   const hasRoads = hasModule("roads")
   const hasShore = hasModule("shore")
@@ -832,7 +833,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
     [repairShortcutSelected, repairTypes, selectedTypes]
   )
 
-  useEffect(() => { setPage(0) }, [period.from, period.to])
+  useEffect(() => { setPage(0) }, [period.from, period.to, period.start, period.end])
 
   useEffect(() => {
     setLoading(true)
@@ -850,6 +851,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                 : allowedTypes,
             ...bounds,
             cameraIndexes: effectiveCameras,
+            moduleName: sourceModule,
             limit: pageSize,
             countExact: false,
             offset: page * pageSize,
@@ -883,6 +885,9 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
     effectiveCameras,
     period.from,
     period.to,
+    period.start,
+    period.end,
+    sourceModule,
     page,
     pageSize,
     allowedTypes,
@@ -975,9 +980,9 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
           const { fromInclusive, toExclusive } = notificationPeriodBounds(period)
           periodMatches = (!fromInclusive || alert.timestamp >= fromInclusive) && (!toExclusive || alert.timestamp < toExclusive)
         } catch { /* Invalid period has no results. */ }
-        return typeMatches && cameraMatches && periodMatches
+        return typeMatches && cameraMatches && periodMatches && (!sourceModule || alert.module_name === sourceModule)
       }),
-    [demoAlerts, effectiveSelectedTypes, effectiveCameras, period.from, period.to]
+    [demoAlerts, sourceModule, effectiveSelectedTypes, effectiveCameras, period.from, period.to, period.start, period.end]
   )
   const visibleAlerts = useMemo(
     () => [...alerts, ...(page === 0 ? filteredDemoAlerts : [])],
@@ -1312,7 +1317,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <PeriodFilter value={period} onChange={onPeriodChange} />
-        <EventsExport channel="cameras" period={period} filters={{types:(effectiveSelectedTypes.length ? effectiveSelectedTypes : allowedTypes).join(','),cameras:selectedCameras.join(','),search:cameraSearch}} />
+        <EventsExport channel="cameras" period={period} filters={{module:sourceModule,types:(effectiveSelectedTypes.length ? effectiveSelectedTypes : allowedTypes).join(','),cameras:selectedCameras.join(','),search:cameraSearch}} />
       </div>
 
       <ResultsHeader
@@ -1717,7 +1722,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const { lightboxProps, openLightbox } = useMediaLightbox()
 
-  useEffect(() => { setPage(0) }, [period.from, period.to])
+  useEffect(() => { setPage(0) }, [period.from, period.to, period.start, period.end])
   useEffect(() => {
     let cancelled = false
     setLoading(true)
@@ -1740,7 +1745,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
       setLoading(false)
     })
     return () => { cancelled = true }
-  }, [selectedElements, selectedAlarms, selectedCategories, page, pageSize, period.from, period.to])
+  }, [selectedElements, selectedAlarms, selectedCategories, page, pageSize, period.from, period.to, period.start, period.end])
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -2128,10 +2133,11 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
 // Main page
 // ═══════════════════════════════════════════════════════════════════════
 function NotificationsContent() {
+  const searchParams = useSearchParams()
   const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
   const [cameras, setCameras] = useState<Camera[]>([])
   const [stops, setStops] = useState<BusStopProperties[]>([])
-  const [period, setPeriod] = useState<NotificationPeriod>({ from: '', to: '' })
+  const [period, setPeriod] = useState<NotificationPeriod>(() => ({ from: searchParams.get('from') || '', to: searchParams.get('to') || '', ...(searchParams.get('start') ? {start: searchParams.get('start')!, end: searchParams.get('end') || ''} : {}) }))
   const [tab, setTab] = useState('camera')
   const places = useMemo(() => buildCameraPlaces(cameras, stops), [cameras, stops])
 

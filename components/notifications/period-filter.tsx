@@ -15,6 +15,7 @@ export function PeriodFilter({ value, onChange }: { value: NotificationPeriod; o
       <SelectTrigger aria-label="Период уведомлений" className="h-9 w-[145px]"><SelectValue /></SelectTrigger>
       <SelectContent onCloseAutoFocus={event => { if (!custom.current) return; custom.current = false; event.preventDefault(); setOpen(true) }}>{[['all','Всё время'],['today','Сегодня'],['yesterday','Вчера'],['week','Неделя'],['month','Месяц'],['custom','Свой период']].map(([key,label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
     </Select>
+    {value.start && value.end && <span className="text-xs text-muted-foreground">{new Date(value.start).toLocaleTimeString('ru-RU',{timeZone:'Asia/Yekaterinburg',hour:'2-digit',minute:'2-digit'})} — {new Date(value.end).toLocaleTimeString('ru-RU',{timeZone:'Asia/Yekaterinburg',hour:'2-digit',minute:'2-digit'})}</span>}
     <DateRangePicker value={value} onChange={onChange} label={preset === 'custom' ? undefined : 'Период'} open={open} onOpenChange={setOpen} />
   </div>
 }
