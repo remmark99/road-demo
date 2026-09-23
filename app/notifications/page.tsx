@@ -8,6 +8,8 @@ import { buildCameraPlaces, filteredCameraIndexes, notificationPeriodBounds, for
 import { fetchStopDirectory, type BusStopProperties } from '@/lib/api/bus-stops'
 import { formatCameraConfidence, closedEpisodeImage } from '@/lib/notifications/camera-evidence'
 import { getBinEpisode } from "@/lib/bin-episodes"
+import { MediaLightbox, useMediaLightbox, type LightboxImage } from "@/components/notifications/media-lightbox"
+import { cn } from "@/lib/utils"
 
 import { Suspense, useEffect, useMemo, useState } from "react"
 import { useSearchParams } from "next/navigation"
@@ -512,7 +514,7 @@ function MediaFrame({
   )
 }
 
-function MediaPhoto({ src, alt }: { src: string; alt: string }) {
+function MediaPhoto({ src, alt, onExpand }: { src: string; alt: string; onExpand?: () => void }) {
   return (
     <>
       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -530,8 +532,14 @@ function MediaPhoto({ src, alt }: { src: string; alt: string }) {
         loading="lazy"
         decoding="async"
         alt={alt}
-        className="relative h-full w-full object-contain"
-        onClick={(event) => event.stopPropagation()}
+        className={cn(
+          "relative h-full w-full object-contain",
+          onExpand && "cursor-zoom-in"
+        )}
+        onClick={(event) => {
+          event.stopPropagation()
+          onExpand?.()
+        }}
       />
     </>
   )
@@ -761,6 +769,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
   const [pageSize, setPageSize] = useState(25)
   const [expandedId, setExpandedId] = useState<string | null>(initialAlertId)
   const [episodeRefreshTick, setEpisodeRefreshTick] = useState(0)
+  const { lightboxProps, openLightbox } = useMediaLightbox()
   useEffect(() => {
     // Keep the stops feed fresh even when no episode is currently visible:
     // the next poll may discover a newly opened lying-person episode.
@@ -1475,24 +1484,38 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {binEpisode ? (
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
-                            {[
+                          (() => {
+                            const binEpisodeItems = [
                               { label: abandonedEpisode ? "До — предмет оставлен" : "До — переполненная урна",
                                 url: binEpisode.first_image_url || alert.clip_path,
                                 time: binEpisode.first_image_at, empty: "Фото недоступно" },
                               { label: abandonedEpisode ? "После — предмет убран" : "После — очищенная урна", url: binEpisode.closed_image_url,
                                 time: binEpisode.closed_image_at || binEpisode.ended_at, empty: binEpisode.status === "open" ? "Событие продолжается" : "Фото завершения недоступно" },
-                            ].map(({ label, url, time, empty }) => <div key={label} className="space-y-1.5">
-                              <div className="text-xs font-medium text-muted-foreground">{label}</div>
-                              <MediaFrame className="h-[180px] lg:h-[200px]">
-                                {url ? <MediaPhoto src={url} alt={label} /> : <div className="flex h-full items-center justify-center p-3 text-center text-xs text-muted-foreground">{empty}</div>}
-                              </MediaFrame>
-                              {time && <div className="text-xs text-muted-foreground">{formatBinTime(time)}</div>}
-                            </div>)}
-                          </div>
+                            ]
+                            const binEpisodeImages: LightboxImage[] = binEpisodeItems
+                              .filter((item) => !!item.url)
+                              .map((item) => ({ src: item.url as string, alt: item.label, label: item.label }))
+                            return (
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
+                                {binEpisodeItems.map(({ label, url, time, empty }) => <div key={label} className="space-y-1.5">
+                                  <div className="text-xs font-medium text-muted-foreground">{label}</div>
+                                  <MediaFrame className="h-[180px] lg:h-[200px]">
+                                    {url ? (
+                                      <MediaPhoto
+                                        src={url}
+                                        alt={label}
+                                        onExpand={() => openLightbox(binEpisodeImages, url)}
+                                      />
+                                    ) : <div className="flex h-full items-center justify-center p-3 text-center text-xs text-muted-foreground">{empty}</div>}
+                                  </MediaFrame>
+                                  {time && <div className="text-xs text-muted-foreground">{formatBinTime(time)}</div>}
+                                </div>)}
+                              </div>
+                            )
+                          })()
                         ) : episode ? (
-                          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
-                            {[
+                          (() => {
+                            const episodeItems = [
                               {
                                 label: "До — начало события",
                                 imageUrl: episode.first_image_url,
@@ -1501,29 +1524,42 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                                 label: "После — событие завершено",
                                 imageUrl: episode.status === "closed" ? closedEpisodeImage(alert.metadata) : null,
                               },
-                            ].map(({ label, imageUrl }) => (
-                              <div key={label} className="space-y-1.5">
-                                <div className="text-xs font-medium text-muted-foreground">
-                                  {label}
-                                </div>
-                                <MediaFrame className="h-[180px] lg:h-[200px]">
-                                  {imageUrl ? (
-                                    <MediaPhoto
-                                      src={versionEpisodeImage(
-                                        imageUrl,
-                                        episode.updated_at
-                                      )}
-                                      alt={`${config.label}: ${label.toLowerCase()}`}
-                                    />
-                                  ) : (
-                                    <div className="flex h-full w-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
-                                      {label.startsWith("После") ? episodeIsOpen ? "Событие продолжается" : "Фото завершения недоступно" : "Фото недоступно"}
+                            ]
+                            const episodeImages: LightboxImage[] = episodeItems
+                              .filter((item) => !!item.imageUrl)
+                              .map((item) => ({
+                                src: versionEpisodeImage(item.imageUrl as string, episode.updated_at),
+                                alt: `${config.label}: ${item.label.toLowerCase()}`,
+                                label: item.label,
+                              }))
+                            return (
+                              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
+                                {episodeItems.map(({ label, imageUrl }) => {
+                                  const src = imageUrl ? versionEpisodeImage(imageUrl, episode.updated_at) : null
+                                  return (
+                                    <div key={label} className="space-y-1.5">
+                                      <div className="text-xs font-medium text-muted-foreground">
+                                        {label}
+                                      </div>
+                                      <MediaFrame className="h-[180px] lg:h-[200px]">
+                                        {src ? (
+                                          <MediaPhoto
+                                            src={src}
+                                            alt={`${config.label}: ${label.toLowerCase()}`}
+                                            onExpand={() => openLightbox(episodeImages, src)}
+                                          />
+                                        ) : (
+                                          <div className="flex h-full w-full items-center justify-center px-3 text-center text-xs text-muted-foreground">
+                                            {label.startsWith("После") ? episodeIsOpen ? "Событие продолжается" : "Фото завершения недоступно" : "Фото недоступно"}
+                                          </div>
+                                        )}
+                                      </MediaFrame>
                                     </div>
-                                  )}
-                                </MediaFrame>
+                                  )
+                                })}
                               </div>
-                            ))}
-                          </div>
+                            )
+                          })()
                         ) : (
                           <MediaFrame>
                             {alert.clip_path ? (
@@ -1537,6 +1573,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                                   <MediaPhoto
                                     src={alert.clip_path}
                                     alt={config.label}
+                                    onExpand={() => openLightbox([{ src: alert.clip_path as string, alt: config.label, label: config.label }])}
                                   />
                                 ) : (
                                   <video
@@ -1605,27 +1642,26 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                               {formatTime(alert.timestamp)}
                             </div>
                           </div>
-                          {alert.clip_path && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              asChild
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <a
-                                href={alert.clip_path}
-                                download
-                                target="_blank"
-                                rel="noopener noreferrer"
+                          {alert.clip_path &&
+                            !binEpisode &&
+                            !episode &&
+                            !alert.clip_path.toLowerCase().match(/\.(jpg|jpeg|png)$/) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                asChild
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                {alert.clip_path
-                                  .toLowerCase()
-                                  .match(/\.(jpg|jpeg|png)$/)
-                                  ? "Скачать фото"
-                                  : "Скачать видео"}
-                              </a>
-                            </Button>
-                          )}
+                                <a
+                                  href={alert.clip_path}
+                                  download
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                >
+                                  Скачать видео
+                                </a>
+                              </Button>
+                            )}
                         </div>
                       </div>
                     </div>
@@ -1645,6 +1681,8 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
           setPage(nextPage)
         }}
       />
+
+      {lightboxProps && <MediaLightbox {...lightboxProps} />}
     </>
   )
 }
@@ -1677,6 +1715,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(25)
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const { lightboxProps, openLightbox } = useMediaLightbox()
 
   useEffect(() => { setPage(0) }, [period.from, period.to])
   useEffect(() => {
@@ -2003,6 +2042,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
                             <MediaPhoto
                               src={alert.clip_path}
                               alt={categoryLabel}
+                              onExpand={() => openLightbox([{ src: alert.clip_path as string, alt: categoryLabel, label: categoryLabel }])}
                             />
                           ) : (
                             <video
@@ -2042,25 +2082,23 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
                             <div className="text-muted-foreground">Сообщение</div>
                             <div className="font-medium">{message}</div>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            asChild
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <a
-                              href={alert.clip_path}
-                              download
-                              target="_blank"
-                              rel="noopener noreferrer"
+                          {!alert.clip_path.toLowerCase().match(/\.(jpg|jpeg|png|webp)$/) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              asChild
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              {alert.clip_path
-                                .toLowerCase()
-                                .match(/\.(jpg|jpeg|png|webp)$/)
-                                ? "Скачать фото"
-                                : "Скачать видео"}
-                            </a>
-                          </Button>
+                              <a
+                                href={alert.clip_path}
+                                download
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                Скачать видео
+                              </a>
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2080,6 +2118,8 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
           setPage(nextPage)
         }}
       />
+
+      {lightboxProps && <MediaLightbox {...lightboxProps} />}
     </>
   )
 }
