@@ -1072,6 +1072,8 @@ export default function SettingsPage() {
                       onSelect={setStandardReportRange}
                       numberOfMonths={2}
                       locale={ru}
+                      startMonth={STANDARD_REPORT_MIN_DATE}
+                      endMonth={today}
                       disabled={(date) =>
                         date < STANDARD_REPORT_MIN_DATE || date > today
                       }

@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { historicalCameras, historicalStops, type StopHistorySnapshot } from "@/lib/stop-history"
 import { useMapPreference } from "@/lib/hooks/use-map-preference"
+import { MAP_MAX_BOUNDS, MIN_ZOOM, MAX_ZOOM } from "@/lib/map-bounds"
+import { loadMapStyle } from "@/lib/map-style"
 import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
@@ -23,10 +25,10 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { useCity } from "@/components/providers/city-context"
 import { createClient } from "@/lib/supabase/client"
-import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Settings2 } from "lucide-react"
+import { Layers, Settings2 } from "lucide-react"
+import { busStopStatusKey, useBusStopStatusFilters } from "@/lib/map-stop-filters"
 import { STOP_SAFETY_ALERT_TYPES, STOP_SAFETY_ALERT_LABELS, type StopSafetyAlertType } from "@/lib/stop-analytics-config"
 
 const statusColors: Record<RoadStatus, string> = {
@@ -35,13 +37,6 @@ const statusColors: Record<RoadStatus, string> = {
   warning: "#f59e0b",
   unknown: "#6b7280"
 }
-
-// OpenFreeMap serves the Positron / Dark Matter styles without an API key.
-// CARTO's raster basemaps now watermark unauthenticated tiles.
-const getMapStyle = (isDark: boolean) =>
-  isDark
-    ? "https://tiles.openfreemap.org/styles/dark"
-    : "https://tiles.openfreemap.org/styles/positron"
 
 // Generate FOV polygon coordinates using proper geodesic math
 function generateFovPolygon(
@@ -231,6 +226,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [hoveredCamera, setHoveredCamera] = useState<Camera | null>(null)
   const [showAllFov, setShowAllFov] = useMapPreference("showAllFov", false)
   const [mapLoaded, setMapLoaded] = useState(false)
+  const [mapStyle, setMapStyle] = useState<Awaited<ReturnType<typeof loadMapStyle>> | null>(null)
   const [roadsData, setRoadsData] = useState<RoadsGeoJSON | null>(null)
   const [liveBusStopsData, setBusStopsData] = useState<BusStopsGeoJSON | null>(null)
   const cameras = useMemo(() => historicalCameras(liveCameras, historySnapshot), [liveCameras, historySnapshot])
@@ -245,7 +241,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
   // Filter States
   const [cameraFilters, setCameraFilters] = useMapPreference("cameraFilters", { online: true, offline: false })
-  const [busStopFilters, setBusStopFilters] = useMapPreference("busStopFilters", { online: true, partial: true, offline: false, incidents: true, unequipped: true })
+  const [busStopFilters, setBusStopFilters] = useBusStopStatusFilters()
   const [showClusters, setShowClusters] = useMapPreference("showClusters", true)
   const [showHeatmap, setShowHeatmap] = useMapPreference("showHeatmap", false)
   // Only the stops module is enabled: hide generic display/camera controls
@@ -1447,7 +1443,9 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     if (lastThemeRef.current === isDark) return
 
     lastThemeRef.current = isDark
-    map.current.setStyle(getMapStyle(isDark))
+    loadMapStyle(isDark)
+      .then(style => map.current?.setStyle(style))
+      .catch(error => console.error(error))
 
     map.current.once("style.load", () => {
       addParks()
@@ -1462,17 +1460,29 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     })
   }, [isDark, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline, addTkoSites, mapLoaded])
 
+  // Локальный стиль надо сначала забрать и дописать в нём origin, поэтому
+  // карта создаётся только после его загрузки — см. lib/map-style.ts.
+  useEffect(() => {
+    const initialDark = document.documentElement.classList.contains("dark")
+    loadMapStyle(initialDark)
+      .then(setMapStyle)
+      .catch(error => console.error(error))
+  }, [])
+
   // Initialize map - this should only run once
   useEffect(() => {
-    if (!mapContainer.current || map.current) return
-
-    const initialDark = document.documentElement.classList.contains("dark")
+    if (!mapContainer.current || map.current || !mapStyle) return
 
     map.current = new maplibregl.Map({
       container: mapContainer.current,
-      style: getMapStyle(initialDark),
+      style: mapStyle,
       center: [city.lng, city.lat],
-      zoom: city.zoom
+      zoom: city.zoom,
+      // Подложка скачана только на прямоугольник вокруг Сургута — за его
+      // границами тайлов нет, поэтому туда и не пускаем.
+      maxBounds: MAP_MAX_BOUNDS,
+      minZoom: MIN_ZOOM,
+      maxZoom: MAX_ZOOM
     })
 
     map.current.addControl(new maplibregl.NavigationControl(), "top-right")
@@ -1510,7 +1520,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       map.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [mapStyle])
 
   // Fly to city when it changes
   useEffect(() => {
@@ -1530,22 +1540,8 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
     // Остановка может быть скрыта фильтром — тогда зумиться было бы не к чему.
     const feature = busStopsData?.features.find(f => f.properties.id === focusTarget.stopId)
-    const sd = feature?.properties.sensor_data
-    const filterKey: keyof typeof busStopFilters | null = !sd
-      ? null
-      : !sd.has_equipment
-        ? "unequipped"
-        : sd.incident
-          ? "incidents"
-          : sd.activity_status === "active"
-            ? "online"
-            : sd.activity_status === "partial"
-              ? "partial"
-              : "offline"
-
-    if (filterKey) {
-      setBusStopFilters(prev => (prev[filterKey] ? prev : { ...prev, [filterKey]: true }))
-    }
+    const filterKey = busStopStatusKey(feature?.properties.sensor_data)
+    setBusStopFilters(prev => (prev[filterKey] ? prev : { ...prev, [filterKey]: true }))
 
     map.current.flyTo({
       center: [focusTarget.lng, focusTarget.lat],
@@ -1779,26 +1775,15 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       const filteredFeatures = busStopsData.features.filter(f => {
         const sd: any = f.properties.sensor_data || {}
 
-        // Клик по строке разбивки показывает весь свой класс и перекрывает
-        // галочки статусов: иначе выбранная строка могла бы дать пустую карту
+        // Клик по строке оснащения показывает весь свой класс и перекрывает
+        // статусные фильтры: иначе выбранная строка могла бы дать пустую карту
         // (например, «Не в сети» по умолчанию выключено).
         if (stopClass !== "all") {
           if (stopClass === "cameras") return (sd.total_camera_count ?? 0) > 0
-          if (stopClass === "sensors") return sd.has_controller === true
-          return !sd.has_equipment
+          return sd.has_controller === true
         }
 
-        if (sd.activity_status === "unknown") return true
-        if (!sd.has_equipment) {
-          return busStopFilters.unequipped
-        }
-
-        if (sd.incident) {
-          return busStopFilters.incidents
-        }
-
-        if (sd.activity_status === "active" || sd.activity_status === "partial") return busStopFilters.online
-        return busStopFilters.offline
+        return busStopFilters[busStopStatusKey(sd)]
       })
 
       // Flatten sensor_data for MapLibre expressions, and calculate camera count
@@ -2365,10 +2350,10 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       <div ref={mapContainer} className="w-full h-full rounded-lg" />
 
       {/* Map Controls */}
-      <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 w-72">
+      <div className="absolute top-4 left-4 z-10 flex flex-col items-start gap-2">
         {hasModule('roads') && (
           <Select value={selectedContractor} onValueChange={setSelectedContractor}>
-            <SelectTrigger className="w-full bg-card text-card-foreground border border-border rounded-lg h-10 shadow-sm font-medium">
+            <SelectTrigger className="w-72 bg-card text-card-foreground border border-border rounded-lg h-10 shadow-sm font-medium">
               <SelectValue placeholder="Выберите подрядчика" />
             </SelectTrigger>
             <SelectContent>
@@ -2382,9 +2367,17 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
           </Select>
         )}
 
-        <Card className="shadow-sm">
-          <CardContent className="p-4 space-y-4">
-            {!stopsOnly && (<>
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="flex items-center gap-2 h-10 px-3 rounded-lg bg-card text-card-foreground border border-border shadow-sm text-sm font-medium hover:bg-accent transition-colors"
+            >
+              <Layers className="h-4 w-4" />
+              Слои
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="start" className="w-72 p-4 space-y-4">
             {/* Display Toggles */}
             <div className="space-y-3">
               <div className="font-medium text-sm border-b pb-1 mb-2">Отображение</div>
@@ -2392,13 +2385,16 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                 <Checkbox id="clusters" checked={showClusters} onCheckedChange={(checked) => setShowClusters(!!checked)} />
                 <Label htmlFor="clusters" className="text-sm font-medium leading-none cursor-pointer">Группировка меток</Label>
               </div>
-              <div className="flex items-center space-x-2">
-                <Checkbox id="fovs" checked={showAllFov} onCheckedChange={(checked) => setShowAllFov(!!checked)} />
-                <Label htmlFor="fovs" className="text-sm font-medium leading-none cursor-pointer">Азимуты камер</Label>
-              </div>
+              {!stopsOnly && (
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="fovs" checked={showAllFov} onCheckedChange={(checked) => setShowAllFov(!!checked)} />
+                  <Label htmlFor="fovs" className="text-sm font-medium leading-none cursor-pointer">Азимуты камер</Label>
+                </div>
+              )}
             </div>
 
             {/* Camera Filters */}
+            {!stopsOnly && (
             <div className="space-y-3">
               <div className="font-medium text-sm border-b pb-1 mb-2">Камеры</div>
               <div className="flex items-center space-x-2">
@@ -2410,29 +2406,13 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                 <Label htmlFor="cam-offline" className="text-sm cursor-pointer">Показывать не в сети</Label>
               </div>
             </div>
-            </>)}
+            )}
 
-            {/* Bus Stop Filters */}
+            {/* Тепловая карта остановок; фильтры статусов живут в боковой панели */}
             {hasModule('stops') && (
               <div className="space-y-3">
                 <div className="font-medium text-sm border-b pb-1 mb-2">Остановки</div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="bus-online" checked={busStopFilters.online} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, online: !!checked }))} />
-                  <Label htmlFor="bus-online" className="text-sm cursor-pointer">В сети</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="bus-offline" checked={busStopFilters.offline} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, offline: !!checked }))} />
-                  <Label htmlFor="bus-offline" className="text-sm cursor-pointer">Не в сети</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="bus-incidents" checked={busStopFilters.incidents} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, incidents: !!checked }))} />
-                  <Label htmlFor="bus-incidents" className="text-sm cursor-pointer">Инциденты</Label>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="bus-unequipped" checked={busStopFilters.unequipped} onCheckedChange={(checked) => setBusStopFilters(prev => ({ ...prev, unequipped: !!checked }))} />
-                  <Label htmlFor="bus-unequipped" className="text-sm cursor-pointer">Без оборудования</Label>
-                </div>
-                <div className="flex items-center justify-between pt-1 border-t border-border/50">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <Checkbox id="bus-heatmap" checked={showHeatmap} onCheckedChange={(checked) => setShowHeatmap(!!checked)} />
                     <Label htmlFor="bus-heatmap" className="text-sm cursor-pointer font-medium">Тепловая карта</Label>
@@ -2541,8 +2521,8 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                 )}
               </div>
             )}
-          </CardContent>
-        </Card>
+          </PopoverContent>
+        </Popover>
       </div>
 
       <VideoModal

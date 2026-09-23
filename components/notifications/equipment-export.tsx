@@ -7,6 +7,7 @@ import { mapReportFilename } from '@/lib/exports/filename'
 import { Download, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
+import { DateRangePicker } from '@/components/date-range-picker'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -65,11 +66,8 @@ export function EquipmentExport({ compact = false }: { compact?: boolean }) {
         return matches && `${s.number} ${s.name} ${s.place}`.toLocaleLowerCase('ru').includes(search.trim().toLocaleLowerCase('ru'))
     })
     const downloadControls = (
-            <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-1"><Label htmlFor="equipment-export-from">С</Label>
-                    <Input id="equipment-export-from" type="date" value={from} max={to} disabled={busy} onChange={e => setFrom(e.target.value)} /></div>
-                <div className="space-y-1"><Label htmlFor="equipment-export-to">По</Label>
-                    <Input id="equipment-export-to" type="date" value={to} min={from} max={localDate(Date.now())} disabled={busy} onChange={e => setTo(e.target.value)} /></div>
+            <div className="flex flex-wrap items-center gap-3">
+                <DateRangePicker value={{ from, to }} onChange={range => { setFrom(range.from); setTo(range.to) }} disabled={busy} />
                 <Button onClick={download} disabled={busy || !from || !to || from > to}>
                     {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
                     {busy ? 'Формирование…' : 'Скачать Excel'}

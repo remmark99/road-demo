@@ -132,7 +132,7 @@ export interface MapFocusTarget {
  * на карте только остановки этого класса; "all" — фильтр снят.
  *
  * Класс считается по оборудованию, а не по списку: "sensors" — смонтирован
- * контроллер, "cameras" — есть привязанные камеры, "none" — ни того, ни другого
- * (городской реестр остановок, которые ещё можно оснастить).
+ * контроллер, "cameras" — есть привязанные камеры. Остановки без оборудования
+ * отбираются статусным фильтром в BUS_STOP_STATUS_ORDER.
  */
-export type StopEquipmentClass = "all" | "cameras" | "sensors" | "none"
+export type StopEquipmentClass = "all" | "cameras" | "sensors"

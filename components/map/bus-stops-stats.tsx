@@ -6,10 +6,20 @@ import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { fetchCameras } from "@/lib/api/cameras"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Activity, Video, Radio, AlertTriangle, Crosshair, ChevronDown } from "lucide-react"
+import { Activity, Video, Radio, Crosshair, ChevronDown } from "lucide-react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import {
+    BUS_STOP_STATUS_LABELS,
+    BUS_STOP_STATUS_ORDER,
+    busStopStatusKey,
+    useBusStopStatusFilters,
+    type BusStopStatusFilters,
+    type BusStopStatusKey,
+} from "@/lib/map-stop-filters"
 import type { Camera, MapFocusTarget, StopEquipmentClass } from "@/lib/types"
 import type { LucideIcon } from "lucide-react"
 
@@ -224,6 +234,73 @@ function ClassRow({
     )
 }
 
+/** Цвета счётчиков повторяют раскраску меток на карте. */
+const STATUS_COUNT_CLASS: Record<BusStopStatusKey, string> = {
+    online: "text-green-500",
+    offline: "",
+    incidents: "text-red-500",
+    unknown: "text-violet-400",
+    unequipped: "text-blue-500",
+}
+
+/**
+ * Строка статуса: галочка включает эти остановки на карте, «только» оставляет
+ * их одних (повторное нажатие возвращает остальные).
+ */
+function StatusRow({
+    statusKey,
+    count,
+    checked,
+    disabled,
+    solo,
+    onToggle,
+    onSolo,
+}: {
+    statusKey: BusStopStatusKey
+    count: number
+    checked: boolean
+    disabled: boolean
+    solo: boolean
+    onToggle: (checked: boolean) => void
+    onSolo: () => void
+}) {
+    const id = `stop-status-${statusKey}`
+    return (
+        <div
+            className={`group -mx-1.5 flex items-center gap-2 rounded px-1.5 py-1 transition-colors ${
+                disabled ? "opacity-50" : "hover:bg-muted"
+            }`}
+        >
+            <Checkbox id={id} checked={checked} disabled={disabled} onCheckedChange={c => onToggle(!!c)} />
+            <Label
+                htmlFor={id}
+                className={`flex-1 min-w-0 truncate text-xs font-normal ${disabled ? "" : "cursor-pointer"} ${
+                    checked ? "text-foreground" : "text-muted-foreground"
+                }`}
+            >
+                {BUS_STOP_STATUS_LABELS[statusKey]}
+            </Label>
+            {!disabled && (
+                <button
+                    type="button"
+                    onClick={onSolo}
+                    title={solo ? "Вернуть остальные статусы" : "Оставить на карте только эти остановки"}
+                    className={`text-[11px] shrink-0 transition-opacity ${
+                        solo
+                            ? "text-foreground font-medium"
+                            : "text-muted-foreground opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-foreground"
+                    }`}
+                >
+                    только
+                </button>
+            )}
+            <span className={`text-xs font-medium tabular-nums shrink-0 ${STATUS_COUNT_CLASS[statusKey]}`}>
+                {count}
+            </span>
+        </div>
+    )
+}
+
 function EquipmentRowSkeleton() {
     return (
         <div>
@@ -256,6 +333,7 @@ export function BusStopsStats({
     const cameras = useMemo(() => liveCameras && historicalCameras(liveCameras, historySnapshot), [liveCameras, historySnapshot])
     const data = useMemo(() => historicalStops(liveData, cameras ?? [], historySnapshot), [liveData, cameras, historySnapshot])
     const [openList, setOpenList] = useState<ListKey | null>(null)
+    const [statusFilters, setStatusFilters] = useBusStopStatusFilters()
 
     useEffect(() => {
         fetchBusStopsGeoJSON().then(setData)
@@ -271,11 +349,11 @@ export function BusStopsStats({
 
         const stops = new Map<number, StopInfo>()
         let camerasUnknown = 0, sensorsUnknown = 0
-        let unequipped = 0
         // Класс считается по оборудованию, как и has_equipment: у остановки
         // могут быть только камеры, только датчики или и то, и другое.
         let withCameras = 0, withSensors = 0
-        let incidents = 0
+        const statusCounts: Record<BusStopStatusKey, number> =
+            { online: 0, offline: 0, incidents: 0, unknown: 0, unequipped: 0 }
         const sensorsOnline: FocusItem[] = []
         const sensorsOffline: FocusItem[] = []
 
@@ -292,12 +370,10 @@ export function BusStopsStats({
             stops.set(p.id, info)
 
             const sd = p.sensor_data
-            if (!sd || !sd.has_equipment) {
-                unequipped++
-                return
-            }
+            statusCounts[busStopStatusKey(sd)]++
 
-            if (sd.incident) incidents++
+            if (!sd || !sd.has_equipment) return
+
             if ((sd.total_camera_count ?? 0) > 0) withCameras++
             if (sd.has_controller) withSensors++
 
@@ -350,8 +426,7 @@ export function BusStopsStats({
             totalStops: data.features.length,
             withCameras,
             withSensors,
-            unequipped,
-            incidents,
+            statusCounts,
             camerasOnline,
             camerasOffline,
             sensorsOnline,
@@ -372,6 +447,17 @@ export function BusStopsStats({
 
     const handleToggle = (key: ListKey) => {
         setOpenList(prev => (prev === key ? null : key))
+    }
+
+    const isSolo = (key: BusStopStatusKey) => BUS_STOP_STATUS_ORDER.every(k => statusFilters[k] === (k === key))
+
+    const handleSolo = (key: BusStopStatusKey) => {
+        setStatusFilters(prev => {
+            const alreadySolo = BUS_STOP_STATUS_ORDER.every(k => prev[k] === (k === key))
+            return Object.fromEntries(
+                BUS_STOP_STATUS_ORDER.map(k => [k, alreadySolo || k === key]),
+            ) as BusStopStatusFilters
+        })
     }
 
     const header = (
@@ -429,6 +515,7 @@ export function BusStopsStats({
                 />
 
                 <div className="pt-3 border-t space-y-0.5 text-xs">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Оснащение</div>
                     <ClassRow
                         label="Всего остановок"
                         value={stats.totalStops}
@@ -447,29 +534,28 @@ export function BusStopsStats({
                         active={stopClass === "sensors"}
                         onClick={() => onStopClassChange?.(stopClass === "sensors" ? "all" : "sensors")}
                     />
-                    <ClassRow
-                        label="Без оборудования"
-                        value={stats.unequipped}
-                        valueClass="text-blue-500"
-                        active={stopClass === "none"}
-                        onClick={() => onStopClassChange?.(stopClass === "none" ? "all" : "none")}
-                    />
                 </div>
 
-                {stats.incidents > 0 && (
-                    <div className="pt-3 border-t">
-                        <div className="text-sm font-medium mb-2 text-red-500 flex items-center gap-1.5">
-                            <AlertTriangle className="h-4 w-4 shrink-0" />
-                            <span className="truncate">Активные инциденты</span>
-                        </div>
-                        <div className="space-y-1.5 text-xs">
-                            <div className="flex justify-between items-center gap-2 text-red-500">
-                                <span className="truncate">Инцидент</span>
-                                <span className="font-bold tabular-nums shrink-0">{stats.incidents}</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
+                <div className="pt-3 border-t space-y-0.5">
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">Статус на карте</div>
+                    {BUS_STOP_STATUS_ORDER.map(key => (
+                        <StatusRow
+                            key={key}
+                            statusKey={key}
+                            count={stats.statusCounts[key]}
+                            checked={statusFilters[key]}
+                            disabled={stopClass !== "all"}
+                            solo={isSolo(key)}
+                            onToggle={checked => setStatusFilters(prev => ({ ...prev, [key]: checked }))}
+                            onSolo={() => handleSolo(key)}
+                        />
+                    ))}
+                    {stopClass !== "all" && (
+                        <p className="pt-1 text-[11px] text-muted-foreground">
+                            Выбранная строка оснащения показывает весь класс — статусы не применяются.
+                        </p>
+                    )}
+                </div>
             </CardContent>
         </Card>
     )

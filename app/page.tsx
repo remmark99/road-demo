@@ -4,7 +4,6 @@ import { useState, useCallback } from "react"
 import { SurgutMap } from "@/components/map/surgut-map"
 import { TimelineSlider } from "@/components/map/timeline-slider"
 import { useStopHistory } from "@/lib/hooks/use-stop-history"
-import { MapReportButton } from "@/components/map/map-report-button"
 import { Legend } from "@/components/map/legend"
 import { BusStopsStats } from "@/components/map/bus-stops-stats"
 import { Navigation } from "@/components/navigation"
@@ -50,7 +49,6 @@ export default function MapPage() {
               <div className="absolute right-0 mt-2 max-h-[65vh] w-72 overflow-y-auto rounded-lg border bg-background p-3 shadow-lg">
                 {hasModule('stops') && <BusStopsStats onFocusStop={setFocusTarget} historySnapshot={snapshot} stopClass={stopClass} onStopClassChange={setStopClass} />}
                 <Legend />
-                {hasModule('stops') && <MapReportButton />}
               </div>
             </details>
             <div className="absolute bottom-8 left-4 right-4 z-10 max-w-xl">
@@ -63,7 +61,6 @@ export default function MapPage() {
           <div className="hidden md:block w-72 p-3 border-l border-border overflow-y-auto flex-shrink-0">
             {hasModule('stops') && <BusStopsStats onFocusStop={setFocusTarget} historySnapshot={snapshot} stopClass={stopClass} onStopClassChange={setStopClass} />}
             <Legend />
-            {hasModule('stops') && <MapReportButton />}
           </div>
         </div>
 

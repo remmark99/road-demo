@@ -124,6 +124,7 @@ export function TimeRangeFilter({ value, onChange, children }: TimeRangeFilterPr
                         onSelect={handleDateRangeSelect}
                         numberOfMonths={2}
                         locale={ru}
+                        endMonth={new Date()}
                         disabled={(date) => date > new Date()}
                     />
                     <div className="flex items-center justify-between border-t px-4 py-3">

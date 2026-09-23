@@ -15,23 +15,32 @@ import {
 import { cn } from "@/lib/utils"
 import { Button, buttonVariants } from "@/components/ui/button"
 
+/** Насколько глубоко уходит список годов, если календарь не задал свой startMonth. */
+const YEARS_BACK = 5
+
 function Calendar({
   className,
   classNames,
   showOutsideDays = true,
-  captionLayout = "label",
+  captionLayout = "dropdown",
   buttonVariant = "ghost",
   formatters,
+  labels,
   components,
+  startMonth,
   ...props
 }: React.ComponentProps<typeof DayPicker> & {
   buttonVariant?: React.ComponentProps<typeof Button>["variant"]
 }) {
   const defaultClassNames = getDefaultClassNames()
+  // Без нижней границы react-day-picker насыпает в список годов целый век.
+  const navStart =
+    startMonth ?? new Date(new Date().getFullYear() - YEARS_BACK, 0, 1)
 
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
+      startMonth={navStart}
       className={cn(
         "bg-background group/calendar p-3 [--cell-size:--spacing(8)] [[data-slot=card-content]_&]:bg-transparent [[data-slot=popover-content]_&]:bg-transparent",
         String.raw`rtl:**:[.rdp-button\_next>svg]:rotate-180`,
@@ -40,9 +49,20 @@ function Calendar({
       )}
       captionLayout={captionLayout}
       formatters={{
-        formatMonthDropdown: (date) =>
-          date.toLocaleString("default", { month: "short" }),
+        formatMonthDropdown: (date, dateLib) => {
+          // Короткое имя месяца в локали календаря — иначе не влезает рядом с годом.
+          const month = dateLib
+            ? dateLib.format(date, "LLL")
+            : date.toLocaleString("default", { month: "short" })
+          return month.charAt(0).toUpperCase() + month.slice(1)
+        },
         ...formatters,
+      }}
+      labels={{
+        // react-day-picker подписывает списки по-английски.
+        labelMonthDropdown: () => "Выберите месяц",
+        labelYearDropdown: () => "Выберите год",
+        ...labels,
       }}
       classNames={{
         root: cn("w-fit", defaultClassNames.root),

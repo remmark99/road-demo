@@ -191,7 +191,7 @@ function getTrashAlertDistrictName(alert: StopTrashOverflowAlertRow, data: StopC
     const stopId = locationId ? getBusStopIdFromLocationId(locationId) : null
     const stop = stopId !== null ? data.stopsById.get(stopId) : undefined
 
-    return stop?.districtName ?? "Район не определен"
+    return stop?.districtName ?? "Микрорайон не определен"
 }
 
 function KpiCard({
@@ -291,7 +291,7 @@ export function StopDistrictCurrentAnalytics() {
                 if (cancelled) return
                 setData(null)
                 setTrashAlerts([])
-                setError(fetchError instanceof Error ? fetchError.message : "Не удалось загрузить районную аналитику")
+                setError(fetchError instanceof Error ? fetchError.message : "Не удалось загрузить микрорайонную аналитику")
             })
             .finally(() => {
                 if (!cancelled) setLoading(false)
@@ -376,14 +376,14 @@ export function StopDistrictCurrentAnalytics() {
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-xl font-semibold">Районы</h2>
+                        <h2 className="text-xl font-semibold">Микрорайоны</h2>
                         <Badge variant="outline" className="gap-1">
                             <MapIcon className="h-3 w-3" />
-                            районная сводка
+                            микрорайонная сводка
                         </Badge>
                     </div>
                     <p className="max-w-3xl text-sm text-muted-foreground">
-                        Сравнение районов по оснащенным остановкам, онлайн-загруженности и событиям безопасности.
+                        Сравнение микрорайонов по оснащенным остановкам, онлайн-загруженности и событиям безопасности.
                     </p>
                 </div>
                 <div className="text-sm text-muted-foreground lg:text-right">
@@ -413,14 +413,14 @@ export function StopDistrictCurrentAnalytics() {
             ) : !error && data ? (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                     <KpiCard
-                        title="Районов в витрине"
+                        title="Микрорайонов"
                         value={integerFormat.format(districtSummaries.length)}
                         caption="по сопоставлению остановок"
                         detail={`${integerFormat.format(activeDistricts.length)} с онлайн-данными или событиями`}
                         icon={MapIcon}
                     />
                     <KpiCard
-                        title="Подключено в районах"
+                        title="Подключено в микрорайонах"
                         value={integerFormat.format(connectedDistrictStops)}
                         caption="остановок с видеонаблюдением"
                         detail={`${estimatedDistrictLabel} всего примерно`}
@@ -439,7 +439,7 @@ export function StopDistrictCurrentAnalytics() {
                         title="События за период"
                         value={integerFormat.format(selectedSafetyEvents)}
                         caption={alertFilterLabel}
-                        detail="группировка по районам"
+                        detail="группировка по микрорайонам"
                         icon={ShieldAlert}
                         tone={getKpiTone(selectedSafetyEvents)}
                     />
@@ -451,7 +451,7 @@ export function StopDistrictCurrentAnalytics() {
                     <CardContent className="flex items-start gap-3 p-4">
                         <AlertCircle className="mt-0.5 h-5 w-5 text-red-500" />
                         <div>
-                            <p className="font-medium text-red-700 dark:text-red-300">Не удалось загрузить районную аналитику</p>
+                            <p className="font-medium text-red-700 dark:text-red-300">Не удалось загрузить микрорайонную аналитику</p>
                             <p className="text-sm text-muted-foreground">{error}</p>
                         </div>
                     </CardContent>
@@ -468,7 +468,7 @@ export function StopDistrictCurrentAnalytics() {
                                         <div className="space-y-1.5">
                                             <CardTitle className="flex items-center gap-2 text-base">
                                                 <ShieldAlert className="h-5 w-5 text-red-500" />
-                                                События по районам
+                                                События по микрорайонам
                                             </CardTitle>
                                             <CardDescription>
                                                 Гистограмма по выбранному типу события
@@ -539,7 +539,7 @@ export function StopDistrictCurrentAnalytics() {
                                             Загрязнения
                                         </CardTitle>
                                         <CardDescription>
-                                            В каких районах больше всего неубранных урн
+                                            В каких микрорайонах больше всего неубранных урн
                                         </CardDescription>
                                     </div>
                                     <Button asChild variant="outline" size="sm" className="shrink-0">
@@ -579,16 +579,16 @@ export function StopDistrictCurrentAnalytics() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Районная сводка</CardTitle>
+                            <CardTitle className="text-base">Микрорайонная сводка</CardTitle>
                             <CardDescription>
-                                Остановки, онлайн-покрытие, средняя загрузка и реальные события безопасности по районам
+                                Остановки, онлайн-покрытие, средняя загрузка и реальные события безопасности по микрорайонам
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <Table>
                                 <TableHeader>
                                     <TableRow>
-                                        <TableHead>Район</TableHead>
+                                        <TableHead>Микрорайон</TableHead>
                                         <TableHead className="text-right">Подключено</TableHead>
                                         <TableHead className="text-right">Всего примерно</TableHead>
                                         <TableHead className="text-right">Покрытие</TableHead>

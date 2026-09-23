@@ -1,0 +1,19 @@
+{
+  "planetVersion": "20260913_164504_pt",
+  "fetchedAt": "2026-09-22T18:51:50.593Z",
+  "bbox": [
+    73.17219967549713,
+    61.14615665900108,
+    73.62048832450287,
+    61.36175134099892
+  ],
+  "boxKm": 24,
+  "maxzoom": 14,
+  "attribution": "<a href=\"https://openfreemap.org\" target=\"_blank\">OpenFreeMap</a> <a href=\"https://www.openmaptiles.org/\" target=\"_blank\">&copy; OpenMapTiles</a> Data from <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\">OpenStreetMap</a>",
+  "tiles": {
+    "saved": 0,
+    "skipped": 641,
+    "empty": 0,
+    "bytes": 0
+  }
+}
