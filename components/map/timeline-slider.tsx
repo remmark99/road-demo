@@ -85,6 +85,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
           <PopoverContent className="w-auto p-0" align="start">
             <Calendar
               mode="range"
+              endMonth={now}
               disabled={{ after: now }}
               defaultMonth={dateRange?.from}
               selected={dateRange}

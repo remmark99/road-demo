@@ -212,6 +212,7 @@ export function StopEquipmentAnalytics() {
                     setCalendarOpen(false)
                   }}
                   locale={ru}
+                  endMonth={new Date()}
                   disabled={(date) => date > new Date()}
                 />
               </PopoverContent>

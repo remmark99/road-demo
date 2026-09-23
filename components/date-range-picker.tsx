@@ -41,7 +41,7 @@ export function DateRangePicker({ value, onChange, label, disabled, className, o
         </PopoverTrigger>
         <PopoverContent align="start" className="w-auto p-0">
             <Calendar mode="range" locale={ru} numberOfMonths={2} selected={{ from: day(draft.from), to: day(draft.to) }} defaultMonth={day(draft.from || value?.from || "")}
-                disabled={date => date > new Date()}
+                endMonth={new Date()} disabled={date => date > new Date()}
                 onSelect={range => setDraft({ from: range?.from ? iso(range.from) : "", to: range?.to ? iso(range.to) : "" })} />
             <div className="flex items-center justify-between gap-4 border-t px-4 py-3">
                 <p className="text-xs text-muted-foreground">{draft.from ? draft.to ? `${short(draft.from)} — ${short(draft.to)}` : `С ${short(draft.from)}` : "Выберите даты"}</p>
