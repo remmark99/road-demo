@@ -165,6 +165,13 @@ export function SecurityAnalytics() {
 
     return (
         <div className="h-full overflow-auto p-6 space-y-6">
+            <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-xl font-semibold">События безопасности</h2>
+                    <Badge variant="outline">Демо</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">Пример отображения событий.</p>
+            </div>
             {/* ─── Filter bar ──────────────────────────── */}
             <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
                 <Popover>
@@ -206,43 +213,23 @@ export function SecurityAnalytics() {
             </TimeRangeFilter>
 
             {/* ─── KPI Cards ───────────────────────────── */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Package className="h-4 w-4 text-amber-500" />
-                            <span className="text-xs text-muted-foreground">Оставленные предметы</span>
-                        </div>
-                        <div className="text-2xl font-bold">{kpiTotals.abandoned}</div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-red-500/10 to-red-600/5 border-red-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <PersonStanding className="h-4 w-4 text-red-500" />
-                            <span className="text-xs text-muted-foreground">Лежачий человек</span>
-                        </div>
-                        <div className="text-2xl font-bold">{kpiTotals.fallen}</div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border-purple-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Swords className="h-4 w-4 text-purple-500" />
-                            <span className="text-xs text-muted-foreground">Драки</span>
-                        </div>
-                        <div className="text-2xl font-bold">{kpiTotals.fight}</div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 border-blue-500/20">
-                    <CardContent className="pt-4 pb-3 px-4">
-                        <div className="flex items-center gap-2 mb-1">
-                            <Clock className="h-4 w-4 text-blue-500" />
-                            <span className="text-xs text-muted-foreground">Средняя реакция</span>
-                        </div>
-                        <div className="text-2xl font-bold">{avgResponse} <span className="text-sm font-normal">мин</span></div>
-                    </CardContent>
-                </Card>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                    { label: 'Оставленные предметы', value: kpiTotals.abandoned, icon: Package, color: 'text-amber-500' },
+                    { label: 'Лежачий человек', value: kpiTotals.fallen, icon: PersonStanding, color: 'text-red-500' },
+                    { label: 'Драки', value: kpiTotals.fight, icon: Swords, color: 'text-purple-500' },
+                    { label: 'Средняя реакция', value: `${avgResponse} мин`, icon: Clock, color: 'text-blue-500' },
+                ].map(({ label, value, icon: Icon, color }) => (
+                    <Card key={label} className="overflow-hidden">
+                        <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+                            <div className="space-y-1">
+                                <CardDescription>{label}</CardDescription>
+                                <CardTitle className="text-3xl font-semibold tabular-nums">{value}</CardTitle>
+                            </div>
+                            <div className={`rounded-md border bg-muted/30 p-2 ${color}`}><Icon className="h-5 w-5" /></div>
+                        </CardHeader>
+                    </Card>
+                ))}
             </div>
 
             {/* ─── Charts grid ─────────────────────────── */}
@@ -259,7 +246,7 @@ export function SecurityAnalytics() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <ChartContainer config={dailyStackedConfig} className="h-[280px] w-full">
+                        <ChartContainer config={dailyStackedConfig} className="h-[320px] w-full">
                             <BarChart data={dailyData} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="dayLabel" tickLine={false} axisLine={false} tickMargin={8} />
@@ -286,7 +273,7 @@ export function SecurityAnalytics() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <ChartContainer config={hourlyLineConfig} className="h-[280px] w-full">
+                        <ChartContainer config={hourlyLineConfig} className="h-[320px] w-full">
                             <LineChart data={hourlyData} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} interval={2} />
@@ -352,7 +339,7 @@ export function SecurityAnalytics() {
                                         style={{ backgroundColor: SUBTYPE_COLORS[i % SUBTYPE_COLORS.length] }}
                                     />
                                     <span className="text-muted-foreground flex-1 truncate">{s.subtype}</span>
-                                    <span className="font-mono text-xs">{s.count}</span>
+                                    <span className="tabular-nums text-sm">{s.count}</span>
                                 </div>
                             ))}
                         </div>
@@ -371,7 +358,7 @@ export function SecurityAnalytics() {
                         </CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <ScrollArea className="h-[280px]">
+                        <ScrollArea className="h-[320px]">
                             <div className="space-y-2">
                                 {incidentsFiltered.slice(0, 20).map((inc) => (
                                     <div
@@ -384,7 +371,7 @@ export function SecurityAnalytics() {
                                         />
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2">
-                                                <span className="text-xs font-mono text-muted-foreground">{inc.id}</span>
+                                                <span className="text-xs tabular-nums text-muted-foreground">{inc.id}</span>
                                                 <Badge variant="outline" className="text-[10px] px-1.5 py-0">
                                                     {inc.subtype}
                                                 </Badge>

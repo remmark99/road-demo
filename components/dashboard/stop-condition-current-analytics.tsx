@@ -117,8 +117,7 @@ interface StopDurationChartRow {
 }
 
 const hourlyConfig = {
-    confirmations: { label: "Подтверждения", color: "hsl(32, 95%, 53%)" },
-    stops: { label: "Остановки", color: "hsl(199, 89%, 48%)" },
+    stops: { label: "Остановок с переполненной урной", color: "hsl(199, 89%, 48%)" },
 } satisfies ChartConfig
 
 const stopConfig = {
@@ -835,10 +834,10 @@ export function StopConditionCurrentAnalytics() {
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-base">
                                     <Clock3 className="h-5 w-5 text-amber-500" />
-                                    Подтверждения по часам
+                                    Переполнение по часам суток
                                 </CardTitle>
                                 <CardDescription>
-                                    Сколько раз видеоаналитика фиксировала переполненную урну и на скольких остановках это повторялось
+                                    Число остановок с переполненной урной в каждый час суток за выбранный период.
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -848,7 +847,6 @@ export function StopConditionCurrentAnalytics() {
                                         <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} />
                                         <YAxis tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
                                         <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Bar dataKey="confirmations" fill="var(--color-confirmations)" radius={[5, 5, 0, 0]} />
                                         <Bar dataKey="stops" fill="var(--color-stops)" radius={[5, 5, 0, 0]} />
                                     </BarChart>
                                 </ChartContainer>
@@ -896,9 +894,6 @@ export function StopConditionCurrentAnalytics() {
                             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                 <div className="space-y-1.5">
                                     <CardTitle className="text-base">Эпизоды переполнения</CardTitle>
-                                    <CardDescription>
-                                        Один эпизод объединяет подтверждения по одной остановке, пока между ними нет длительного перерыва
-                                    </CardDescription>
                                 </div>
                                 <Button asChild variant="outline" size="sm" className="shrink-0">
                                     <Link href={trashNotificationsHref}>

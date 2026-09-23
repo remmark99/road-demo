@@ -665,10 +665,10 @@ export function StopCurrentLoadAnalytics() {
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2 text-base">
                                 <Clock3 className="h-5 w-5 text-sky-500" />
-                                Тепловая карта: час и остановка
+                                Заполненность остановок
                             </CardTitle>
                             <CardDescription>
-                                Среднее число людей в кадре в этот час за выбранные дни, с учётом числа наблюдений. Темнее — больше людей; 0 — людей не было, «—» — нет данных. Время Сургута (00–23). Это не число уникальных пассажиров.
+                                Среднее число людей в кадре.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
