@@ -8,6 +8,7 @@ import {
 } from "@/lib/stop-analytics-config"
 
 export interface FetchAlertsOptions {
+    moduleName?: string
     countExact?: boolean
     fromInclusive?: string
     toExclusive?: string
@@ -88,7 +89,7 @@ export function fetchAlerts(options: FetchAlertsOptions = {}): Promise<AlertsRes
     return sessionRequest(`alerts:${JSON.stringify(options)}`, 15_000, () => loadfetchAlerts(options))
 }
 async function loadfetchAlerts(options: FetchAlertsOptions): Promise<AlertsResult> {
-    const { types, cameraIndexes, fromInclusive, toExclusive, limit = 25, offset = 0 } = options
+    const { types, moduleName, cameraIndexes, fromInclusive, toExclusive, limit = 25, offset = 0 } = options
 
     let query = supabase
         .from('alerts_with_bin_episodes')
@@ -100,6 +101,7 @@ async function loadfetchAlerts(options: FetchAlertsOptions): Promise<AlertsResul
 
     if (fromInclusive) query = query.gte('timestamp', fromInclusive)
     if (toExclusive) query = query.lt('timestamp', toExclusive)
+    if (moduleName) query = query.eq('module_name', moduleName)
     if (cameraIndexes?.length === 0) return { alerts: [], total: 0, hasMore: false }
 
     // Apply type filter
@@ -187,43 +189,28 @@ async function loadStopSafetyAlerts(options: FetchStopSafetyAlertsOptions | numb
     const resolvedOptions: FetchStopSafetyAlertsOptions = typeof options === "number"
         ? { limit: options }
         : options
-    const {
-        from,
-        to,
-        types = STOP_SAFETY_ALERT_TYPES,
-        limit = 2000,
-    } = resolvedOptions
-
-    if (types.length === 0) {
-        return []
+    const { from, to, types = STOP_SAFETY_ALERT_TYPES, limit } = resolvedOptions
+    if (types.length === 0) return []
+    const maxRows = limit ?? 50_000
+    const rows: StopSafetyAlertRow[] = []
+    // PostgREST caps individual responses. Read all pages before drawing empty periods.
+    while (rows.length < maxRows) {
+        const pageSize = Math.min(1000, maxRows - rows.length)
+        let query = supabase.from('alerts')
+            .select('id,module_name,alert_type,severity,message,metadata,timestamp,source_video,clip_path,camera_index')
+            .eq('module_name', 'stops').in('alert_type', [...types])
+            .order('timestamp', { ascending: false }).order('id', { ascending: false })
+            .range(rows.length, rows.length + pageSize - 1)
+        if (from) query = query.gte('timestamp', from.toISOString())
+        if (to) query = query.lte('timestamp', to.toISOString())
+        const { data, error } = await query
+        if (error) throw new Error('Не удалось загрузить события. Попробуйте ещё раз.')
+        const page = (data || []) as StopSafetyAlertRow[]
+        rows.push(...page)
+        if (page.length === 0) break
+        if (limit === undefined && rows.length >= maxRows) throw new Error('Слишком много событий. Выберите более короткий период.')
     }
-
-    let query = supabase
-        .from('alerts')
-        .select('id,module_name,alert_type,severity,message,metadata,timestamp,source_video,clip_path,camera_index')
-        .eq('module_name', 'stops')
-        .in('alert_type', [...types])
-        .order('timestamp', { ascending: false })
-        .limit(limit)
-
-    if (from) {
-        query = query.gte('timestamp', from.toISOString())
-    }
-
-    if (to) {
-        query = query.lte('timestamp', to.toISOString())
-    }
-
-    const { data, error } = await query
-
-    if (error) {
-        console.error('Error fetching stop safety alerts:', error)
-        return []
-    }
-
-    return ((data || []) as StopSafetyAlertRow[]).filter((alert): alert is StopSafetyAlert => (
-        isStopSafetyAlertType(alert.alert_type)
-    ))
+    return rows.filter((alert): alert is StopSafetyAlert => isStopSafetyAlertType(alert.alert_type))
 }
 
 export async function fetchLyingPersonAlerts(limit: number = 2000): Promise<LyingPersonAlert[]> {

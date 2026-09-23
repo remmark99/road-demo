@@ -26,7 +26,7 @@ export async function GET(request:NextRequest){
  const list=(key:string)=>{const value=params.get(key);if(value===null||value==='')return [];const items=value.split(',');if(items.length>500||items.some(x=>!x||x.length>80||!/^[-\w ]+$/.test(x)))throw new Error('Некорректный фильтр');return items}
  const numbers=(key:string)=>list(key).map(x=>{const n=Number(x);if(!Number.isSafeInteger(n)||n<0)throw new Error('Некорректный фильтр');return n})
  let types:string[],selected:number[],elements:number[],alarms:string[],categories:string[]
- try{bounds=notificationPeriodBounds({from,to});types=list('types');selected=numbers('cameras');elements=numbers('elements');alarms=list('alarms');categories=list('categories')}
+ try{bounds=notificationPeriodBounds({from,to,start:params.get('start')||undefined,end:params.get('end')||undefined});types=list('types');selected=numbers('cameras');elements=numbers('elements');alarms=list('alarms');categories=list('categories')}
  catch(e){return NextResponse.json({error:(e as Error).message},{status:400})}
  try{
   const geometry=(admin||modules.includes('stops'))?await db.rpc('get_bus_stops_geojson'):{data:{features:[]},error:null}
@@ -44,6 +44,7 @@ export async function GET(request:NextRequest){
    const rows=indexes?.length===0?[]:await readReportRows<Alert>((a,b)=>{
     let q=db.from('alerts_with_bin_episodes').select('*').order('timestamp').order('id').range(a,b)
     if(!admin)q=q.in('module_name',modules)
+    if(params.get('module'))q=q.eq('module_name',params.get('module')!)
     if(bounds.fromInclusive)q=q.gte('timestamp',bounds.fromInclusive)
     if(bounds.toExclusive)q=q.lt('timestamp',bounds.toExclusive)
     if(types.length)q=q.in('alert_type',types)

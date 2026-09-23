@@ -92,3 +92,12 @@ test('legacy smoking camera 145 resolves by recorded stop, never the roads camer
   assert.ok(!api.calls.some(c=>c[1]==='in'&&c[2]==='camera_index'))
  }
 })
+
+ test('analytics links export the same exact interval and module as the notification feed',async()=>{
+ const api=endpoint(),start='2026-09-23T05:00:00.000Z',end='2026-09-23T06:00:00.000Z'
+ const query=new URLSearchParams({channel:'cameras',from:'2026-09-23',to:'2026-09-23',start,end,module:'stops',types:'smoking',cameras:'151'})
+ const response=await api.GET({nextUrl:new URL('http://local/?'+query)})
+ assert.equal(response.status,200)
+ for(const [method,col,val] of [['gte','timestamp',start],['lt','timestamp',end],['eq','module_name','stops']]) assert.ok(api.calls.some(c=>c[0]==='alerts_with_bin_episodes'&&c[1]===method&&c[2]===col&&c[3]===val))
+ assert.ok(api.calls.some(c=>c[1]==='in'&&c[2]==='camera_index'&&c[3].includes(151)))
+ })

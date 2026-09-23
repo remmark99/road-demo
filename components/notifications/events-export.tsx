@@ -9,7 +9,9 @@ export function EventsExport({channel,period,filters}:{channel:'cameras'|'sensor
     setBusy(true);setError('')
     try {
       notificationPeriodBounds(period)
-      const params=new URLSearchParams({channel,...period})
+      const params=new URLSearchParams({channel,from:period.from,to:period.to})
+      if(period.start)params.set('start',period.start)
+      if(period.end)params.set('end',period.end)
       Object.entries(filters).forEach(([key,value])=>{if(value?.trim()) params.set(key,value)})
       const response=await fetch(`/api/notifications/export?${params}`)
       if(!response.ok) throw new Error((await response.json().catch(()=>({}))).error || 'Не удалось сформировать Excel')

@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { format } from "date-fns"
-import { ru } from "date-fns/locale"
+import { cityRange, cityDateTime } from "@/lib/analytics/city-time"
 import {
     Bar,
     BarChart,
@@ -56,6 +55,7 @@ import {
     STOP_SAFETY_ALERT_TYPES,
     type StopSafetyAlertType,
 } from "@/lib/stop-analytics-config"
+import { buildSafetyPeriods, bucketEnd, safetyNotificationsHref } from "@/lib/analytics/safety-periods"
 import { cn } from "@/lib/utils"
 
 type AlertTone = "normal" | "attention" | "high"
@@ -124,28 +124,6 @@ const PERIOD_BUCKET_LABELS: Record<PeriodBucket, string> = {
     week: "По неделям",
 }
 
-function buildNotificationsHref({
-    types,
-    cameraIndexes = [],
-}: {
-    types: readonly string[]
-    cameraIndexes?: readonly number[]
-}) {
-    const params = new URLSearchParams()
-    const uniqueTypes = Array.from(new Set(types.filter(Boolean)))
-    const uniqueCameraIndexes = Array.from(new Set(cameraIndexes.filter(Number.isFinite)))
-
-    if (uniqueTypes.length > 0) {
-        params.set("types", uniqueTypes.join(","))
-    }
-
-    if (uniqueCameraIndexes.length > 0) {
-        params.set("cameras", uniqueCameraIndexes.join(","))
-    }
-
-    const query = params.toString()
-    return query ? `/notifications?${query}` : "/notifications"
-}
 
 function getAlertCameraIndexes(alert: StopSafetyAlert) {
     return typeof alert.camera_index === "number" ? [alert.camera_index] : []
@@ -158,67 +136,8 @@ function compareLocationId(a: string, b: string) {
     return a.localeCompare(b, "ru", { numeric: true })
 }
 
-function startOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(0, 0, 0, 0)
-    return result
-}
-
-function endOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(23, 59, 59, 999)
-    return result
-}
-
-function getRangeBounds(result: TimeRangeResult): RangeBounds {
-    const now = new Date()
-
-    if (result.preset === "custom" && result.customRange?.from) {
-        return {
-            from: startOfLocalDay(result.customRange.from),
-            to: result.customRange.to ? endOfLocalDay(result.customRange.to) : endOfLocalDay(result.customRange.from),
-        }
-    }
-
-    if (result.preset === "yesterday") {
-        const yesterday = new Date(now)
-        yesterday.setDate(now.getDate() - 1)
-
-        return {
-            from: startOfLocalDay(yesterday),
-            to: endOfLocalDay(yesterday),
-        }
-    }
-
-    if (result.preset === "week") {
-        const weekAgo = new Date(now)
-        weekAgo.setDate(now.getDate() - 7)
-
-        return {
-            from: weekAgo,
-            to: now,
-        }
-    }
-
-    if (result.preset === "month") {
-        const monthAgo = new Date(now)
-        monthAgo.setDate(now.getDate() - 30)
-
-        return {
-            from: monthAgo,
-            to: now,
-        }
-    }
-
-    return {
-        from: startOfLocalDay(now),
-        to: now,
-    }
-}
-
 function formatDateTime(iso: string | null) {
-    if (!iso) return "Нет данных"
-    return format(new Date(iso), "dd.MM.yyyy HH:mm", { locale: ru })
+    return iso ? cityDateTime(iso) : 'Нет данных'
 }
 
 function formatFreshness(iso: string | null) {
@@ -282,82 +201,14 @@ function getAutoPeriodBucket(range: RangeBounds): ResolvedPeriodBucket {
 }
 
 function resolvePeriodBucket(bucket: PeriodBucket, range: RangeBounds): ResolvedPeriodBucket {
-    return bucket === "auto" ? getAutoPeriodBucket(range) : bucket
+    const resolved = bucket === "auto" ? getAutoPeriodBucket(range) : bucket
+    // Avoid rendering thousands of SVG columns for long custom periods.
+    const days = (range.to.getTime() - range.from.getTime()) / 86_400_000
+    if (resolved === 'hour' && days > 31) return days > 366 ? 'week' : 'day'
+    if (resolved === 'day' && days > 366) return 'week'
+    return resolved
 }
 
-function startOfLocalWeek(date: Date) {
-    const result = startOfLocalDay(date)
-    const day = result.getDay()
-    const daysFromMonday = day === 0 ? 6 : day - 1
-
-    result.setDate(result.getDate() - daysFromMonday)
-
-    return result
-}
-
-function getPeriodBucketDate(date: Date, bucket: ResolvedPeriodBucket) {
-    if (bucket === "hour") {
-        const result = new Date(date)
-        result.setMinutes(0, 0, 0)
-        return result
-    }
-
-    if (bucket === "week") {
-        return startOfLocalWeek(date)
-    }
-
-    return startOfLocalDay(date)
-}
-
-function formatPeriodBucketLabel(bucketKey: string, bucket: ResolvedPeriodBucket, range: RangeBounds) {
-    const date = new Date(bucketKey)
-
-    if (bucket === "hour") {
-        const showDate = range.to.getTime() - range.from.getTime() > 36 * 60 * 60 * 1000
-        return format(date, showDate ? "dd.MM HH:mm" : "HH:mm", { locale: ru })
-    }
-
-    if (bucket === "week") {
-        const weekEnd = new Date(date)
-        weekEnd.setDate(date.getDate() + 6)
-        return `${format(date, "dd.MM", { locale: ru })}-${format(weekEnd, "dd.MM", { locale: ru })}`
-    }
-
-    return format(date, "EEE dd.MM", { locale: ru })
-}
-
-function buildPeriodAlertRows(
-    alerts: StopSafetyAlert[],
-    range: RangeBounds,
-    bucket: ResolvedPeriodBucket,
-): PeriodAlertRow[] {
-    const bucketMap = new Map<string, { events: number; cameras: Set<number>; stops: Set<string> }>()
-
-    for (const alert of alerts) {
-        const bucketKey = getPeriodBucketDate(new Date(alert.timestamp), bucket).toISOString()
-        const current = bucketMap.get(bucketKey) ?? {
-            events: 0,
-            cameras: new Set<number>(),
-            stops: new Set<string>(),
-        }
-        const locationId = getAlertLocationId(alert)
-
-        current.events += 1
-        if (typeof alert.camera_index === "number") current.cameras.add(alert.camera_index)
-        if (locationId) current.stops.add(locationId)
-        bucketMap.set(bucketKey, current)
-    }
-
-    return Array.from(bucketMap.entries())
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([bucketKey, value]) => ({
-            bucketKey,
-            bucketLabel: formatPeriodBucketLabel(bucketKey, bucket, range),
-            events: value.events,
-            cameras: value.cameras.size,
-            stops: value.stops.size,
-        }))
-}
 
 function buildHourOfDayAlertRows(alerts: StopSafetyAlert[]): HourOfDayAlertRow[] {
     const hourMap = new Map<number, { events: number; cameras: Set<number>; stops: Set<string> }>()
@@ -371,7 +222,7 @@ function buildHourOfDayAlertRows(alerts: StopSafetyAlert[]): HourOfDayAlertRow[]
     }
 
     for (const alert of alerts) {
-        const hour = new Date(alert.timestamp).getHours()
+        const hour = new Date(Date.parse(alert.timestamp) + 5 * 3600_000).getUTCHours()
         const current = hourMap.get(hour)
         if (!current) continue
 
@@ -555,7 +406,7 @@ function KpiCard({
 
 function LoadingGrid() {
     return (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-3">
             {Array.from({ length: 4 }).map((_, index) => (
                 <Card key={index}>
                     <CardHeader className="pb-2">
@@ -579,7 +430,7 @@ export function StopLyingPersonAnalytics() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    const range = useMemo(() => getRangeBounds(timeRange), [timeRange])
+    const range = useMemo(() => cityRange(timeRange), [timeRange])
     const resolvedPeriodBucket = useMemo(() => resolvePeriodBucket(periodBucket, range), [periodBucket, range])
 
     useEffect(() => {
@@ -611,7 +462,7 @@ export function StopLyingPersonAnalytics() {
     }, [range])
 
     const periodRows = useMemo(
-        () => buildPeriodAlertRows(alerts, range, resolvedPeriodBucket),
+        () => buildSafetyPeriods(alerts, range, resolvedPeriodBucket),
         [alerts, range, resolvedPeriodBucket],
     )
     const hourOfDayRows = useMemo(() => buildHourOfDayAlertRows(alerts), [alerts])
@@ -630,9 +481,7 @@ export function StopLyingPersonAnalytics() {
     )
     const periodTickInterval = Math.max(0, Math.ceil(periodRows.length / 8) - 1)
     const noRows = !loading && alerts.length === 0 && !error
-    const safetyNotificationsHref = buildNotificationsHref({
-        types: STOP_SAFETY_ALERT_TYPES,
-    })
+    const allNotificationsHref = safetyNotificationsHref(range, STOP_SAFETY_ALERT_TYPES)
 
     const handleTimeRangeChange = (nextRange: TimeRangeResult) => {
         setTimeRange(nextRange)
@@ -667,7 +516,7 @@ export function StopLyingPersonAnalytics() {
             {loading && alerts.length === 0 ? (
                 <LoadingGrid />
             ) : !error ? (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 md:grid-cols-3">
                     <KpiCard
                         title="Событий за период"
                         value={integerFormat.format(summary.totalEvents)}
@@ -692,14 +541,7 @@ export function StopLyingPersonAnalytics() {
                         icon={Camera}
                         tone={summary.cameras > 0 ? "attention" : "normal"}
                     />
-                    <KpiCard
-                        title="Пиковый час"
-                        value={integerFormat.format(summary.peakHourEvents)}
-                        caption="максимум событий за час"
-                        detail={summary.peakHourLabel ?? "за период событий нет"}
-                        icon={Clock3}
-                        tone={getAlertTone(summary.peakHourEvents)}
-                    />
+
                 </div>
             ) : null}
 
@@ -744,7 +586,7 @@ export function StopLyingPersonAnalytics() {
                                             Распределение по периоду
                                         </CardTitle>
                                         <CardDescription>
-                                            События группируются по выбранной детализации периода
+                                            Пустые интервалы — без зарегистрированных событий. Нажмите столбец, чтобы открыть уведомления за этот интервал в новой вкладке.
                                         </CardDescription>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
@@ -778,11 +620,18 @@ export function StopLyingPersonAnalytics() {
                                         />
                                         <YAxis tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} />
                                         <ChartTooltip content={<ChartTooltipContent />} />
-                                        <Bar dataKey="events" fill="var(--color-events)" radius={[5, 5, 0, 0]} />
+                                        <Bar dataKey="events" fill="var(--color-events)" radius={[5, 5, 0, 0]} cursor="pointer" onClick={(entry) => {
+                                            const row = entry as unknown as { bucketKey?: string }
+                                            if (!row.bucketKey) return
+                                            const start = Math.max(Date.parse(row.bucketKey), range.from.getTime())
+                                            const end = Math.min(bucketEnd(Date.parse(row.bucketKey), resolvedPeriodBucket) - 1, range.to.getTime())
+                                            window.open(safetyNotificationsHref({ from: new Date(start), to: new Date(end) }, STOP_SAFETY_ALERT_TYPES), '_blank', 'noopener,noreferrer')
+                                        }} />
                                     </BarChart>
                                 </ChartContainer>
+                                <Button asChild variant="outline" size="sm" className="mt-3"><Link href={allNotificationsHref} target="_blank" rel="noopener noreferrer">Уведомления за период<ExternalLink className="h-3 w-3" /></Link></Button>
                                 <p className="mt-3 text-xs text-muted-foreground">
-                                    Текущий режим: {PERIOD_BUCKET_LABELS[resolvedPeriodBucket]}.
+                                    Текущий режим: {PERIOD_BUCKET_LABELS[resolvedPeriodBucket]}. Время Сургута.
                                 </p>
                             </CardContent>
                         </Card>
@@ -895,7 +744,7 @@ export function StopLyingPersonAnalytics() {
                                     </CardDescription>
                                 </div>
                                 <Button asChild variant="outline" size="sm" className="shrink-0">
-                                    <Link href={safetyNotificationsHref}>
+                                    <Link href={allNotificationsHref} target="_blank" rel="noopener noreferrer">
                                         <Bell className="h-4 w-4" />
                                         Уведомления
                                         <ExternalLink className="h-3.5 w-3.5" />
@@ -924,10 +773,7 @@ export function StopLyingPersonAnalytics() {
                                             : { label: "Остановка не определена", detail: `Камера ${alert.camera_index ?? "-"}` }
                                         const config = ALERT_TYPE_CONFIG[alert.alert_type]
                                         const Icon = getAlertTypeIcon(alert.alert_type)
-                                        const alertNotificationsHref = buildNotificationsHref({
-                                            types: [alert.alert_type],
-                                            cameraIndexes: getAlertCameraIndexes(alert),
-                                        })
+                                        const alertNotificationsHref = safetyNotificationsHref(range, [alert.alert_type], getAlertCameraIndexes(alert))
 
                                         return (
                                             <TableRow key={alert.id}>
@@ -958,7 +804,7 @@ export function StopLyingPersonAnalytics() {
                                                 </TableCell>
                                                 <TableCell className="text-right">
                                                     <Button asChild variant="ghost" size="sm" className="h-8">
-                                                        <Link href={alertNotificationsHref}>
+                                                        <Link href={alertNotificationsHref} target="_blank" rel="noopener noreferrer">
                                                             Открыть
                                                             <ExternalLink className="h-3.5 w-3.5" />
                                                         </Link>

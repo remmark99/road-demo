@@ -1,8 +1,7 @@
 "use client"
 
 import { Fragment, useEffect, useMemo, useState } from "react"
-import { format } from "date-fns"
-import { ru } from "date-fns/locale"
+import { cityRange, cityDateTime, cityHour } from "@/lib/analytics/city-time"
 import {
     Area,
     AreaChart,
@@ -54,6 +53,7 @@ import {
     type StopLoadLocationSummary,
 } from "@/lib/api/stop-load-analytics"
 import { STOP_EQUIPPED_COUNT } from "@/lib/stop-analytics-config"
+import { HEATMAP_HOUR_COLUMNS, buildHeatmapRows } from "@/lib/analytics/passenger-heatmap"
 import { cn } from "@/lib/utils"
 
 type LoadTone = "normal" | "attention" | "high"
@@ -71,24 +71,6 @@ interface HourlyLoadRow {
     loadPct: number
     activeLocations: number
     windows: number
-}
-
-interface HeatmapRow {
-    locationId: string
-    label: string
-    detail: string
-    cells: Array<{
-        hourKey: string
-        hourLabel: string
-        hourTitle: string
-        value: number
-    }>
-}
-
-interface HeatmapHourColumn {
-    hourKey: string
-    hourLabel: string
-    hourTitle: string
 }
 
 interface LoadSummary {
@@ -113,15 +95,6 @@ const loadPercentConfig = {
     loadPct: { label: "Индекс загрузки", color: "hsl(152, 57%, 40%)" },
 } satisfies ChartConfig
 
-const HEATMAP_HOUR_COLUMNS: HeatmapHourColumn[] = Array.from({ length: 24 }, (_, index) => {
-    const hour = String(index).padStart(2, "0")
-
-    return {
-        hourKey: hour,
-        hourLabel: String(index + 1).padStart(2, "0"),
-        hourTitle: `${hour}:00-${hour}:59`,
-    }
-})
 
 const numberFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
@@ -130,72 +103,8 @@ function compareLocationId(a: string, b: string) {
     return a.localeCompare(b, "ru", { numeric: true })
 }
 
-function startOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(0, 0, 0, 0)
-    return result
-}
-
-function endOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(23, 59, 59, 999)
-    return result
-}
-
-function getRangeBounds(result: TimeRangeResult): RangeBounds {
-    const now = new Date()
-
-    if (result.preset === "custom" && result.customRange?.from) {
-        return {
-            from: startOfLocalDay(result.customRange.from),
-            to: result.customRange.to ? endOfLocalDay(result.customRange.to) : endOfLocalDay(result.customRange.from),
-        }
-    }
-
-    if (result.preset === "yesterday") {
-        const yesterday = new Date(now)
-        yesterday.setDate(now.getDate() - 1)
-
-        return {
-            from: startOfLocalDay(yesterday),
-            to: endOfLocalDay(yesterday),
-        }
-    }
-
-    if (result.preset === "week") {
-        const weekAgo = new Date(now)
-        weekAgo.setDate(now.getDate() - 7)
-
-        return {
-            from: weekAgo,
-            to: now,
-        }
-    }
-
-    if (result.preset === "month") {
-        const monthAgo = new Date(now)
-        monthAgo.setDate(now.getDate() - 30)
-
-        return {
-            from: monthAgo,
-            to: now,
-        }
-    }
-
-    return {
-        from: startOfLocalDay(now),
-        to: now,
-    }
-}
-
-function formatHourLabel(hourKey: string, showDate: boolean) {
-    const date = new Date(hourKey)
-    return format(date, showDate ? "dd.MM HH:mm" : "HH:mm", { locale: ru })
-}
-
 function formatDateTime(iso: string | null) {
-    if (!iso) return "Нет данных"
-    return format(new Date(iso), "dd.MM.yyyy HH:mm", { locale: ru })
+    return iso ? cityDateTime(iso) : 'Нет данных'
 }
 
 function formatFreshness(iso: string | null) {
@@ -247,7 +156,7 @@ function buildHourlyRows(locationHours: StopLoadLocationHourRow[], range: RangeB
         .map(([hourKey, hour]) => {
             return {
                 hourKey,
-                hourLabel: formatHourLabel(hourKey, showDate),
+                hourLabel: cityHour(hourKey, showDate),
                 avgPeople: Number(hour.avgPeople.toFixed(1)),
                 peakPeople: Number(hour.peakPeople.toFixed(1)),
                 activeLocations: hour.locations.size,
@@ -263,49 +172,6 @@ function buildHourlyRows(locationHours: StopLoadLocationHourRow[], range: RangeB
     }))
 }
 
-function buildHeatmapRows(
-    locationHours: StopLoadLocationHourRow[],
-    hours: HeatmapHourColumn[],
-    locations: StopLoadLocationSummary[],
-): HeatmapRow[] {
-    const hourSet = new Set(hours.map((hour) => hour.hourKey))
-    const cellMap = new Map<string, Map<string, { sum: number; count: number }>>()
-
-    for (const row of locationHours) {
-        const hourOfDay = new Date(row.hourKey).getHours()
-        const hour = HEATMAP_HOUR_COLUMNS[hourOfDay]
-        if (!hour) continue
-
-        const hourKey = hour.hourKey
-        if (!hourSet.has(hourKey)) continue
-
-        const locationCells = cellMap.get(row.locationId) ?? new Map<string, { sum: number; count: number }>()
-        const cell = locationCells.get(hourKey) ?? { sum: 0, count: 0 }
-        cell.sum += row.avgPeople * Math.max(1, row.windows)
-        cell.count += Math.max(1, row.windows)
-        locationCells.set(hourKey, cell)
-        cellMap.set(row.locationId, locationCells)
-    }
-
-    return locations.map((location) => {
-        const locationCells = cellMap.get(location.locationId)
-
-        return {
-            locationId: location.locationId,
-            label: location.label,
-            detail: location.detail,
-            cells: hours.map((hour) => {
-                const cell = locationCells?.get(hour.hourKey)
-                return {
-                    hourKey: hour.hourKey,
-                    hourLabel: hour.hourLabel,
-                    hourTitle: hour.hourTitle,
-                    value: cell && cell.count > 0 ? Number((cell.sum / cell.count).toFixed(1)) : 0,
-                }
-            }),
-        }
-    })
-}
 
 function buildSummary(
     hourlyRows: HourlyLoadRow[],
@@ -349,8 +215,8 @@ function getLoadTone(value: number): LoadTone {
     return "normal"
 }
 
-function getHeatmapCellClass(value: number, maxValue: number) {
-    if (maxValue <= 0 || value <= 0) return "bg-muted/40 text-muted-foreground"
+function getHeatmapCellClass(value: number | null, maxValue: number) {
+    if (value === null || maxValue <= 0 || value <= 0) return "bg-muted/40 text-muted-foreground"
 
     const pct = value / maxValue
     if (pct >= 0.8) return "bg-blue-700 text-white dark:bg-blue-500 dark:text-blue-950"
@@ -435,7 +301,7 @@ export function StopCurrentLoadAnalytics() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    const range = useMemo(() => getRangeBounds(timeRange), [timeRange])
+    const range = useMemo(() => cityRange(timeRange), [timeRange])
 
     useEffect(() => {
         let cancelled = false
@@ -505,7 +371,7 @@ export function StopCurrentLoadAnalytics() {
         () => buildHeatmapRows(selectedLocationHours, HEATMAP_HOUR_COLUMNS, heatmapLocations),
         [selectedLocationHours, heatmapLocations],
     )
-    const heatmapMax = Math.max(...heatmapRows.flatMap((row) => row.cells.map((cell) => cell.value)), 0)
+    const heatmapMax = Math.max(...heatmapRows.flatMap((row) => row.cells.map((cell) => cell.value ?? 0)), 0)
     const chartUsesDateLabels = displayedRange.to.getTime() - displayedRange.from.getTime() > 36 * 60 * 60 * 1000
     const chartTickTarget = chartUsesDateLabels ? 8 : 12
     const chartTickInterval = Math.max(0, Math.ceil(hourlyRows.length / chartTickTarget) - 1)
@@ -802,7 +668,7 @@ export function StopCurrentLoadAnalytics() {
                                 Тепловая карта: час и остановка
                             </CardTitle>
                             <CardDescription>
-                                Среднее наблюдаемое количество людей по остановкам и часам суток за выбранный период
+                                Среднее число людей в кадре в этот час за выбранные дни, с учётом числа наблюдений. Темнее — больше людей; 0 — людей не было, «—» — нет данных. Время Сургута (00–23). Это не число уникальных пассажиров.
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -835,9 +701,9 @@ export function StopCurrentLoadAnalytics() {
                                                         "flex h-9 items-center justify-center rounded-md font-medium tabular-nums",
                                                         getHeatmapCellClass(cell.value, heatmapMax),
                                                     )}
-                                                    title={`${row.label}, ${cell.hourTitle}: в среднем ${numberFormat.format(cell.value)} чел.`}
+                                                    title={`${row.label}, ${cell.hourTitle}: ${cell.value === null ? "нет данных" : `в среднем ${numberFormat.format(cell.value)} чел.`}`}
                                                 >
-                                                    {cell.value > 0 ? numberFormat.format(cell.value) : "-"}
+                                                    {cell.value === null ? "—" : numberFormat.format(cell.value)}
                                                 </div>
                                             ))}
                                         </Fragment>
@@ -865,7 +731,6 @@ export function StopCurrentLoadAnalytics() {
                                         <TableHead className="text-right">Сейчас</TableHead>
                                         <TableHead className="text-right">Среднее</TableHead>
                                         <TableHead className="text-right">Пик</TableHead>
-                                        <TableHead className="text-right">Окна</TableHead>
                                         <TableHead>Последние данные</TableHead>
                                     </TableRow>
                                 </TableHeader>
@@ -881,7 +746,6 @@ export function StopCurrentLoadAnalytics() {
                                             <TableCell className="text-right tabular-nums">{integerFormat.format(location.currentPeople)}</TableCell>
                                             <TableCell className="text-right tabular-nums">{numberFormat.format(location.averagePeople)}</TableCell>
                                             <TableCell className="text-right tabular-nums">{integerFormat.format(location.peakPeople)}</TableCell>
-                                            <TableCell className="text-right tabular-nums">{integerFormat.format(location.windows)}</TableCell>
                                             <TableCell>
                                                 <div className="flex flex-col">
                                                     <span>{formatFreshness(location.latestAt)}</span>

@@ -25,14 +25,15 @@ export function PeriodFilter({ value, onChange }: { value: NotificationPeriod; o
       <SelectTrigger aria-label="Период уведомлений" className="h-9 w-[145px]"><SelectValue /></SelectTrigger>
       <SelectContent>{[['all','Всё время'],['today','Сегодня'],['yesterday','Вчера'],['week','Неделя'],['month','Месяц'],['custom','Свой период']].map(([key,label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent>
     </Select>
+    {value.start && value.end && <span className="text-xs text-muted-foreground">{new Date(value.start).toLocaleTimeString('ru-RU',{timeZone:'Asia/Yekaterinburg',hour:'2-digit',minute:'2-digit'})} — {new Date(value.end).toLocaleTimeString('ru-RU',{timeZone:'Asia/Yekaterinburg',hour:'2-digit',minute:'2-digit'})}</span>}
     <Popover open={open} onOpenChange={next => { if(next) setDraft(value); setOpen(next) }}>
       <PopoverTrigger asChild><Button variant="outline" size="sm" className="h-9 gap-2 font-normal" aria-label="Выбрать даты"><CalendarDays className="h-4 w-4" />{preset === 'custom' ? `${value.from ? value.from.split('-').reverse().join('.') : 'Начало'} — ${value.to ? value.to.split('-').reverse().join('.') : 'сейчас'}` : 'Выбрать даты'}</Button></PopoverTrigger>
       <PopoverContent align="start" className="w-[min(340px,calc(100vw-24px))] p-3">
         <Calendar mode="range" locale={ru} numberOfMonths={1} selected={{from:date(draft.from),to:date(draft.to)}} defaultMonth={date(value.from)} onSelect={range => setDraft({from:range?.from ? format(range.from,'yyyy-MM-dd') : '',to:range?.to ? format(range.to,'yyyy-MM-dd') : ''})} />
-        <div className="mt-2 grid grid-cols-2 gap-2"><div><Label htmlFor="notifications-from">С</Label><Input id="notifications-from" type="date" value={draft.from} onChange={e => setDraft({...draft,from:e.target.value})} /></div><div><Label htmlFor="notifications-to">По включительно</Label><Input id="notifications-to" type="date" value={draft.to} onChange={e => setDraft({...draft,to:e.target.value})} /></div></div>
+        <div className="mt-2 grid grid-cols-2 gap-2"><div><Label htmlFor="notifications-from">С</Label><Input id="notifications-from" type="date" value={draft.from} onChange={e => setDraft({from:e.target.value,to:draft.to})} /></div><div><Label htmlFor="notifications-to">По включительно</Label><Input id="notifications-to" type="date" value={draft.to} onChange={e => setDraft({from:draft.from,to:e.target.value})} /></div></div>
         <p className="mt-2 text-xs text-muted-foreground">По началу события. Время Сургута.</p>
         {error && <p role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
-        <Button size="sm" className="mt-3 w-full" disabled={!!error || !draft.from} onClick={() => {onChange({...draft,to:draft.to || draft.from});setOpen(false)}}>Применить</Button>
+        <Button size="sm" className="mt-3 w-full" disabled={!!error || !draft.from} onClick={() => {onChange({from:draft.from,to:draft.to || draft.from});setOpen(false)}}>Применить</Button>
       </PopoverContent>
     </Popover>
   </div>

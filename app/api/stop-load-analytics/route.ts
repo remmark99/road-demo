@@ -1,5 +1,7 @@
+import { cityDayStart } from "@/lib/analytics/city-time"
 import { NextResponse } from "next/server"
 
+import { getStopComplexByLocationId } from "@/lib/stop-analytics-config"
 import { createClient } from "@/lib/supabase/server"
 import type {
     StopLoadLocationHourRow,
@@ -71,13 +73,12 @@ const BUSYNESS_COLUMNS = "location_id,window_start,window_end,person_count_avg,p
 
 const responseCache = new Map<string, CacheEntry>()
 let stopsCache: Promise<Map<number, StopInfo>> | null = null
-let lastSuccessfulPayload: StopLoadAnalyticsResponse | null = null
 
 function wait(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> {
     return Promise.race([
         promise,
         new Promise<T>((_, reject) => {
@@ -91,7 +92,7 @@ function isRetryableSupabaseMessage(message: string) {
 }
 
 async function runSupabaseQuery<T extends { error: { message: string } | null }>(
-    factory: () => Promise<T>,
+    factory: () => PromiseLike<T>,
     label: string,
 ) {
     let lastError: unknown = null
@@ -122,17 +123,6 @@ async function runSupabaseQuery<T extends { error: { message: string } | null }>
     throw lastError instanceof Error ? lastError : new Error(`${label} failed`)
 }
 
-function startOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(0, 0, 0, 0)
-    return result
-}
-
-function endOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(23, 59, 59, 999)
-    return result
-}
 
 function floorToHour(iso: string) {
     const date = new Date(iso)
@@ -212,9 +202,10 @@ function getStopsLookup() {
 }
 
 function buildStopDisplay(locationId: string, stopsLookup: Map<number, StopInfo>) {
-    const stopId = getBusStopIdFromLocationId(locationId)
-    const stop = stopId !== null ? stopsLookup.get(stopId) : undefined
-    const label = stop?.shortName?.trim() || stop?.name?.trim()
+    const complex = getStopComplexByLocationId(locationId)
+    const stopId = /^\d+$/.test(locationId) ? Number(locationId) : null
+    const stop = [...stopsLookup.values()].find(s => s.shortName === locationId) ?? (stopId !== null ? stopsLookup.get(stopId) : undefined)
+    const label = stop?.name?.trim() || complex?.stopName || stop?.shortName?.trim()
     const direction = stop?.description?.trim()
 
     return {
@@ -288,6 +279,7 @@ async function fetchBusynessRows(from: Date, to: Date) {
                     .gte("window_start", from.toISOString())
                     .lte("window_start", to.toISOString())
                     .order("window_start", { ascending: false })
+                    .order("location_id")
                     .range(fromIndex, toIndex),
                 `busyness range ${fromIndex}-${toIndex}`,
             )
@@ -336,6 +328,7 @@ function aggregateRows(
     >()
 
     for (const row of rows) {
+        if (!Number.isFinite(row.person_count_avg) || row.person_count_avg === null || row.person_count_avg < 0 || (row.sample_count !== null && row.sample_count <= 0)) continue
         const sampleWeight = Math.max(1, toFiniteNumber(row.sample_count))
         const avgPeople = toFiniteNumber(row.person_count_avg)
         const peakPeople = toFiniteNumber(row.person_count_max)
@@ -380,9 +373,10 @@ function aggregateRows(
         .map<StopLoadLocationHourRow>((row) => ({
             locationId: row.locationId,
             hourKey: row.hourKey,
-            avgPeople: row.weight > 0 ? Number((row.weightedSum / row.weight).toFixed(1)) : 0,
+            avgPeople: row.weight > 0 ? row.weightedSum / row.weight : 0,
             peakPeople: Number(row.peakPeople.toFixed(1)),
             windows: row.windows,
+            sampleCount: row.weight,
         }))
 
     const locations = Array.from(locationMap.entries())
@@ -427,8 +421,8 @@ async function buildPayload(from: Date, to: Date): Promise<StopLoadAnalyticsResp
 
         if (latestWindow) {
             const latestDate = new Date(latestWindow.window_start)
-            displayedFrom = startOfLocalDay(latestDate)
-            displayedTo = endOfLocalDay(latestDate)
+            displayedFrom = cityDayStart(latestDate)
+            displayedTo = new Date(cityDayStart(latestDate).getTime() + 86_400_000 - 1)
             fallbackRange = toRangeResponse(displayedFrom, displayedTo)
             result = await fetchBusynessRows(displayedFrom, displayedTo)
         }
@@ -490,7 +484,6 @@ export async function GET(request: Request) {
             expiresAt: Date.now() + CACHE_TTL_MS,
             payload,
         })
-        lastSuccessfulPayload = payload
 
         return NextResponse.json(payload, {
             headers: {
@@ -500,11 +493,9 @@ export async function GET(request: Request) {
     } catch (error) {
         console.error("Error fetching stop load analytics:", error)
 
-        return NextResponse.json(lastSuccessfulPayload ?? buildEmptyPayload(from, to), {
-            headers: {
-                "Cache-Control": "no-store",
-                "X-Data-Status": lastSuccessfulPayload ? "stale-fallback" : "empty-fallback",
-            },
-        })
+        return NextResponse.json(
+            { error: 'Не удалось загрузить пассажирскую аналитику. Попробуйте ещё раз.' },
+            { status: 503, headers: { 'Cache-Control': 'no-store' } },
+        )
     }
 }

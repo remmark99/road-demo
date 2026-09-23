@@ -9,6 +9,7 @@
     "app/page.tsx",
     "app/notifications/page.tsx",
     "app/api/stop-history/route.ts",
+    "app/api/stop-load-analytics/route.ts",
     "app/api/stop-sensor-history/route.ts",
     "app/api/stop-activity/route.ts",
     "app/api/equipment/export/route.ts",
