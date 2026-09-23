@@ -303,7 +303,7 @@ export default function DashboardPage() {
   const { hasModule, loading: modulesLoading } = useModuleAccess()
 
   const filteredDashboards = DASHBOARDS.filter(d => {
-    return hasModule(d.module)
+    return d.id !== "stop_vandalism" && hasModule(d.module)
   })
 
   const roadsDashboardsList = orderDashboards(filteredDashboards.filter(d => ROADS_DASHBOARDS.includes(d.id)), ROADS_DASHBOARDS)
