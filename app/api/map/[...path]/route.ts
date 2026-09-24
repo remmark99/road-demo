@@ -7,7 +7,9 @@ import nodePath from 'node:path'
 // браузер не вытягивает tiles.openfreemap.org напрямую.
 
 const MAP_DIR = nodePath.join(process.cwd(), 'public', 'map')
-const SEGMENT_PATTERN = /^[\w@.-]+$/
+// Запятая — легальный разделитель шрифтов внутри фонтстека MapLibre
+// («Noto Sans Bold,Noto Sans Regular»), пробел — часть имени шрифта.
+const SEGMENT_PATTERN = /^[\w@.,-]+$/
 const CACHE_CONTROL = 'public, max-age=31536000, immutable'
 
 const CONTENT_TYPES: Record<string, string> = {

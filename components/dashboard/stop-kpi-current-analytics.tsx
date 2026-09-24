@@ -56,8 +56,8 @@ import { fetchStopActivity, type StopActivityResponse } from "@/lib/api/stop-act
 import { fetchEquipmentState, type EquipmentState } from "@/lib/api/equipment"
 import { indexEquipmentStatus, monitoredCameraOnline } from "@/lib/equipment-status"
 import { fetchStopDirectory, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
-import { fetchStopDistricts } from "@/lib/api/stop-districts"
-import { exactStopCoverage, type StopDistrict } from "@/lib/stop-coverage"
+import { fetchStopDistrictAssignments, fetchStopDistricts } from "@/lib/api/stop-districts"
+import { stopDistrictCoverage, type StopDistrict, type StopDistrictAssignment } from "@/lib/stop-coverage"
 import { cn } from "@/lib/utils"
 
 type KpiTone = "normal" | "success" | "attention" | "high"
@@ -67,6 +67,16 @@ const districtCoverageConfig = {
 } satisfies ChartConfig
 
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
+
+/** Подпись под столбцом; «6 кв.», «Кв. А» — в две строки, чтобы влезли в ширину столбца. */
+function DistrictTick({ x = 0, y = 0, payload }: { x?: number; y?: number; payload?: { value: string } }) {
+    const lines = (payload?.value ?? "").split(" ")
+    return (
+        <text x={x} y={y + 12} textAnchor="middle" className="fill-muted-foreground text-[10px]">
+            {lines.map((line, i) => <tspan key={i} x={x} dy={i === 0 ? 0 : 12}>{line}</tspan>)}
+        </text>
+    )
+}
 
 function buildNotificationsHref({
     types,
@@ -249,6 +259,7 @@ export function StopKpiCurrentAnalytics() {
     const [equipment, setEquipment] = useState<EquipmentState[] | null>(null)
     const [directory, setDirectory] = useState<BusStopsGeoJSON | null>(null)
     const [districts, setDistricts] = useState<StopDistrict[] | null>(null)
+    const [districtAssignments, setDistrictAssignments] = useState<StopDistrictAssignment[] | null>(null)
     const [currentCameras, setCurrentCameras] = useState<StopCameraRow[] | null>(null)
     const [showAllDistricts, setShowAllDistricts] = useState(false)
     const [coverageError, setCoverageError] = useState(false)
@@ -260,7 +271,8 @@ export function StopKpiCurrentAnalytics() {
                 fetchEquipmentState().then(devices => { if (!cancelled) setEquipment(devices.error ? null : devices.data) }),
                 fetchStopDirectory().then(stops => { if (!cancelled) setDirectory(stops) }),
                 fetchStopCameras().then(cameras => { if (!cancelled) setCurrentCameras(cameras) }),
-                fetchStopDistricts().then(rows => { if (!cancelled) { setDistricts(rows); setCoverageError(false) } })
+                Promise.all([fetchStopDistricts(), fetchStopDistrictAssignments()])
+                    .then(([rows, assignments]) => { if (!cancelled) { setDistricts(rows); setDistrictAssignments(assignments); setCoverageError(false) } })
                     .catch(() => { if (!cancelled) setCoverageError(true) }),
             ])
         }
@@ -300,7 +312,7 @@ export function StopKpiCurrentAnalytics() {
         .map((location) => location.latestAt)
         .filter((value): value is string => Boolean(value))
         .sort((a, b) => b.localeCompare(a))[0] ?? null
-    const coverage = useMemo(() => exactStopCoverage(directory ?? { type: 'FeatureCollection', features: [] }, districts ?? [], activity), [directory, districts, activity])
+    const coverage = useMemo(() => stopDistrictCoverage((directory?.features ?? []).map(stop => stop.properties.id), districtAssignments ?? [], districts ?? [], activity), [directory, districtAssignments, districts, activity])
     const districtChartRows = coverage.rows
     const cityStopTotal = directory?.features.length ?? 0
     const cameraStatus = indexEquipmentStatus(equipment).cameras
@@ -387,16 +399,16 @@ export function StopKpiCurrentAnalytics() {
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 {coverageError && <p role="status" className="text-sm text-muted-foreground">Не удалось загрузить границы микрорайонов</p>}
-                                {!coverageError && (!directory || !districts) && <Skeleton className="h-64 w-full" />}
-                                {districts && directory && coverage.ambiguous > 0 && <p className="text-sm text-muted-foreground">На границах нескольких районов: {coverage.ambiguous}</p>}
-                                {directory && activity && districtChartRows.length > 0 && <ChartContainer config={districtCoverageConfig} className="h-[260px] w-full">
+                                {!coverageError && (!directory || !districts || !districtAssignments) && <Skeleton className="h-64 w-full" />}
+                                {districts && districtAssignments && directory && coverage.unassigned > 0 && <p className="text-sm text-muted-foreground">Вне микрорайонов (посёлки, СОТ, промзоны): {integerFormat.format(coverage.unassigned)} ост.</p>}
+                                {directory && districtAssignments && activity && districtChartRows.length > 0 && <ChartContainer config={districtCoverageConfig} className="aspect-auto h-[320px] w-full">
                                     <BarChart data={districtChartRows} margin={{ left: 0, right: 12, top: 28, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                        <XAxis dataKey="districtName" tickLine={false} axisLine={false} tickMargin={8} />
+                                        <XAxis dataKey="shortName" tickLine={false} axisLine={false} interval={0} height={44} tick={<DistrictTick />} />
                                         <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
-                                        <ChartTooltip content={<ChartTooltipContent formatter={(_value, _name, item) => `${Number(item.payload.coveragePct).toFixed(1)}% · ${item.payload.equipped} из ${item.payload.total} ост.`} />} />
+                                        <ChartTooltip content={<ChartTooltipContent labelFormatter={(_label, payload) => payload?.[0]?.payload?.districtName} formatter={(_value, _name, item) => `${Number(item.payload.coveragePct).toFixed(1)}% · ${item.payload.equipped} из ${item.payload.total} ост.`} />} />
                                         <Bar dataKey="coveragePct" fill="var(--color-coveragePct)" radius={[5, 5, 0, 0]}>
-                                            <LabelList dataKey="equipped" position="top" formatter={(value: unknown) => `${value} ост.`} />
+                                            <LabelList dataKey="equipped" position="top" className="fill-muted-foreground text-[10px]" formatter={(value: unknown) => Number(value) > 0 ? value : ''} />
                                         </Bar>
                                     </BarChart>
                                 </ChartContainer>}
