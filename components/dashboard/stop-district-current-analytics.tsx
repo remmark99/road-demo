@@ -41,7 +41,6 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { getBusStopIdFromLocationId } from "@/lib/api/busyness-windows"
 import {
     fetchStopTrashOverflowAlerts,
     STOP_TRASH_OVERFLOW_ALERT_TYPES,
@@ -50,6 +49,7 @@ import {
 import {
     buildStopDistrictSummaries,
     fetchStopCurrentAnalyticsData,
+    getEventDistrictName,
     type RangeBounds,
     type StopDistrictSummary,
     type StopCurrentAnalyticsData,
@@ -57,8 +57,6 @@ import {
 import {
     STOP_SAFETY_ALERT_LABELS,
     STOP_SAFETY_ALERT_TYPES,
-    getStopComplexByCameraIndex,
-    getStopComplexByLocationId,
     type StopSafetyAlertType,
 } from "@/lib/stop-analytics-config"
 import { cn } from "@/lib/utils"
@@ -181,17 +179,7 @@ function getTrashAlertLocationId(alert: StopTrashOverflowAlertRow) {
 }
 
 function getTrashAlertDistrictName(alert: StopTrashOverflowAlertRow, data: StopCurrentAnalyticsData) {
-    const cameraComplex = getStopComplexByCameraIndex(alert.camera_index)
-    if (cameraComplex) return cameraComplex.districtName
-
-    const locationId = getTrashAlertLocationId(alert)
-    const locationComplex = getStopComplexByLocationId(locationId)
-    if (locationComplex) return locationComplex.districtName
-
-    const stopId = locationId ? getBusStopIdFromLocationId(locationId) : null
-    const stop = stopId !== null ? data.stopsById.get(stopId) : undefined
-
-    return stop?.districtName ?? "Микрорайон не определен"
+    return getEventDistrictName(alert.camera_index, getTrashAlertLocationId(alert), data.stopsById, data.stopIdByCameraIndex)
 }
 
 function KpiCard({
@@ -590,7 +578,7 @@ export function StopDistrictCurrentAnalytics() {
                                     <TableRow>
                                         <TableHead>Микрорайон</TableHead>
                                         <TableHead className="text-right">Подключено</TableHead>
-                                        <TableHead className="text-right">Всего примерно</TableHead>
+                                        <TableHead className="text-right">Всего</TableHead>
                                         <TableHead className="text-right">Покрытие</TableHead>
                                         <TableHead className="text-right">Онлайн-данные</TableHead>
                                         <TableHead className="text-right">Загрузка</TableHead>

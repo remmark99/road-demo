@@ -8,10 +8,9 @@ import {
     type FetchBusynessWindowsResult,
 } from "@/lib/api/busyness-windows"
 import { createClient } from "@/lib/supabase/client"
-import { districts } from "@/lib/districts"
+import { fetchStopDistrictAssignments, fetchStopDistricts } from "@/lib/api/stop-districts"
 import {
     STOP_MONITORED_COMPLEXES,
-    getStopDistrictCoverageEstimate,
     getStopComplexByCameraIndex,
     getStopComplexByLocationId,
     type StopSafetyAlertType,
@@ -46,6 +45,7 @@ export interface CurrentStopInfo {
 export interface StopCurrentAnalyticsData {
     stops: CurrentStopInfo[]
     stopsById: Map<number, CurrentStopInfo>
+    stopIdByCameraIndex: Map<number, number>
     busynessRows: BusynessWindowRow[]
     alerts: StopSafetyAlert[]
     cameras: StopCameraRow[]
@@ -127,25 +127,36 @@ function compareLocationId(a: string, b: string) {
     return a.localeCompare(b, "ru", { numeric: true })
 }
 
-function getNearestDistrictName(coordinates: [number, number] | null) {
-    if (!coordinates) return "Район не определен"
+export const UNKNOWN_DISTRICT = "Район не определен"
 
-    const [lng, lat] = coordinates
-    const nearest = districts
-        .map((district) => {
-            const [districtLng, districtLat] = district.coordinates
-            const distance = Math.hypot(lng - districtLng, lat - districtLat)
-
-            return { name: district.name, distance }
-        })
-        .sort((a, b) => a.distance - b.distance)[0]
-
-    return nearest?.name ?? "Район не определен"
+/** camera_index → bus_stop_id по таблице cameras. */
+export function buildStopIdByCameraIndex(cameras: StopCameraRow[]) {
+    const result = new Map<number, number>()
+    for (const camera of cameras) {
+        if (camera.camera_index !== null && camera.bus_stop_id !== null) result.set(camera.camera_index, camera.bus_stop_id)
+    }
+    return result
 }
 
-function buildStopDisplay(locationId: string, stopsById: Map<number, CurrentStopInfo>) {
+/**
+ * Остановка по location_id аналитики. У комплексов location_id («73-24») — не id остановки,
+ * поэтому остановка берётся по их камерам из таблицы cameras.
+ */
+export function resolveLocationStopId(locationId: string, stopIdByCameraIndex: Map<number, number>) {
+    const complex = getStopComplexByLocationId(locationId)
+    if (!complex) return getBusStopIdFromLocationId(locationId)
+
+    for (let index = complex.cameraFrom; index <= complex.cameraTo; index++) {
+        const stopId = stopIdByCameraIndex.get(index)
+        if (stopId !== undefined) return stopId
+    }
+
+    return null
+}
+
+export function buildStopDisplay(locationId: string, stopsById: Map<number, CurrentStopInfo>, stopIdByCameraIndex: Map<number, number>) {
     const monitoredComplex = getStopComplexByLocationId(locationId)
-    const stopId = getBusStopIdFromLocationId(locationId)
+    const stopId = resolveLocationStopId(locationId, stopIdByCameraIndex)
     const stop = stopId !== null ? stopsById.get(stopId) : undefined
     const label = monitoredComplex?.stopName || stop?.short_name?.trim() || stop?.name?.trim()
     const direction = stop?.description?.trim()
@@ -154,8 +165,22 @@ function buildStopDisplay(locationId: string, stopsById: Map<number, CurrentStop
         stopId,
         label: label || (stopId !== null ? `Остановка ${stopId}` : `Остановочное направление ${locationId}`),
         detail: direction ? `${direction} · ID ${locationId}` : `ID ${locationId}`,
-        districtName: monitoredComplex?.districtName ?? stop?.districtName ?? "Район не определен",
+        districtName: stop?.districtName ?? UNKNOWN_DISTRICT,
     }
+}
+
+/** Микрорайон события: по камере, иначе по location_id. */
+export function getEventDistrictName(
+    cameraIndex: number | null | undefined,
+    locationId: string | null,
+    stopsById: Map<number, CurrentStopInfo>,
+    stopIdByCameraIndex: Map<number, number>,
+) {
+    const cameraStopId = cameraIndex !== null && cameraIndex !== undefined ? stopIdByCameraIndex.get(cameraIndex) : undefined
+    if (cameraStopId !== undefined) return stopsById.get(cameraStopId)?.districtName ?? UNKNOWN_DISTRICT
+    if (locationId) return buildStopDisplay(locationId, stopsById, stopIdByCameraIndex).districtName
+
+    return UNKNOWN_DISTRICT
 }
 
 function getAlertLocationId(alert: StopSafetyAlert) {
@@ -173,28 +198,24 @@ function filterAlertsByRange(alerts: StopSafetyAlert[], range: RangeBounds) {
     })
 }
 
-function getAlertDistrictName(alert: StopSafetyAlert, stopsById: Map<number, CurrentStopInfo>) {
-    const cameraComplex = getStopComplexByCameraIndex(alert.camera_index)
-    if (cameraComplex) return cameraComplex.districtName
-
-    const locationId = getAlertLocationId(alert)
-    if (locationId) return buildStopDisplay(locationId, stopsById).districtName
-
-    return "Район не определен"
-}
-
 export function getAllBusynessLocationIds(rows: BusynessWindowRow[]) {
     return Array.from(new Set(rows.map((row) => row.location_id))).sort(compareLocationId)
 }
 
 async function loadCurrentStops(): Promise<CurrentStopInfo[]> {
-    const response = await fetch("/api/bus-stops")
+    const [response, districtRows, assignments] = await Promise.all([
+        fetch("/api/bus-stops"),
+        fetchStopDistricts(),
+        fetchStopDistrictAssignments(),
+    ])
 
     if (!response.ok) {
         throw new Error(`Failed to fetch bus stops: ${response.status}`)
     }
 
     const data = await response.json() as BusStopsFeatureCollection
+    const districtNames = new Map(districtRows.map((district) => [district.id, district.name]))
+    const districtByStop = new Map(assignments.map((stop) => [stop.id, stop.district_id]))
 
     return (data.features ?? [])
         .map((feature) => {
@@ -211,7 +232,7 @@ async function loadCurrentStops(): Promise<CurrentStopInfo[]> {
                 description: properties.description ?? null,
                 address: properties.address ?? null,
                 coordinates,
-                districtName: getNearestDistrictName(coordinates),
+                districtName: districtNames.get(districtByStop.get(properties.id) ?? -1) ?? UNKNOWN_DISTRICT,
             } satisfies CurrentStopInfo
         })
         .filter((stop): stop is CurrentStopInfo => stop !== null)
@@ -283,6 +304,7 @@ async function loadStopCurrentAnalyticsData(range: RangeBounds): Promise<StopCur
     return {
         stops,
         stopsById,
+        stopIdByCameraIndex: buildStopIdByCameraIndex(cameras),
         busynessRows: busynessResult.rows,
         alerts: filterAlertsByRange(alerts, displayedRange),
         cameras,
@@ -347,7 +369,7 @@ export function buildStopLocationSummaries(data: StopCurrentAnalyticsData): Stop
 
     return Array.from(locationMap.entries())
         .map(([locationId, value]) => {
-            const display = buildStopDisplay(locationId, data.stopsById)
+            const display = buildStopDisplay(locationId, data.stopsById, data.stopIdByCameraIndex)
 
             return {
                 locationId,
@@ -372,10 +394,14 @@ export function buildStopLocationSummaries(data: StopCurrentAnalyticsData): Stop
 
 export function buildStopDistrictSummaries(data: StopCurrentAnalyticsData): StopDistrictSummary[] {
     const locationSummaries = buildStopLocationSummaries(data)
+    const cityStopsByDistrict = new Map<string, number>()
+    for (const stop of data.stops) {
+        cityStopsByDistrict.set(stop.districtName, (cityStopsByDistrict.get(stop.districtName) ?? 0) + 1)
+    }
     const districtMap = new Map<
         string,
         {
-            stopIds: Set<string>
+            connected: Map<string, string>
             liveDirections: number
             currentPeopleSum: number
             peakPeople: number
@@ -387,7 +413,7 @@ export function buildStopDistrictSummaries(data: StopCurrentAnalyticsData): Stop
     >()
 
     const getCurrent = (districtName: string) => districtMap.get(districtName) ?? {
-        stopIds: new Set<string>(),
+        connected: new Map<string, string>(),
         liveDirections: 0,
         currentPeopleSum: 0,
         peakPeople: 0,
@@ -396,18 +422,23 @@ export function buildStopDistrictSummaries(data: StopCurrentAnalyticsData): Stop
         latestAt: null,
         topStops: [],
     }
+    // Подключённая остановка считается один раз, даже если у неё несколько направлений.
+    const connect = (districtName: string, locationId: string) => {
+        const current = getCurrent(districtName)
+        const display = buildStopDisplay(locationId, data.stopsById, data.stopIdByCameraIndex)
+        const key = display.stopId !== null ? `stop:${display.stopId}` : `location:${locationId}`
+        if (!current.connected.has(key)) current.connected.set(key, display.label)
+        districtMap.set(districtName, current)
+        return current
+    }
 
     for (const complex of STOP_MONITORED_COMPLEXES) {
-        const current = getCurrent(complex.districtName)
-
-        current.stopIds.add(complex.locationId)
-        districtMap.set(complex.districtName, current)
+        connect(buildStopDisplay(complex.locationId, data.stopsById, data.stopIdByCameraIndex).districtName, complex.locationId)
     }
 
     for (const location of locationSummaries) {
-        const current = getCurrent(location.districtName)
+        const current = connect(location.districtName, location.locationId)
 
-        current.stopIds.add(location.locationId)
         if (location.windows > 0) {
             current.liveDirections += 1
             current.currentPeopleSum += location.currentPeople
@@ -417,20 +448,12 @@ export function buildStopDistrictSummaries(data: StopCurrentAnalyticsData): Stop
             current.latestAt = location.latestAt
         }
         current.topStops.push(location)
-        districtMap.set(location.districtName, current)
     }
 
     for (const alert of data.alerts) {
-        const districtName = getAlertDistrictName(alert, data.stopsById)
-        const current = getCurrent(districtName)
-        const locationId = getAlertLocationId(alert)
-        const cameraComplex = getStopComplexByCameraIndex(alert.camera_index)
-
-        if (cameraComplex) {
-            current.stopIds.add(cameraComplex.locationId)
-        } else if (locationId) {
-            current.stopIds.add(locationId)
-        }
+        const locationId = getStopComplexByCameraIndex(alert.camera_index)?.locationId ?? getAlertLocationId(alert)
+        const districtName = getEventDistrictName(alert.camera_index, locationId, data.stopsById, data.stopIdByCameraIndex)
+        const current = locationId ? connect(districtName, locationId) : getCurrent(districtName)
 
         current.safetyEvents += 1
         current.safetyEventsByType[alert.alert_type] = (current.safetyEventsByType[alert.alert_type] ?? 0) + 1
@@ -439,19 +462,17 @@ export function buildStopDistrictSummaries(data: StopCurrentAnalyticsData): Stop
 
     return Array.from(districtMap.entries())
         .map(([districtName, value]) => {
-            const estimate = getStopDistrictCoverageEstimate(districtName)
-            const fallbackStops = value.stopIds.size
-            const fallbackCoveragePct = fallbackStops > 0
-                ? Math.round((value.liveDirections / fallbackStops) * 100)
-                : 0
+            const connectedStops = value.connected.size
+            const totalStops = Math.max(cityStopsByDistrict.get(districtName) ?? 0, connectedStops)
+            const coveragePct = totalStops > 0 ? Math.round((connectedStops / totalStops) * 100) : 0
 
             return {
                 districtName,
-                stops: estimate?.connectedStops ?? fallbackStops,
-                connectedStopNames: estimate?.connectedStopNames ?? [],
-                estimatedTotalMin: estimate?.estimatedTotalMin ?? fallbackStops,
-                estimatedTotalMax: estimate?.estimatedTotalMax ?? fallbackStops,
-                estimatedTotalLabel: estimate?.estimatedTotalLabel ?? `${fallbackStops}`,
+                stops: connectedStops,
+                connectedStopNames: Array.from(new Set(value.connected.values())),
+                estimatedTotalMin: totalStops,
+                estimatedTotalMax: totalStops,
+                estimatedTotalLabel: `${totalStops}`,
                 liveDirections: value.liveDirections,
                 averagePeople: value.liveDirections > 0
                     ? Number((value.currentPeopleSum / value.liveDirections).toFixed(1))
@@ -459,11 +480,11 @@ export function buildStopDistrictSummaries(data: StopCurrentAnalyticsData): Stop
                 peakPeople: value.peakPeople,
                 safetyEvents: value.safetyEvents,
                 safetyEventsByType: value.safetyEventsByType,
-                coverageMinPct: estimate?.coverageMinPct ?? fallbackCoveragePct,
-                coverageMaxPct: estimate?.coverageMaxPct ?? fallbackCoveragePct,
-                coverageMidPct: estimate?.coverageMidPct ?? fallbackCoveragePct,
-                coverageLabel: estimate?.coverageLabel ?? `${fallbackCoveragePct}%`,
-                coveragePct: estimate?.coverageMidPct ?? fallbackCoveragePct,
+                coverageMinPct: coveragePct,
+                coverageMaxPct: coveragePct,
+                coverageMidPct: coveragePct,
+                coverageLabel: `${coveragePct}%`,
+                coveragePct,
                 latestAt: value.latestAt,
                 topStops: value.topStops
                     .sort((a, b) => b.currentPeople - a.currentPeople || b.safetyEvents - a.safetyEvents)

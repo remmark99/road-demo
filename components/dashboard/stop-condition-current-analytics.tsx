@@ -40,7 +40,6 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { getBusStopIdFromLocationId } from "@/lib/api/busyness-windows"
 import {
     fetchLatestStopTrashOverflowAlert,
     fetchStopTrashOverflowAlerts,
@@ -48,17 +47,21 @@ import {
     type StopTrashOverflowAlertRow,
 } from "@/lib/api/stop-condition-windows"
 import {
+    buildStopDisplay,
+    buildStopIdByCameraIndex,
     fetchCurrentStops,
+    fetchStopCameras,
     type CurrentStopInfo,
     type RangeBounds,
 } from "@/lib/api/stop-current-analytics"
-import { getStopComplexByCameraIndex, getStopComplexByLocationId } from "@/lib/stop-analytics-config"
+import { getStopComplexByCameraIndex } from "@/lib/stop-analytics-config"
 import { cn } from "@/lib/utils"
 
 type KpiTone = "normal" | "success" | "attention" | "high"
 
 interface StopConditionAnalyticsData {
     stops: CurrentStopInfo[]
+    stopIdByCameraIndex: Map<number, number>
     events: TrashOverflowEvent[]
     displayedRange: RangeBounds
     fallbackRange: RangeBounds | null
@@ -317,21 +320,6 @@ function durationToHours(durationMs: number) {
     return Number((Math.max(0, durationMs) / 3600000).toFixed(1))
 }
 
-function buildStopDisplay(locationId: string, stopsById: Map<number, CurrentStopInfo>) {
-    const monitoredComplex = getStopComplexByLocationId(locationId)
-    const stopId = getBusStopIdFromLocationId(locationId)
-    const stop = stopId !== null ? stopsById.get(stopId) : undefined
-    const label = monitoredComplex?.stopName || stop?.short_name?.trim() || stop?.name?.trim()
-    const direction = stop?.description?.trim()
-
-    return {
-        stopId,
-        label: label || (stopId !== null ? `Остановка ${stopId}` : `Остановочное направление ${locationId}`),
-        detail: direction ? `${direction} · ID ${locationId}` : `ID ${locationId}`,
-        districtName: monitoredComplex?.districtName ?? stop?.districtName ?? "Район не определен",
-    }
-}
-
 async function fetchTrashOverflowEventsForRange(range: RangeBounds) {
     const alerts = await fetchStopTrashOverflowAlerts({
         from: range.from,
@@ -378,13 +366,15 @@ async function fetchTrashOverflowEventsForRange(range: RangeBounds) {
 }
 
 async function fetchStopConditionAnalyticsData(range: RangeBounds): Promise<StopConditionAnalyticsData> {
-    const [stops, eventResult] = await Promise.all([
+    const [stops, eventResult, cameras] = await Promise.all([
         fetchCurrentStops(),
         fetchTrashOverflowEventsForRange(range),
+        fetchStopCameras(),
     ])
 
     return {
         stops,
+        stopIdByCameraIndex: buildStopIdByCameraIndex(cameras),
         events: eventResult.events,
         displayedRange: eventResult.displayedRange,
         fallbackRange: eventResult.fallbackRange,
@@ -466,6 +456,7 @@ function buildTrashOverflowEpisodes(events: TrashOverflowEvent[]): TrashOverflow
 
 function buildStopTrashSummaries(
     stops: CurrentStopInfo[],
+    stopIdByCameraIndex: Map<number, number>,
     episodes: TrashOverflowEpisode[],
 ): StopTrashSummary[] {
     const stopsById = new Map(stops.map((stop) => [stop.id, stop]))
@@ -506,7 +497,7 @@ function buildStopTrashSummaries(
 
     return Array.from(locationMap.entries())
         .map(([locationId, value]) => {
-            const display = buildStopDisplay(locationId, stopsById)
+            const display = buildStopDisplay(locationId, stopsById, stopIdByCameraIndex)
 
             return {
                 locationId,
@@ -533,12 +524,13 @@ function buildStopTrashSummaries(
 
 function buildEpisodeDisplayRows(
     stops: CurrentStopInfo[],
+    stopIdByCameraIndex: Map<number, number>,
     episodes: TrashOverflowEpisode[],
 ): TrashEpisodeDisplayRow[] {
     const stopsById = new Map(stops.map((stop) => [stop.id, stop]))
 
     return episodes.map((episode) => {
-        const display = buildStopDisplay(episode.locationId, stopsById)
+        const display = buildStopDisplay(episode.locationId, stopsById, stopIdByCameraIndex)
 
         return {
             ...episode,
@@ -684,11 +676,11 @@ export function StopConditionCurrentAnalytics() {
         [data],
     )
     const stopSummaries = useMemo(
-        () => data ? buildStopTrashSummaries(data.stops, episodes) : [],
+        () => data ? buildStopTrashSummaries(data.stops, data.stopIdByCameraIndex, episodes) : [],
         [data, episodes],
     )
     const episodeRows = useMemo(
-        () => data ? buildEpisodeDisplayRows(data.stops, episodes).slice(0, 10) : [],
+        () => data ? buildEpisodeDisplayRows(data.stops, data.stopIdByCameraIndex, episodes).slice(0, 10) : [],
         [data, episodes],
     )
     const hourlyRows = useMemo(

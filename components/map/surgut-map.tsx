@@ -325,7 +325,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         "symbol-placement": "line",
         "text-field": ["coalesce", ["get", "name"], ""],
         "text-size": 11,
-        "text-font": ["Open Sans Regular", "Arial Unicode MS Regular"],
+        "text-font": ["Noto Sans Regular"],
         "text-offset": [0, -0.8],
         "text-anchor": "center",
         "text-max-angle": 30,
@@ -445,7 +445,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       filter: ["has", "point_count"],
       layout: {
         "text-field": "{point_count_abbreviated}",
-        "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        "text-font": ["Noto Sans Bold"],
         "text-size": 12,
         "visibility": showClusters ? "visible" : "none"
       },
@@ -520,7 +520,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       filter: ["all", ["!", ["has", "point_count"]], [">", ["get", "cameraCount"], 0]],
       layout: {
         "text-field": ["to-string", ["get", "cameraCount"]],
-        "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        "text-font": ["Noto Sans Bold"],
         "text-size": 10,
         "text-allow-overlap": true,
         "visibility": "visible"
@@ -570,7 +570,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       filter: [">", ["get", "cameraCount"], 0],
       layout: {
         "text-field": ["to-string", ["get", "cameraCount"]],
-        "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        "text-font": ["Noto Sans Bold"],
         "text-size": 10,
         "text-allow-overlap": true,
         "visibility": "none"
@@ -762,7 +762,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       filter: ["has", "point_count"],
       layout: {
         "text-field": "{point_count_abbreviated}",
-        "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        "text-font": ["Noto Sans Bold"],
         "text-size": 12,
         "visibility": showClusters ? "visible" : "none"
       },
@@ -1134,7 +1134,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       filter: ["has", "point_count"],
       layout: {
         "text-field": "{point_count_abbreviated}",
-        "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+        "text-font": ["Noto Sans Bold"],
         "text-size": 12,
         "visibility": showClusters ? "visible" : "none"
       },
@@ -1464,6 +1464,12 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   // карта создаётся только после его загрузки — см. lib/map-style.ts.
   useEffect(() => {
     const initialDark = document.documentElement.classList.contains("dark")
+    // isDark стартует с true независимо от реальной темы, поэтому при светлой
+    // теме эффект ниже увидел бы смену true -> false и дёрнул setStyle на тот же
+    // самый стиль: карта перестраивалась бы целиком, а все запросы в полёте
+    // отменялись (NS_BINDING_ABORTED). Синхронизируем ref с тем, с чем реально
+    // создаём карту.
+    lastThemeRef.current = initialDark
     loadMapStyle(initialDark)
       .then(setMapStyle)
       .catch(error => console.error(error))
@@ -2014,7 +2020,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         filter: ["has", "point_count"],
         layout: {
           "text-field": "{point_count_abbreviated}",
-          "text-font": ["Open Sans Bold", "Arial Unicode MS Bold"],
+          "text-font": ["Noto Sans Bold"],
           "text-size": 12,
           "visibility": "none"
         },

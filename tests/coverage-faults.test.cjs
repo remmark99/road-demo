@@ -16,20 +16,16 @@ function load(file, mocks = {}, cache = {}) {
   return module.exports
 }
 
-const {exactStopCoverage}=load('lib/stop-coverage.ts')
-const district=(id,coordinates,type='Polygon')=>({id,name:`Район ${id}`,geom:{type,coordinates}})
-const square=(x,y,size)=>[[x,y],[x+size,y],[x+size,y+size],[x,y+size],[x,y]]
-const geo=points=>({type:'FeatureCollection',features:points.map((coordinates,i)=>({properties:{id:i+1},geometry:{type:'Point',coordinates}}))})
-test('coverage counts actual polygon containment, holes and islands; outside is not nearest district',()=>{
- const districts=[district(1,[square(0,0,10),square(2,2,2)]),district(2,[[square(20,20,2)],[square(30,30,2)]],'MultiPolygon'),district(3,[square(50,50,2)])]
- const result=exactStopCoverage(geo([[1,1],[3,3],[21,21],[31,31],[100,100]]),districts,{stops:{1:{has_equipment:true},3:{has_equipment:true}}})
- assert.equal(result.unassigned,2);assert.equal(result.ambiguous,0)
- assert.deepEqual(result.rows.map(r=>[r.total,r.equipped,r.coveragePct]),[[1,1,100],[2,1,50],[0,0,0]])
+const {stopDistrictCoverage,districtShortName}=load('lib/stop-coverage.ts')
+test('coverage groups by stored district_id, keeps districts without stops, counts unassigned separately',()=>{
+ const districts=[{id:1,name:'2-й микрорайон'},{id:2,name:'10-й микрорайон'},{id:3,name:'микрорайон 11а'}]
+ const assignments=[{id:1,district_id:1},{id:2,district_id:1},{id:3,district_id:2},{id:4,district_id:null}]
+ const result=stopDistrictCoverage([1,2,3,4,5],assignments,districts,{stops:{1:{has_equipment:true},3:{has_equipment:true},4:{has_equipment:true}}})
+ assert.equal(result.unassigned,2)
+ assert.deepEqual(result.rows.map(r=>[r.districtName,r.total,r.equipped,r.coveragePct]),[['2-й микрорайон',2,1,50],['10-й микрорайон',1,1,100],['микрорайон 11а',0,0,0]])
 })
-test('shared boundaries and overlapping districts never double-count stops',()=>{
- const result=exactStopCoverage(geo([[10,5],[15,5],[0,0]]),[district(1,[square(0,0,10)]),district(2,[square(10,0,10)])],null)
- assert.equal(result.ambiguous,1);assert.equal(result.unassigned,0)
- assert.deepEqual(result.rows.map(r=>r.total),[1,1])
+test('short district labels fit under a bar',()=>{
+ assert.deepEqual(['14-й микрорайон','микрорайон 11Б','6-й квартал','Центральный микрорайон','микрорайон Квартал А','микрорайон Железнодорожников','микрорайон ПИКС'].map(districtShortName),['14','11Б','6 кв.','Центр.','Кв. А','Ж/д','ПИКС'])
 })
 const {mapFaultsSheet}=load('lib/exports/map-inventory.ts')
 test('fault sheet groups continuous multi-day outages, aliases and repeated sensor signals without daily repetitions',()=>{
