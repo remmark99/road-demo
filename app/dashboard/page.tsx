@@ -260,7 +260,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city"]
-const STOPS_DASHBOARDS = ["stop_kpi", "stop_equipment", "stop_sensors", "stop_passenger", "stop_security", "stop_condition", "stop_districts", "stop_vandalism"]
+const STOPS_DASHBOARDS = ["stop_condition", "stop_kpi", "stop_equipment", "stop_sensors", "stop_passenger", "stop_security", "stop_districts", "stop_vandalism"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]
 const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]
@@ -297,7 +297,7 @@ function getFirstAvailableStopMode(dashboard: DashboardDefinition | undefined) {
 }
 
 export default function DashboardPage() {
-  const [activeView, setActiveView] = useState<DashboardView>("general")
+  const [activeView, setActiveView] = useState<DashboardView>("stop_condition")
   const [stopMode, setStopMode] = useState<StopAnalyticsMode>("current")
   const [expandedSections, setExpandedSections] = useState(SIDEBAR_SECTION_DEFAULTS)
   const { hasModule, loading: modulesLoading } = useModuleAccess()
