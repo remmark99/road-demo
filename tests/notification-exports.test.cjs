@@ -23,7 +23,7 @@ test('simple camera report preserves 24-hour episodes and never invents legacy d
  const event={id:'a',alert_type:'abandoned_object',timestamp:'2026-09-03T19:00:00Z',metadata:{episode_schema:'abandoned_episode_v1',abandoned_episode:{status:'closed',started_at:'2026-09-03T19:00:00Z',last_seen_at:'2026-09-04T18:00:00Z',ended_at:'2026-09-04T19:00:00Z'}}}
  const sheet=cameraEventSheet([event,{...event,metadata:null}],new Map(),()=>'=Никольский',()=> 'Оставлен предмет')
  assert.equal(sheet.rows[1][2],'04.09.2026 00:00');assert.equal(sheet.rows[1][4],'24 ч.');assert.equal(sheet.rows[2][4],'—')
- assert.equal(sheet.rows[0].length,6)
+ assert.equal(sheet.rows[0].length,8)
  const xml=strFromU8(unzipSync(createXlsx([sheet]))['xl/worksheets/sheet1.xml'])
  assert.ok(xml.includes('Оставлен предмет'));assert.ok(xml.includes('=Никольский'));assert.ok(!xml.includes('<f>'))
 })
@@ -101,3 +101,29 @@ test('legacy smoking camera 145 resolves by recorded stop, never the roads camer
  for(const [method,col,val] of [['gte','timestamp',start],['lt','timestamp',end],['eq','module_name','stops']]) assert.ok(api.calls.some(c=>c[0]==='alerts_with_bin_episodes'&&c[1]===method&&c[2]===col&&c[3]===val))
  assert.ok(api.calls.some(c=>c[1]==='in'&&c[2]==='camera_index'&&c[3].includes(151)))
  })
+
+const {durationBucket,completionBucket}=load('lib/exports/event-buckets.ts')
+test('duration groups cover exact boundaries without overlap, invalid dates remain unknown',()=>{
+ const start='2026-09-01T00:00:00Z',bucket=hours=>durationBucket(start,new Date(Date.parse(start)+hours*3600000).toISOString())
+ assert.deepEqual([0,2.999,3,5.999,6,11.999,12,24,24.001].map(bucket),['0–3 часа','0–3 часа','3–6 часов','3–6 часов','6–12 часов','6–12 часов','12–24 часа','12–24 часа','Более 1 дня'])
+ assert.equal(durationBucket(start,null),'Нет данных');assert.equal(bucket(-1),'Нет данных')
+})
+test('completion groups use Surgut calendar dates at export time, separate open and unknown events',()=>{
+ const now=Date.parse('2026-09-29T19:30:00Z')
+ const bucket=end=>completionBucket(end,false,now)
+ assert.equal(bucket('2026-09-29T19:00:00Z'),'Сегодня')
+ assert.equal(bucket('2026-09-29T18:59:59Z'),'Вчера')
+ assert.equal(bucket('2026-09-23T19:00:00Z'),'2–7 дней назад')
+ assert.equal(bucket('2026-09-21T19:00:00Z'),'Более 7 дней назад')
+ assert.equal(bucket(null),'Нет данных');assert.equal(bucket('2026-10-01T00:00:00Z'),'Нет данных')
+ assert.equal(completionBucket(null,true,now),'Не завершено')
+})
+test('camera and sensor Excel tables expose both bucket filters while preserving exact timestamps',()=>{
+ const now=Date.parse('2026-09-04T20:00:00Z')
+ const event={id:'a',alert_type:'abandoned_object',timestamp:'2026-09-03T19:00:00Z',metadata:{episode_schema:'abandoned_episode_v1',abandoned_episode:{status:'closed',started_at:'2026-09-03T19:00:00Z',last_seen_at:'2026-09-04T18:00:00Z',ended_at:'2026-09-04T19:00:00Z'}}}
+ const sheet=cameraEventSheet([event,{...event,metadata:{episode_schema:'abandoned_episode_v1',abandoned_episode:{status:'open',started_at:'2026-09-03T19:00:00Z',last_seen_at:'2026-09-04T18:00:00Z'}}},{...event,metadata:null}],new Map(),()=> 'Никольский',()=> 'Предмет',now)
+ assert.deepEqual(sheet.rows[1].slice(6),['12–24 часа','Сегодня']);assert.deepEqual(sheet.rows[2].slice(6),['Более 1 дня','Не завершено']);assert.deepEqual(sheet.rows[3].slice(6),['Нет данных','Нет данных'])
+ const sensor=sensorEventSheet([{category:'controller_online',value:360,created_at:'2026-09-04T19:00:00Z',alarm:'normal'},{category:'temperature',value:10,created_at:'2026-09-04T19:00:00Z',alarm:'normal'}],()=> 'Никольский',()=> 'Датчик',()=> 'Норма',now)
+ assert.deepEqual(sensor.rows[1].slice(6),['6–12 часов','Сегодня']);assert.deepEqual(sensor.rows[2].slice(6),['Нет данных','Нет данных'])
+ const files=unzipSync(createXlsx([sheet,sensor]));for(const name of ['xl/tables/table1.xml','xl/tables/table2.xml']) {const xml=strFromU8(files[name]);assert.match(xml,/<autoFilter/);assert.match(xml,/Длительность — группа/);assert.match(xml,/Завершение — группа/)}
+})
