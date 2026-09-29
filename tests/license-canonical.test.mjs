@@ -20,7 +20,7 @@ const ts = require('typescript')
 
 // lib/license.ts тянет node-модули (fs, path, crypto), поэтому в транспилированный
 // код надо передать не только exports, но и require.
-const { canonicalJson } = (() => {
+const { canonicalJson, PUBLIC_KEY_HEX } = (() => {
     const exports = {}
     const code = ts.transpileModule(
         readFileSync(new URL('../lib/license.ts', import.meta.url), 'utf8'),
@@ -122,4 +122,25 @@ test('null, bool и пустой массив', () => {
 test('порядок элементов массива сохраняется', () => {
     // modules не сортируется: порядок — часть подписанных данных.
     assert.equal(canonicalJson({ m: ['b', 'a'] }), '{"m":["b","a"]}')
+})
+
+// ── Пришпиленный боевой ключ ────────────────────────────────────────────────
+// Открытая половина ключа подписи зашита в двух репозиториях. Эти тесты — сторожок
+// на два случая: значения разъехались, или кто-то вернул скомпрометированный ключ.
+
+test('пришпиленный публичный ключ совпадает с фикстурой', () => {
+    // Тот же тест есть в bus_stop_analytics и читает ту же фикстуру.
+    assert.equal(PUBLIC_KEY_HEX, fx.production_public_key_hex)
+})
+
+test('пришпиленный ключ — не отозванный', () => {
+    // У старого ключа приватная половина выводилась из строки в репозитории.
+    assert.notEqual(PUBLIC_KEY_HEX, fx._revoked_public_key_hex)
+})
+
+test('пришпиленный ключ разбирается как ключ Ed25519', () => {
+    const raw = Buffer.from(PUBLIC_KEY_HEX, 'hex')
+    assert.equal(raw.length, 32)
+    const der = Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), raw])
+    assert.doesNotThrow(() => crypto.createPublicKey({ key: der, format: 'der', type: 'spki' }))
 })

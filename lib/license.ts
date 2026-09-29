@@ -10,11 +10,24 @@ export interface LicensePayload {
     expires_at: string
     modules: string[]
     max_cameras: number
+    /** Каким ключом подписано удостоверение. Отсутствует в лицензиях, выпущенных
+     *  до его появления. */
+    key_id?: string
 }
 
-// Master Ed25519 Public Key (Hex encoded)
-// Corresponding to the backend master public key
-const PUBLIC_KEY_HEX = "f36cc4e7bd1ae089532f31d29e808c5a277b69c9939f696ec16029c773821573"
+/**
+ * Открытая половина ключа подписи лицензий (key_id 'k1', purpose 'credential').
+ * Секретом не является.
+ *
+ * То же значение зашито в bus_stop_analytics/src/shared/license.py. Рассинхрон
+ * этих двух мест означает, что фронт и бэкенд расходятся в оценке одной и той же
+ * лицензии — поэтому оно пришпилено фикстурой tests/fixtures/license_canonical.json
+ * (production_public_key_hex) и проверяется тестами с обеих сторон.
+ *
+ * До 2026-09-29 здесь стоял ключ, чья приватная половина выводилась из строки,
+ * закоммиченной в репозиторий бэкенда. Не возвращать.
+ */
+export const PUBLIC_KEY_HEX = "0da9be8a390f84b4e31745cac61b88722b1af8fb98c20df6d063ed27f80aac54"
 
 // Construct Node.js Ed25519 DER public key format from 32-byte raw hex
 function createEd25519PublicKey(rawPublicKeyHex: string): crypto.KeyObject {
