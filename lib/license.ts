@@ -29,6 +29,54 @@ function createEd25519PublicKey(rawPublicKeyHex: string): crypto.KeyObject {
     })
 }
 
+/**
+ * Байты, которые подписываются и проверяются. Должна посимвольно совпадать с
+ * canonical_json() в bus_stop_analytics/src/shared/license.py, иначе лицензия
+ * проходит на бэкенде и не проходит здесь (или наоборот).
+ *
+ * Форма: ключи отсортированы (рекурсивно), без пробелов, не-ASCII не
+ * экранируется, UTF-8. Дробные числа запрещены — их форматирование расходится
+ * между JS и Python на краях, а в лицензии им и так не место.
+ *
+ * Зафиксировано фикстурой tests/fixtures/license_canonical.json, которую читают
+ * тесты в обоих репозиториях. Меняя эту функцию, меняй фикстуру и обе реализации.
+ *
+ * Важно: JSON.stringify(obj, keysArray) для этого не годится — массив-replacer
+ * управляет составом и порядком ключей на всех уровнях вложенности сразу, что не
+ * то же самое, что рекурсивная сортировка. Именно так здесь и было, и из-за этого
+ * (плюс пробелы после разделителей в Python) подпись не сходилась никогда.
+ */
+export function canonicalJson(value: unknown): string {
+    if (value === null) return 'null'
+
+    switch (typeof value) {
+        case 'boolean':
+            return value ? 'true' : 'false'
+        case 'string':
+            return JSON.stringify(value)
+        case 'number':
+            if (!Number.isInteger(value)) {
+                throw new Error(
+                    'Дробные числа в лицензии запрещены: форматирование float расходится между JS и Python'
+                )
+            }
+            return String(value)
+        case 'object':
+            break
+        default:
+            throw new Error(`Неподдерживаемый тип в payload: ${typeof value}`)
+    }
+
+    if (Array.isArray(value)) {
+        return '[' + value.map(canonicalJson).join(',') + ']'
+    }
+
+    const obj = value as Record<string, unknown>
+    return '{' + Object.keys(obj).sort()
+        .map(k => JSON.stringify(k) + ':' + canonicalJson(obj[k]))
+        .join(',') + '}'
+}
+
 export function validateLicense(filePath?: string): LicensePayload {
     const licensePath = filePath || process.env.LICENSE_FILE || path.join(process.cwd(), 'license.key')
 
@@ -46,10 +94,7 @@ export function validateLicense(filePath?: string): LicensePayload {
         throw new Error('Invalid license file format: missing payload or signature')
     }
 
-    // Canonical JSON stringification matching Python json.dumps(payload, sort_keys=True)
-    const sortedPayloadKeys = Object.keys(payload).sort()
-    const canonicalJson = JSON.stringify(payload, sortedPayloadKeys)
-    const payloadBuffer = Buffer.from(canonicalJson, 'utf-8')
+    const payloadBuffer = Buffer.from(canonicalJson(payload), 'utf-8')
     const signatureBuffer = Buffer.from(signatureHex, 'hex')
 
     const publicKey = createEd25519PublicKey(PUBLIC_KEY_HEX)

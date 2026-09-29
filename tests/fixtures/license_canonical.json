@@ -1,0 +1,22 @@
+{
+  "_": "Эталон канонизации подписи. Читается тестами в ДВУХ репозиториях: bus_stop_analytics/tests/test_license_canonical.py и road-demo/tests/license-canonical.test.mjs. Копии обязаны совпадать байт-в-байт.",
+  "_test_key_seed": "sha256(b'license-canonical-test-key-v1') — тестовый ключ, боевой сюда не попадает",
+  "payload": {
+    "license_id": "SRG-2026-001",
+    "customer": "Администрация г. Сургут",
+    "hardware_id": null,
+    "issued_at": "2026-09-29T00:00:00Z",
+    "expires_at": "2027-08-07T23:59:59Z",
+    "modules": [
+      "smoking",
+      "lying_person",
+      "bin_fullness"
+    ],
+    "max_cameras": 30,
+    "key_id": "k1"
+  },
+  "canonical_utf8_hex": "7b22637573746f6d6572223a22d090d0b4d0bcd0b8d0bdd0b8d181d182d180d0b0d186d0b8d18f20d0b32e20d0a1d183d180d0b3d183d182222c22657870697265735f6174223a22323032372d30382d30375432333a35393a35395a222c2268617264776172655f6964223a6e756c6c2c226973737565645f6174223a22323032362d30392d32395430303a30303a30305a222c226b65795f6964223a226b31222c226c6963656e73655f6964223a225352472d323032362d303031222c226d61785f63616d65726173223a33302c226d6f64756c6573223a5b22736d6f6b696e67222c226c79696e675f706572736f6e222c2262696e5f66756c6c6e657373225d7d",
+  "canonical_len": 259,
+  "test_public_key_hex": "bd8f320c7830471aff43b6be82af326b295fdcdf565e4c6d5aa7275dbfcc2df9",
+  "signature_hex": "ae2f3612e3c7bd47a337548a4c4f5341f29a03edb637cca02c48dd690016e1807f313f652d4047e9ac09ecfb478f0293a2f5d3315e97a13a97a5c63bc9969609"
+}
