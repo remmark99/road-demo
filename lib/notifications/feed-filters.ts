@@ -65,3 +65,12 @@ export function filteredCameraIndexes(places: CameraPlace[], query: string, sele
   const matches = new Set(searchCameraPlaces(places, query).flatMap(place => place.cameraIndexes))
   return selected.length ? selected.filter(index => matches.has(index)) : [...matches]
 }
+
+/** Applies a checkbox action to the visible range, keeping selections outside it. */
+export function selectCameraPlaceRange(places: CameraPlace[], selected: number[], key: string, anchor: string | null, checked: boolean) {
+  const end = places.findIndex(place => place.key === key)
+  if (end < 0) return selected
+  const start = anchor == null ? end : places.findIndex(place => place.key === anchor)
+  const indexes = new Set(places.slice(Math.min(start < 0 ? end : start, end), Math.max(start < 0 ? end : start, end) + 1).flatMap(place => place.cameraIndexes))
+  return checked ? [...new Set([...selected, ...indexes])] : selected.filter(index => !indexes.has(index))
+}
