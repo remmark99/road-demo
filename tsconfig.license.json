@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "incremental": false
+  },
+  "include": [
+    "next-env.d.ts",
+    "lib/license.ts",
+    "lib/license-modules.ts",
+    "app/api/license/route.ts",
+    "components/providers/module-context.tsx"
+  ],
+  "exclude": ["node_modules"]
+}
