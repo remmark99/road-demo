@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { filterModulesByLicense, type LicenseState } from "@/lib/license-modules"
 
 const ACTIVE_MODULES_KEY = "road-demo-active-modules"
 
@@ -28,6 +29,8 @@ interface ModuleContextType {
     loading: boolean
     /** Re-reads the profile after the user edits it in settings */
     refreshProfile: () => Promise<void>
+    /** Что ответил /api/license: ok | invalid | unknown. Для баннера оператору. */
+    licenseState: LicenseState
     /** Checks if a module is currently active for display */
     hasModule: (module: string) => boolean
     /** Toggle a module on/off for display */
@@ -43,6 +46,7 @@ const ModuleContext = createContext<ModuleContextType>({
     fullName: null,
     phone: null,
     loading: true,
+    licenseState: 'unknown',
     refreshProfile: async () => { },
     hasModule: () => false,
     toggleModule: () => { },
@@ -56,6 +60,7 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
     const [fullName, setFullName] = useState<string | null>(null)
     const [phone, setPhone] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
+    const [licenseState, setLicenseState] = useState<LicenseState>('unknown')
 
     useEffect(() => {
         let mounted = true
@@ -86,19 +91,36 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
                     if (data && !error && mounted) {
                         let dbModules: string[] = data.modules || []
 
-                        // Fetch system signed license from /api/license
+                        // Подписанная лицензия из /api/license.
+                        //
+                        // Отличаем определённый отказ от «не смогли спросить»:
+                        // null = не спросили (сеть, 5xx, неразборный ответ) → не
+                        // фильтруем; [] = лицензия невалидна → лицензируемые
+                        // разделы скрываются. Раньше и то и другое сводилось к
+                        // `!licRes.ok`, то есть отсутствие лицензии давало полный
+                        // доступ.
+                        let licenseModules: string[] | null = null
+                        let state: LicenseState = 'unknown'
                         try {
                             const licRes = await fetch('/api/license')
-                            if (licRes.ok) {
-                                const licData = await licRes.json()
-                                if (licData.valid && Array.isArray(licData.modules)) {
-                                    dbModules = dbModules.filter(m => licData.modules.includes(m))
-                                }
+                            const licData = await licRes.json().catch(() => null)
+                            if (licData && typeof licData.valid === 'boolean') {
+                                state = licData.valid ? 'ok' : 'invalid'
+                                licenseModules = licData.valid && Array.isArray(licData.modules)
+                                    ? licData.modules
+                                    : []
+                            } else {
+                                console.error('Неразборный ответ /api/license', licRes.status)
                             }
                         } catch (licErr) {
-                            console.error("Failed to check license API:", licErr)
+                            console.error('Не удалось проверить лицензию:', licErr)
                         }
 
+                        // Словарь один и тот же на фронт, реестр и воркеры —
+                        // лицензируется модуль целиком. См. lib/license-modules.ts.
+                        dbModules = filterModulesByLicense(dbModules, licenseModules)
+
+                        setLicenseState(state)
                         setAllModules(dbModules)
                         setRole(data.role || 'user')
                         setFullName(data.full_name || null)
@@ -197,6 +219,7 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
             fullName,
             phone,
             loading,
+            licenseState,
             refreshProfile,
             hasModule,
             toggleModule,
