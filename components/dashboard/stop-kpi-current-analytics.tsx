@@ -70,7 +70,7 @@ const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 
 
 /** Подпись под столбцом; «6 кв.», «Кв. А» — в две строки, чтобы влезли в ширину столбца. */
 function DistrictTick({ x = 0, y = 0, payload }: { x?: number; y?: number; payload?: { value: string } }) {
-    const lines = (payload?.value ?? "").split(" ")
+    const lines = (payload?.value ?? "").split(" ").flatMap(word => word.match(/.{1,16}/g) ?? [])
     return (
         <text x={x} y={y + 12} textAnchor="middle" className="fill-muted-foreground text-[10px]">
             {lines.map((line, i) => <tspan key={i} x={x} dy={i === 0 ? 0 : 12}>{line}</tspan>)}
@@ -401,17 +401,19 @@ export function StopKpiCurrentAnalytics() {
                                 {coverageError && <p role="status" className="text-sm text-muted-foreground">Не удалось загрузить границы микрорайонов</p>}
                                 {!coverageError && (!directory || !districts || !districtAssignments) && <Skeleton className="h-64 w-full" />}
                                 {districts && districtAssignments && directory && coverage.unassigned > 0 && <p className="text-sm text-muted-foreground">Вне микрорайонов (посёлки, СОТ, промзоны): {integerFormat.format(coverage.unassigned)} ост.</p>}
-                                {directory && districtAssignments && activity && districtChartRows.length > 0 && <ChartContainer config={districtCoverageConfig} className="aspect-auto h-[320px] w-full">
+                                {directory && districtAssignments && activity && districtChartRows.length > 0 && <div className="max-w-full overflow-x-auto" role="region" aria-label="График покрытия по микрорайонам — прокрутка по горизонтали" tabIndex={0}>
+                                  <ChartContainer config={districtCoverageConfig} className="aspect-auto h-[340px] w-full" style={{ minWidth: Math.max(640, districtChartRows.length * 120 + 80) }}>
                                     <BarChart data={districtChartRows} margin={{ left: 0, right: 12, top: 28, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                                        <XAxis dataKey="shortName" tickLine={false} axisLine={false} interval={0} height={44} tick={<DistrictTick />} />
+                                        <XAxis dataKey="shortName" tickLine={false} axisLine={false} interval={0} height={72} tick={<DistrictTick />} />
                                         <YAxis tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} tickFormatter={(value) => `${value}%`} />
                                         <ChartTooltip content={<ChartTooltipContent labelFormatter={(_label, payload) => payload?.[0]?.payload?.districtName} formatter={(_value, _name, item) => `${Number(item.payload.coveragePct).toFixed(1)}% · ${item.payload.equipped} из ${item.payload.total} ост.`} />} />
                                         <Bar dataKey="coveragePct" fill="var(--color-coveragePct)" radius={[5, 5, 0, 0]}>
                                             <LabelList dataKey="equipped" position="top" className="fill-muted-foreground text-[10px]" formatter={(value: unknown) => Number(value) > 0 ? value : ''} />
                                         </Bar>
                                     </BarChart>
-                                </ChartContainer>}
+                                </ChartContainer>
+                                </div>}
                                 <Table>
                                     <TableHeader>
                                         <TableRow>

@@ -81,3 +81,12 @@ test('last positive frame is never substituted for recovery evidence', () => {
   assert.equal(closedEpisodeImage({latest_image_url:'incident.jpg',image_url:'incident.jpg'}),null)
   assert.equal(closedEpisodeImage({closed_image_url:'clean.jpg'}),'clean.jpg')
 })
+
+test('Shift selects and clears whole visible stop ranges in either direction', () => {
+  const {selectCameraPlaceRange}=load('lib/notifications/feed-filters.ts')
+  const places=[{key:'a',cameraIndexes:[1,2]},{key:'b',cameraIndexes:[3]},{key:'c',cameraIndexes:[4,5]}]
+  assert.deepEqual(selectCameraPlaceRange(places,[99,1,2],'c','a',true),[99,1,2,3,4,5])
+  assert.deepEqual(selectCameraPlaceRange(places,[99,1,2,3,4,5],'a','c',false),[99])
+  assert.deepEqual(selectCameraPlaceRange(places,[99],'b','hidden-by-search',true),[99,3])
+  assert.deepEqual(selectCameraPlaceRange(places,[99],'c',null,true),[99,4,5])
+})

@@ -1,11 +1,11 @@
 "use client"
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import { BookOpen, Search, X } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { searchCameraPlaces, type CameraPlace } from '@/lib/notifications/feed-filters'
+import { searchCameraPlaces, selectCameraPlaceRange, type CameraPlace } from '@/lib/notifications/feed-filters'
 
 export function CameraPlaceFilter({ places, query, selected, onQueryChange, onSelectionChange }: {
   places: CameraPlace[]; query: string; selected: number[]; onQueryChange: (value: string) => void; onSelectionChange: (value: number[]) => void
@@ -13,6 +13,9 @@ export function CameraPlaceFilter({ places, query, selected, onQueryChange, onSe
   const [directoryQuery, setDirectoryQuery] = useState('')
   const [suggestionsOpen, setSuggestionsOpen] = useState(false)
   const [activeSuggestion, setActiveSuggestion] = useState(-1)
+  const rangeAnchor = useRef<string | null>(null)
+  const shiftPressed = useRef(false)
+  const directoryPlaces = searchCameraPlaces(places, directoryQuery)
   const suggestionsId = useId()
   const suggestions = searchCameraPlaces(places, query)
     .filter(place => !place.cameraIndexes.every(index => selected.includes(index))).slice(0, 8)
@@ -51,22 +54,26 @@ export function CameraPlaceFilter({ places, query, selected, onQueryChange, onSe
           {suggestions.length === 0 && <p className="p-3 text-sm text-muted-foreground">Новых совпадений нет</p>}
         </div>}
       </div>
-      <Dialog>
+      <Dialog onOpenChange={() => { rangeAnchor.current = null; shiftPressed.current = false }}>
         <DialogTrigger asChild><Button variant="outline" className="gap-2"><BookOpen className="h-4 w-4" />Справочник</Button></DialogTrigger>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader><DialogTitle>Остановки и места установки камер</DialogTitle><DialogDescription>Отметьте нужные места — в списке останутся события только с этих камер.</DialogDescription></DialogHeader>
-          <Input aria-label="Поиск в справочнике" placeholder="Найти по названию, адресу или номеру" value={directoryQuery} onChange={e => setDirectoryQuery(e.target.value)} />
+          <Input aria-label="Поиск в справочнике" placeholder="Найти по названию, адресу или номеру" value={directoryQuery} onChange={e => { setDirectoryQuery(e.target.value); rangeAnchor.current = null }} />
           <div className="max-h-[55vh] space-y-1 overflow-y-auto">
-            {searchCameraPlaces(places, directoryQuery).map(place => {
+            {directoryPlaces.map(place => {
               const count = place.cameraIndexes.filter(index => selected.includes(index)).length
-              return <label key={place.key} className="flex cursor-pointer items-start gap-3 rounded-lg p-3 hover:bg-muted">
-                <Checkbox className="mt-1" checked={count === place.cameraIndexes.length ? true : count ? 'indeterminate' : false} onCheckedChange={checked => onSelectionChange(checked === true ? [...new Set([...selected, ...place.cameraIndexes])] : selected.filter(index => !place.cameraIndexes.includes(index)))} />
+              return <div key={place.key} onClickCapture={event => { shiftPressed.current = event.shiftKey || (event.detail === 0 && shiftPressed.current) }} onClick={event => { if ((event.target as Element).closest('[role="checkbox"]')) return; onSelectionChange(selectCameraPlaceRange(directoryPlaces, selected, place.key, event.shiftKey ? rangeAnchor.current : null, count !== place.cameraIndexes.length)); rangeAnchor.current = place.key; shiftPressed.current = false }} className="flex cursor-pointer items-start gap-3 rounded-lg p-3 hover:bg-muted">
+                <Checkbox className="mt-1" aria-label={`${place.label}${place.detail ? ` · ${place.detail}` : ''}`} checked={count === place.cameraIndexes.length ? true : count ? 'indeterminate' : false} onKeyDown={event => { shiftPressed.current = event.shiftKey }} onCheckedChange={checked => { onSelectionChange(selectCameraPlaceRange(directoryPlaces, selected, place.key, shiftPressed.current ? rangeAnchor.current : null, checked === true)); rangeAnchor.current = place.key; shiftPressed.current = false }} />
                 <span><span className="block text-sm font-medium">{place.label}</span>{place.detail && <span className="block text-xs text-muted-foreground">{place.detail}</span>}</span>
-              </label>
+              </div>
             })}
-            {searchCameraPlaces(places, directoryQuery).length === 0 && <p className="p-4 text-sm text-muted-foreground">Ничего не найдено</p>}
+            {directoryPlaces.length === 0 && <p className="p-4 text-sm text-muted-foreground">Ничего не найдено</p>}
           </div>
-          <Button variant="outline" onClick={() => onSelectionChange([])}>Снять все отметки</Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" disabled={directoryPlaces.length === 0} title="Выбрать все остановки в результатах поиска" onClick={() => { onSelectionChange([...new Set([...selected, ...directoryPlaces.flatMap(place => place.cameraIndexes)])]); rangeAnchor.current = null }}>Выбрать все</Button>
+            <Button type="button" variant="outline" disabled={selected.length === 0} onClick={() => { onSelectionChange([]); rangeAnchor.current = null }}>Убрать все</Button>
+            <span className="text-xs text-muted-foreground">Shift + щелчок — диапазон</span>
+          </div>
         </DialogContent>
       </Dialog>
     </div>
