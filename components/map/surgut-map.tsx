@@ -1,5 +1,7 @@
 "use client"
 
+import { preserveMapOverlays } from "@/lib/map-style-overlays"
+
 import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { historicalCameras, historicalStops, type StopHistorySnapshot } from "@/lib/stop-history"
 import { useMapPreference } from "@/lib/hooks/use-map-preference"
@@ -222,6 +224,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const { city } = useCity()
   const [isDark, setIsDark] = useState(true)
   const lastThemeRef = useRef(isDark)
+  const themeIconsRef = useRef(new Map<string, ReturnType<maplibregl.Map["getImage"]>>())
   const [liveCameras, setCameras] = useState<Camera[]>([])
   const [hoveredCamera, setHoveredCamera] = useState<Camera | null>(null)
   const [showAllFov, setShowAllFov] = useMapPreference("showAllFov", false)
@@ -1437,28 +1440,35 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     return () => observer.disconnect()
   }, [])
 
-  // Update map style when theme changes
+  // Retain current application data/filters instead of rebuilding empty layers.
   useEffect(() => {
-    if (!map.current || !mapLoaded) return
-    if (lastThemeRef.current === isDark) return
-
-    lastThemeRef.current = isDark
-    loadMapStyle(isDark)
-      .then(style => map.current?.setStyle(style))
-      .catch(error => console.error(error))
-
-    map.current.once("style.load", () => {
-      addParks()
-      addShoreline()
-      addAnchors()
-      addTkoSites()
-      addRoads()
-      addBusStops()
-      addBusStopHeatmap()
-      addCameraLayers()
-      addAnchors()
-    })
-  }, [isDark, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline, addTkoSites, mapLoaded])
+    const instance = map.current
+    if (!instance || !mapLoaded || lastThemeRef.current === isDark) return
+    let active = true
+    const icons = themeIconsRef.current
+    for (const id of ['cam-icon', 'bus-icon', 'anchor-icon', 'tko-icon']) {
+      if (instance.hasImage(id)) icons.set(id, instance.getImage(id))
+    }
+    const restoreIcon = ({ id }: { id: string }) => {
+      const image = icons.get(id)
+      if (active && image && !instance.hasImage(id)) {
+        instance.addImage(id, image.data, { pixelRatio: image.pixelRatio, sdf: image.sdf })
+      }
+    }
+    const restoreIcons = () => icons.forEach((_, id) => restoreIcon({ id }))
+    loadMapStyle(isDark).then(style => {
+      if (!active || map.current !== instance) return
+      instance.on('styleimagemissing', restoreIcon)
+      instance.once('style.load', restoreIcons)
+      instance.setStyle(style, { transformStyle: preserveMapOverlays })
+      lastThemeRef.current = isDark
+    }).catch(error => { if (active) console.error(error) })
+    return () => {
+      active = false
+      instance.off('styleimagemissing', restoreIcon)
+      instance.off('style.load', restoreIcons)
+    }
+  }, [isDark, mapLoaded])
 
   // Локальный стиль надо сначала забрать и дописать в нём origin, поэтому
   // карта создаётся только после его загрузки — см. lib/map-style.ts.

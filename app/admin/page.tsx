@@ -8,6 +8,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CamerasTab } from "@/components/admin/cameras-tab"
 import { PipelineSettingsTab } from "@/components/admin/pipeline-settings-tab"
 
+import { LicensePanel } from "@/components/licenses/license-panel"
+
 type Module = 'roads' | 'shore' | 'stops' | 'parks' | 'transport'
 
 interface Profile {
@@ -202,6 +204,7 @@ export default function AdminPage() {
 
                 <Tabs defaultValue="users" className="space-y-6">
                     <TabsList>
+                        <TabsTrigger value="licenses">Лицензии</TabsTrigger>
                         <TabsTrigger value="users" className="gap-2">
                             <Users className="h-4 w-4" />
                             Пользователи
@@ -216,6 +219,7 @@ export default function AdminPage() {
                         </TabsTrigger>
                     </TabsList>
 
+                    <TabsContent value="licenses"><LicensePanel admin /></TabsContent>
                     <TabsContent value="users" className="space-y-2">
                         <div className="bg-white/[0.02] border border-border rounded-xl shadow-sm overflow-hidden backdrop-blur-sm">
                             <div className="overflow-x-auto">

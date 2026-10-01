@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["next-env.d.ts", "lib/map-style-overlays.ts", "lib/video/**/*.ts", "components/map/surgut-map.tsx", "components/map/video-modal.tsx", "components/dashboard/condition-analytics.tsx", "components/dashboard/vandalism-analytics.tsx", "app/dashboard/page.tsx", "lib/licenses/**/*.ts", "app/api/admin/licenses/route.ts", "app/api/settings/licenses/route.ts"],
+  "exclude": ["node_modules"]
+}

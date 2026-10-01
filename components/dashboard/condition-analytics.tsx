@@ -1,5 +1,7 @@
 "use client"
 
+import { VandalismAnalytics } from "@/components/dashboard/vandalism-analytics"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useMemo, useState } from "react"
 import {
     Area,
@@ -570,6 +572,15 @@ export function ConditionAnalytics() {
                     </Popover>
                 </TimeRangeFilter>
 
+                <Tabs defaultValue="condition" className="space-y-6">
+                  <TabsList>
+                    <TabsTrigger value="condition">Состояние</TabsTrigger>
+                    <TabsTrigger value="vandalism">Вандализм</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="vandalism">
+                    <VandalismAnalytics timeRange={timeRange} selectedStops={selectedStops} />
+                  </TabsContent>
+                  <TabsContent value="condition" className="space-y-6">
                 {selectedStops.length === 0 ? (
                     <Card className="border-dashed">
                         <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
@@ -1213,6 +1224,8 @@ export function ConditionAnalytics() {
                         </Card>
                     </>
                 )}
+                  </TabsContent>
+                </Tabs>
             </div>
         </div>
     )

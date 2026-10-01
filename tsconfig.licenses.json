@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "incremental": false },
+  "include": ["next-env.d.ts", "lib/licenses/**/*.ts", "components/licenses/**/*.tsx", "app/api/admin/licenses/route.ts", "app/api/settings/licenses/route.ts", "app/admin/page.tsx", "app/settings/page.tsx"],
+  "exclude": ["node_modules"]
+}

@@ -18,6 +18,8 @@ import { isValidPhone, MAX_FULL_NAME_LENGTH, MAX_PHONE_LENGTH } from "@/lib/prof
 import type { NotificationEventTypeOption } from "@/lib/notifications/catalog"
 import type { NotificationPreferencesResponse } from "@/lib/notifications/types"
 
+import { LicensePanel } from "@/components/licenses/license-panel"
+
 const STANDARD_REPORT_MIN_DATE = new Date(2025, 0, 1)
 const USER_NUMBER_FORMAT = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 })
 
@@ -882,6 +884,7 @@ export default function SettingsPage() {
           Управление уведомлениями и персональными настройками
         </p>
       </div>
+      <LicensePanel />
       {/* Profile Card */}
       <Card className="mb-6">
         <CardHeader>

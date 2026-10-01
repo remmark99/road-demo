@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Video, Wifi, WifiOff, Loader2, Bell, Truck, Snowflake, ChevronRight, Clock } from "lucide-react"
-import Hls from "hls.js"
+import { connectHls } from "@/lib/video/hls-playback"
+import { connectWhep } from "@/lib/video/whep-playback"
 
 const alertIcons: Record<string, typeof Truck> = {
   snowplow: Truck,
@@ -38,8 +39,8 @@ export function VideoModal({ camera, onClose }: VideoModalProps) {
 }
 
 export function CameraDetails({ camera, showHeading = true }: { camera: Camera; showHeading?: boolean }) {
-  const hlsRef = useRef<Hls | null>(null)
-  const pcRef = useRef<RTCPeerConnection | null>(null)
+  const streamCleanupRef = useRef<(() => void) | null>(null)
+  const [startupMs, setStartupMs] = useState<number | null>(null)
   const [streamStatus, setStreamStatus] = useState<"loading" | "online" | "offline">("loading")
   const [recentAlerts, setRecentAlerts] = useState<Alert[]>([])
   const [alertsLoading, setAlertsLoading] = useState(true)
@@ -57,76 +58,28 @@ export function CameraDetails({ camera, showHeading = true }: { camera: Camera; 
   // Cleanup effect
   useEffect(() => {
     return () => {
-      if (hlsRef.current) {
-        hlsRef.current.destroy()
-        hlsRef.current = null
-      }
-      if (pcRef.current) {
-        pcRef.current.close()
-        pcRef.current = null
-      }
+      streamCleanupRef.current?.()
+      streamCleanupRef.current = null
     }
   }, [])
 
   // Callback ref that initializes HLS or WebRTC when the video element is mounted
   const videoRef = useCallback((videoElement: HTMLVideoElement | null) => {
     // Cleanup previous instances
-    if (hlsRef.current) {
-      hlsRef.current.destroy()
-      hlsRef.current = null
-    }
-    if (pcRef.current) {
-      pcRef.current.close()
-      pcRef.current = null
-    }
+    streamCleanupRef.current?.()
+    streamCleanupRef.current = null
 
     if (!videoElement) {
       return
     }
 
+    setStartupMs(null)
     if (camera?.hlsUrl) {
       setStreamStatus("loading")
-      if (Hls.isSupported()) {
-        const hls = new Hls({
-          enableWorker: true,
-          lowLatencyMode: false,
-          manifestLoadingTimeOut: 10000,
-          manifestLoadingMaxRetry: 4,
-        })
-
-        hlsRef.current = hls
-        hls.loadSource(camera.hlsUrl)
-        hls.attachMedia(videoElement)
-
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          setStreamStatus("online")
-          videoElement.play().catch(() => {
-            // Autoplay blocked, user needs to interact
-          })
-        })
-
-        hls.on(Hls.Events.ERROR, (_, data) => {
-          console.error("HLS error:", data)
-          if (data.fatal) {
-            setStreamStatus("offline")
-            hls.destroy()
-            hlsRef.current = null
-          }
-        })
-      } else if (videoElement.canPlayType("application/vnd.apple.mpegurl")) {
-        // Native HLS support (Safari)
-        videoElement.src = camera.hlsUrl
-        videoElement.addEventListener("loadedmetadata", () => {
-          setStreamStatus("online")
-          videoElement.play().catch(() => { })
-        })
-        videoElement.addEventListener("error", (e) => {
-          console.error("Video error:", e)
-          setStreamStatus("offline")
-        })
-      } else {
-        setStreamStatus("offline")
-      }
+      streamCleanupRef.current = connectHls(videoElement, camera.hlsUrl, {
+        onPlaying: elapsed => { setStreamStatus("online"); setStartupMs(elapsed) },
+        onError: () => setStreamStatus("offline"),
+      })
     } else if (camera?.rtspUrl) {
       setStreamStatus("loading")
 
@@ -143,60 +96,14 @@ export function CameraDetails({ camera, showHeading = true }: { camera: Camera; 
 
       const whepUrl = getWhepUrl(camera.rtspUrl)
 
-      const pc = new RTCPeerConnection()
-      pcRef.current = pc
-
-      pc.addTransceiver("video", { direction: "recvonly" })
-      pc.addTransceiver("audio", { direction: "recvonly" })
-
-      pc.ontrack = (event) => {
-        if (videoElement.srcObject !== event.streams[0]) {
-          videoElement.srcObject = event.streams[0]
-          videoElement.play().catch(e => console.error("WebRTC play error:", e))
-        }
-      }
-
-      pc.onconnectionstatechange = () => {
-        if (pc.connectionState === "connected") {
-          setStreamStatus("online")
-        } else if (pc.connectionState === "failed" || pc.connectionState === "closed") {
-          setStreamStatus("offline")
-        }
-      }
-
-      const startWebRTC = async () => {
-        try {
-          const offer = await pc.createOffer()
-          await pc.setLocalDescription(offer)
-
-          const response = await fetch(whepUrl, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/sdp"
-            },
-            body: offer.sdp
-          })
-
-          if (!response.ok) {
-            throw new Error(`WHEP request failed: ${response.status}`)
-          }
-
-          const answer = await response.text()
-          await pc.setRemoteDescription({
-            type: "answer",
-            sdp: answer
-          })
-        } catch (error) {
-          console.error("WebRTC error:", error)
-          setStreamStatus("offline")
-        }
-      }
-
-      startWebRTC()
+      streamCleanupRef.current = connectWhep(videoElement, whepUrl, {
+        onPlaying: elapsed => { setStreamStatus("online"); setStartupMs(elapsed) },
+        onError: () => setStreamStatus("offline"),
+      })
     } else {
       setStreamStatus("offline")
     }
-  }, [camera])
+  }, [camera.hlsUrl, camera.rtspUrl])
 
   if (!camera) return null
 
@@ -234,9 +141,10 @@ export function CameraDetails({ camera, showHeading = true }: { camera: Camera; 
               ) : isOnline ? (
                 <><Wifi className="h-3 w-3 mr-1" /> Онлайн</>
               ) : (
-                <><WifiOff className="h-3 w-3 mr-1" /> Оффлайн</>
+                <><WifiOff className="h-3 w-3 mr-1" /> Поток недоступен</>
               )}
             </Badge>
+            {startupMs !== null && isOnline && <span className="text-xs">Первый кадр: {(startupMs / 1000).toFixed(1)} с</span>}
           </div>
         </div>
 

@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useMemo } from "react"
 import {
     BarChart,
     Bar,
@@ -24,22 +24,10 @@ import {
     ChartLegendContent,
     type ChartConfig,
 } from "@/components/ui/chart"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
-import { TimeRangeFilter, filterByDayResult, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
+import { filterByDayResult, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import {
-    Users2,
     Hammer,
     GlassWater,
     Paintbrush,
@@ -48,11 +36,9 @@ import {
 } from "lucide-react"
 import {
     BUS_STOPS,
-    TIME_RANGES,
     vandalismEventsData,
     vandalismIncidentsData,
     filterByStops,
-    filterByDay,
     getDailyVandalismSummary,
     getPerStopTotals,
     VANDALISM_LABELS,
@@ -63,24 +49,24 @@ import {
 // ─── Chart Configs ───────────────────────────────────
 
 const dailyConfig = {
-    glass: { label: "Стекло", color: "hsl(200, 80%, 55%)" },
-    structural: { label: "Конструкция", color: "hsl(25, 95%, 53%)" },
-    graffiti: { label: "Граффити", color: "hsl(330, 80%, 55%)" },
-    postings: { label: "Объявления", color: "hsl(50, 90%, 50%)" },
+    glass: { label: "Стекло", color: "var(--chart-1)" },
+    structural: { label: "Конструкция", color: "var(--chart-2)" },
+    graffiti: { label: "Граффити", color: "var(--chart-3)" },
+    postings: { label: "Объявления", color: "var(--chart-4)" },
 } satisfies ChartConfig
 
 const hourlyConfig = {
-    glass: { label: "Стекло", color: "hsl(200, 80%, 55%)" },
-    structural: { label: "Конструкция", color: "hsl(25, 95%, 53%)" },
-    graffiti: { label: "Граффити", color: "hsl(330, 80%, 55%)" },
-    postings: { label: "Объявления", color: "hsl(50, 90%, 50%)" },
+    glass: { label: "Стекло", color: "var(--chart-1)" },
+    structural: { label: "Конструкция", color: "var(--chart-2)" },
+    graffiti: { label: "Граффити", color: "var(--chart-3)" },
+    postings: { label: "Объявления", color: "var(--chart-4)" },
 } satisfies ChartConfig
 
 const stopCompareConfig = {
-    glass: { label: "Стекло", color: "hsl(200, 80%, 55%)" },
-    structural: { label: "Конструкция", color: "hsl(25, 95%, 53%)" },
-    graffiti: { label: "Граффити", color: "hsl(330, 80%, 55%)" },
-    postings: { label: "Объявления", color: "hsl(50, 90%, 50%)" },
+    glass: { label: "Стекло", color: "var(--chart-1)" },
+    structural: { label: "Конструкция", color: "var(--chart-2)" },
+    graffiti: { label: "Граффити", color: "var(--chart-3)" },
+    postings: { label: "Объявления", color: "var(--chart-4)" },
 } satisfies ChartConfig
 
 const TYPE_ICONS: Record<VandalismType, typeof GlassWater> = {
@@ -111,23 +97,10 @@ const DAMAGE_LABELS: Record<string, string> = {
 
 // ─── Main Component ──────────────────────────────────
 
-export function VandalismAnalytics() {
-    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "week" })
-    const [selectedStops, setSelectedStops] = useState<BusStopId[]>(
-        BUS_STOPS.map((s) => s.id)
-    )
-
-    const toggleStop = (stopId: BusStopId) => {
-        setSelectedStops((prev) =>
-            prev.includes(stopId) ? prev.filter((id) => id !== stopId) : [...prev, stopId]
-        )
-    }
-    const toggleAll = () => {
-        setSelectedStops((prev) =>
-            prev.length === BUS_STOPS.length ? [] : BUS_STOPS.map((s) => s.id)
-        )
-    }
-
+export function VandalismAnalytics({ timeRange, selectedStops }: {
+    timeRange: TimeRangeResult
+    selectedStops: BusStopId[]
+}) {
     // ─── Filtered data ─────────────────────────────────
 
     const eventsFiltered = useMemo(() => {
@@ -183,63 +156,26 @@ export function VandalismAnalytics() {
         }))
     }, [eventsFiltered])
 
-    const selectedLabel =
-        selectedStops.length === BUS_STOPS.length
-            ? "Все остановки"
-            : selectedStops.length === 0
-                ? "Не выбрано"
-                : `${selectedStops.length} из ${BUS_STOPS.length}`
+    if (!selectedStops.length) return <Card className="border-dashed"><CardContent className="py-12 text-center text-muted-foreground">Выберите остановки для просмотра вандализма.</CardContent></Card>
 
     return (
-        <div className="h-full overflow-auto p-6 space-y-6">
-            {/* ─── Filter bar ──────────────────────────── */}
-            <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button variant="outline" className="gap-2">
-                            <Users2 className="h-4 w-4" />
-                            {selectedLabel}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80" align="start">
-                        <div className="space-y-3">
-                            <div className="flex items-center space-x-2">
-                                <Checkbox
-                                    id="all-stops-van"
-                                    checked={selectedStops.length === BUS_STOPS.length}
-                                    onCheckedChange={toggleAll}
-                                />
-                                <Label htmlFor="all-stops-van" className="font-medium">Все остановки</Label>
-                            </div>
-                            <div className="border-t pt-2 space-y-2">
-                                {BUS_STOPS.map((stop) => (
-                                    <div key={stop.id} className="flex items-center space-x-2">
-                                        <Checkbox
-                                            id={`van-${stop.id}`}
-                                            checked={selectedStops.includes(stop.id)}
-                                            onCheckedChange={() => toggleStop(stop.id)}
-                                        />
-                                        <Label htmlFor={`van-${stop.id}`} className="text-sm">{stop.name}</Label>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </PopoverContent>
-                </Popover>
-            </TimeRangeFilter>
-
+        <div className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><h2 className="text-xl font-semibold">Вандализм</h2><p className="text-sm text-muted-foreground">Повреждения остановок и динамика событий</p></div>
+                <Badge variant="secondary">Демонстрационные данные</Badge>
+            </div>
             {/* ─── KPI Cards ───────────────────────────── */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {(Object.keys(VANDALISM_LABELS) as VandalismType[]).map((type) => {
                     const Icon = TYPE_ICONS[type]
                     return (
-                        <Card key={type}>
+                        <Card key={type} className="border-border/60 shadow-sm">
                             <CardContent className="pt-4 pb-3 px-4">
                                 <div className="flex items-center gap-2 mb-1">
                                     <Icon className={`h-4 w-4 ${TYPE_COLORS[type]}`} />
                                     <span className="text-xs text-muted-foreground">{VANDALISM_LABELS[type]}</span>
                                 </div>
-                                <div className="text-2xl font-bold">{kpiTotals[type]}</div>
+                                <div className="text-3xl font-semibold tabular-nums">{kpiTotals[type]}</div>
                             </CardContent>
                         </Card>
                     )
@@ -260,7 +196,7 @@ export function VandalismAnalytics() {
                     <CardContent>
                         <ChartContainer config={dailyConfig} className="h-[280px] w-full">
                             <BarChart data={dailyData} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                                 <XAxis dataKey="dayLabel" tickLine={false} axisLine={false} tickMargin={8} />
                                 <YAxis tickLine={false} axisLine={false} tickMargin={8} />
                                 <ChartTooltip content={<ChartTooltipContent />} />
@@ -286,24 +222,24 @@ export function VandalismAnalytics() {
                     <CardContent>
                         <ChartContainer config={hourlyConfig} className="h-[280px] w-full">
                             <AreaChart data={hourlyData} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                                 <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} interval={2} />
                                 <YAxis tickLine={false} axisLine={false} tickMargin={8} />
                                 <ChartTooltip content={<ChartTooltipContent />} />
                                 <ChartLegend content={<ChartLegendContent />} />
                                 <defs>
-                                    <linearGradient id="fillGlass" x1="0" y1="0" x2="0" y2="1">
+                                    <linearGradient id="vandalism-fill-glass" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="var(--color-glass)" stopOpacity={0.6} />
                                         <stop offset="95%" stopColor="var(--color-glass)" stopOpacity={0} />
                                     </linearGradient>
-                                    <linearGradient id="fillGraffiti" x1="0" y1="0" x2="0" y2="1">
+                                    <linearGradient id="vandalism-fill-graffiti" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="var(--color-graffiti)" stopOpacity={0.6} />
                                         <stop offset="95%" stopColor="var(--color-graffiti)" stopOpacity={0} />
                                     </linearGradient>
                                 </defs>
-                                <Area type="monotone" dataKey="glass" stroke="var(--color-glass)" fill="url(#fillGlass)" strokeWidth={2} />
+                                <Area type="monotone" dataKey="glass" stroke="var(--color-glass)" fill="url(#vandalism-fill-glass)" strokeWidth={2} />
                                 <Area type="monotone" dataKey="structural" stroke="var(--color-structural)" fill="var(--color-structural)" fillOpacity={0.1} strokeWidth={2} />
-                                <Area type="monotone" dataKey="graffiti" stroke="var(--color-graffiti)" fill="url(#fillGraffiti)" strokeWidth={2} />
+                                <Area type="monotone" dataKey="graffiti" stroke="var(--color-graffiti)" fill="url(#vandalism-fill-graffiti)" strokeWidth={2} />
                                 <Area type="monotone" dataKey="postings" stroke="var(--color-postings)" fill="var(--color-postings)" fillOpacity={0.1} strokeWidth={2} />
                             </AreaChart>
                         </ChartContainer>
@@ -321,8 +257,8 @@ export function VandalismAnalytics() {
                     </CardHeader>
                     <CardContent className="flex justify-center">
                         <ChartContainer
-                            config={{ value: { label: "Кол-во", color: "hsl(330, 80%, 55%)" } }}
-                            className="h-[280px] w-[340px]"
+                            config={{ value: { label: "Кол-во", color: "var(--chart-3)" } }}
+                            className="h-[280px] w-full"
                         >
                             <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="65%">
                                 <PolarGrid stroke="currentColor" className="text-border" />
@@ -339,9 +275,9 @@ export function VandalismAnalytics() {
                                 <Radar
                                     name="События"
                                     dataKey="value"
-                                    stroke="hsl(330, 80%, 55%)"
-                                    fill="hsl(330, 80%, 55%)"
-                                    fillOpacity={0.3}
+                                    stroke="var(--chart-3)"
+                                    fill="var(--chart-3)"
+                                    fillOpacity={0.15}
                                     strokeWidth={2}
                                 />
                             </RadarChart>
@@ -365,7 +301,7 @@ export function VandalismAnalytics() {
                                 layout="vertical"
                                 margin={{ left: 12, right: 12, top: 12, bottom: 0 }}
                             >
-                                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
                                 <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} />
                                 <YAxis
                                     dataKey="stopName"

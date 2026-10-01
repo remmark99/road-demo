@@ -17,7 +17,6 @@ import {
   Map,
   Users2,
   ShieldAlert,
-  Hammer,
   ClipboardCheck,
   AlertCircle,
   ShieldCheck,
@@ -47,7 +46,6 @@ const StopConditionCurrentAnalytics = dynamic(() => import("@/components/dashboa
 const StopSensorAnalytics = dynamic(() => import("@/components/dashboard/stop-sensor-analytics").then(m => m.StopSensorAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const StopEquipmentAnalytics = dynamic(() => import("@/components/dashboard/stop-equipment-analytics").then(m => m.StopEquipmentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const SecurityAnalytics = dynamic(() => import("@/components/dashboard/security-analytics").then(m => m.SecurityAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const VandalismAnalytics = dynamic(() => import("@/components/dashboard/vandalism-analytics").then(m => m.VandalismAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const ConditionAnalytics = dynamic(() => import("@/components/dashboard/condition-analytics").then(m => m.ConditionAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const ShoreSecurityAnalytics = dynamic(() => import("@/components/dashboard/shore-security-analytics").then(m => m.ShoreSecurityAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const ShoreSafetyAnalytics = dynamic(() => import("@/components/dashboard/shore-safety-analytics").then(m => m.ShoreSafetyAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
@@ -72,7 +70,6 @@ type DashboardView =
   | "stop_districts"
   | "stop_security"
   | "stop_passenger"
-  | "stop_vandalism"
   | "stop_condition"
   | "stop_equipment"
   | "stop_sensors"
@@ -190,15 +187,6 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     },
   },
   {
-    id: "stop_vandalism",
-    label: "Вандализм",
-    icon: Hammer,
-    module: "stops",
-    stopModes: {
-      plan: VandalismAnalytics,
-    },
-  },
-  {
     id: "stop_condition",
     label: "Состояние остановок",
     icon: ClipboardCheck,
@@ -260,7 +248,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city"]
-const STOPS_DASHBOARDS = ["stop_condition", "stop_kpi", "stop_equipment", "stop_sensors", "stop_passenger", "stop_security", "stop_districts", "stop_vandalism"]
+const STOPS_DASHBOARDS = ["stop_condition", "stop_kpi", "stop_equipment", "stop_sensors", "stop_passenger", "stop_security", "stop_districts"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]
 const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]
@@ -303,7 +291,7 @@ export default function DashboardPage() {
   const { hasModule, loading: modulesLoading } = useModuleAccess()
 
   const filteredDashboards = DASHBOARDS.filter(d => {
-    return d.id !== "stop_vandalism" && hasModule(d.module)
+    return hasModule(d.module)
   })
 
   const roadsDashboardsList = orderDashboards(filteredDashboards.filter(d => ROADS_DASHBOARDS.includes(d.id)), ROADS_DASHBOARDS)
