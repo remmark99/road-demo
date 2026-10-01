@@ -8,6 +8,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CamerasTab } from "@/components/admin/cameras-tab"
 import { PipelineSettingsTab } from "@/components/admin/pipeline-settings-tab"
 
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
+
 import { LicensePanel } from "@/components/licenses/license-panel"
 
 type Module = 'roads' | 'shore' | 'stops' | 'parks' | 'transport'
@@ -349,53 +353,48 @@ export default function AdminPage() {
                 </Tabs>
             </div>
 
-            {/* Create User Modal */}
-            {isCreateOpen && (
-                <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div className="bg-[#0f1423] border border-border rounded-2xl w-full max-w-md shadow-2xl">
-                        <div className="flex items-center justify-between p-6 border-b border-border">
-                            <h2 className="text-xl font-semibold">Новый пользователь</h2>
-                            <button
-                                onClick={() => setIsCreateOpen(false)}
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                                <X className="h-5 w-5" />
-                            </button>
-                        </div>
-
-                        <form onSubmit={handleCreateUser} className="p-6 space-y-6">
+            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
+                <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-md text-foreground">
+                    <DialogHeader>
+                        <DialogTitle>Новый пользователь</DialogTitle>
+                        <DialogDescription>Данные аккаунта и доступные модули.</DialogDescription>
+                    </DialogHeader>
+                        <form onSubmit={handleCreateUser} className="space-y-6">
                             <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-muted-foreground">Email</label>
-                                    <input
+                                    <label htmlFor="new-user-email" className="text-sm font-medium">Электронная почта</label>
+                                    <Input
+                                        id="new-user-email"
                                         type="email"
                                         required
                                         value={newEmail}
                                         onChange={e => setNewEmail(e.target.value)}
-                                        className="w-full bg-white/5 border border-border rounded-xl px-4 py-2 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                                        className="w-full bg-background text-foreground border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ring"
                                         placeholder="user@example.com"
                                     />
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-muted-foreground">Пароль (минимум 6 символов)</label>
-                                    <input
+                                    <label htmlFor="new-user-password" className="text-sm font-medium">Пароль (минимум 6 символов)</label>
+                                    <Input
+                                        id="new-user-password"
                                         type="password"
                                         required
                                         minLength={6}
                                         value={newPassword}
                                         onChange={e => setNewPassword(e.target.value)}
-                                        className="w-full bg-white/5 border border-border rounded-xl px-4 py-2 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                                        className="w-full bg-background text-foreground border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ring"
                                         placeholder="••••••••"
                                     />
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-muted-foreground">Роль</label>
+                                    <label htmlFor="new-user-role" className="text-sm font-medium">Роль</label>
                                     <select
+                                        id="new-user-role"
                                         value={newRole}
                                         onChange={e => setNewRole(e.target.value)}
-                                        className="w-full bg-white/5 border border-border rounded-xl px-4 py-2 focus:outline-none focus:border-teal-500 focus:ring-1 focus:ring-teal-500"
+                                        className="w-full bg-background text-foreground border border-input rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-ring"
                                     >
                                         <option value="user">Пользователь</option>
                                         <option value="admin">Администратор</option>
@@ -407,12 +406,12 @@ export default function AdminPage() {
                                         Доступные модули
                                     </label>
                                     {AVAILABLE_MODULES.map(mod => (
-                                        <label key={mod.id} className="flex items-center gap-3 p-3 border border-border rounded-xl cursor-pointer hover:bg-white/5 transition-colors">
+                                        <label key={mod.id} className="flex items-center gap-3 p-3 border border-border rounded-xl cursor-pointer hover:bg-muted transition-colors">
                                             <input
                                                 type="checkbox"
                                                 checked={newModules.includes(mod.id)}
                                                 onChange={() => toggleModule(newModules, setNewModules, mod.id)}
-                                                className="h-4 w-4 bg-background border-border rounded text-teal-500 focus:ring-teal-500"
+                                                className="h-4 w-4 accent-foreground border-border rounded focus:ring-ring"
                                             />
                                             <span className="font-medium">{mod.name}</span>
                                         </label>
@@ -421,25 +420,25 @@ export default function AdminPage() {
                             </div>
 
                             <div className="flex gap-3 pt-4 border-t border-border">
-                                <button
+                                <Button
+                                    variant="outline"
                                     type="button"
                                     onClick={() => setIsCreateOpen(false)}
-                                    className="flex-1 px-4 py-2.5 bg-muted hover:bg-muted/80 text-foreground rounded-xl transition-colors"
+                                    className="flex-1"
                                 >
                                     Отмена
-                                </button>
-                                <button
+                                </Button>
+                                <Button
                                     type="submit"
                                     disabled={creating}
-                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-600 text-white rounded-xl transition-colors shadow-lg shadow-teal-500/20 disabled:opacity-50"
+                                    className="flex-1 gap-2"
                                 >
                                     {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Создать'}
-                                </button>
+                                </Button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            )}
+                </DialogContent>
+            </Dialog>
 
         </main>
     )

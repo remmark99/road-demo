@@ -85,3 +85,75 @@ test('customer filter and paginated read exclude signing credentials', async () 
     for (const [name, value] of Object.entries({ LICENSE_USER_CUSTOMERS: previous.bindings, LICENSE_DB_URL: previous.url, LICENSE_DB_SERVICE_ROLE_KEY: previous.key })) { if (value === undefined) delete process.env[name]; else process.env[name] = value }
   }
 })
+
+const licenseId = '33333333-3333-3333-3333-333333333333'
+const { russianModuleLabel, russianCameraName, parseResourceScopes } = load('lib/licenses/resources.ts')
+test('all known license modules and camera fallback names are Russian', () => {
+  for (const key of ['roads','stops','parks','shore','transport','asr','smoking','lying_person','bin_fullness','dogs_without_people','abandoned_object','busyness','stage2_verification','unknown']) {
+    assert.match(russianModuleLabel(key, { [key]: 'English label' }), /[А-Яа-яЁё]/)
+  }
+  assert.equal(russianModuleLabel('custom', { custom: 'Особый модуль' }), 'Особый модуль')
+  assert.equal(russianCameraName('Camera #15', 15, 3), 'Камера №15')
+  assert.equal(russianCameraName('Вход', 15, 3), 'Вход')
+})
+test('resource scopes reject implicit cities, malformed IDs and duplicate stops', () => {
+  assert.deepEqual(parseResourceScopes(undefined), {})
+  const input = { [licenseId]: { city: 'surgut', stopIds: [42,162] } }
+  assert.deepEqual(parseResourceScopes(JSON.stringify(input)), input)
+  for (const scope of [null, { city: 'guess', stopIds: [42] }, { city: 'surgut', stopIds: [42,42] }, { city: 'surgut', stopIds: [-1] }, { city: 'surgut', stopIds: ['42'] }]) {
+    assert.throws(() => parseResourceScopes(JSON.stringify({ [licenseId]: scope })))
+  }
+})
+function detailRoute(file, user, role, reader) {
+  return load(file, {
+    'next/server': { NextResponse: { json: (body, options = {}) => ({ body, status: options.status || 200, headers: options.headers }) } },
+    '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => ({ data: { user } }) }, from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: { role } }) }) }) }) }) },
+    '@/lib/licenses/server': { readLicenseDetail: reader },
+  })
+}
+test('detail endpoints reject anonymous and non-admin callers, bind owner and mask errors', async () => {
+  const context = { params: Promise.resolve({ id: licenseId }) }, request = new Request('http://localhost?userId=other')
+  let reads = 0
+  const reader = async () => { reads++; return {} }
+  assert.equal((await detailRoute('app/api/admin/licenses/[id]/route.ts', null, 'admin', reader).GET(request, context)).status, 401)
+  assert.equal((await detailRoute('app/api/admin/licenses/[id]/route.ts', { id: userId }, 'user', reader).GET(request, context)).status, 403)
+  assert.equal((await detailRoute('app/api/settings/licenses/[id]/route.ts', null, 'user', reader).GET(request, context)).status, 401)
+  assert.equal(reads, 0)
+  const owned = await detailRoute('app/api/settings/licenses/[id]/route.ts', { id: userId }, 'user', async (...args) => { assert.deepEqual(args, [licenseId,userId]); return {} }).GET(request, context)
+  assert.equal(owned.status, 200)
+  assert.equal(owned.headers['Cache-Control'], 'private, no-store')
+  assert.equal((await detailRoute('app/api/settings/licenses/[id]/route.ts', { id: userId }, 'user', async () => null).GET(request, context)).status, 404)
+  const failure = await detailRoute('app/api/admin/licenses/[id]/route.ts', { id: userId }, 'admin', async () => { throw Error('secret') }).GET(request, context)
+  assert.equal(failure.status, 503); assert.ok(!JSON.stringify(failure).includes('secret'))
+})
+test('detail reads only explicit stops, paginates cameras, reports limits and excludes stream credentials', async () => {
+  const keys = ['LICENSE_USER_CUSTOMERS','LICENSE_DB_URL','LICENSE_DB_SERVICE_ROLE_KEY','LICENSE_RESOURCE_SCOPES']
+  const previous = keys.map(key => process.env[key])
+  Object.assign(process.env, { LICENSE_USER_CUSTOMERS: JSON.stringify({ [userId]: customerId }), LICENSE_DB_URL: 'http://db', LICENSE_DB_SERVICE_ROLE_KEY: 'test', LICENSE_RESOURCE_SCOPES: JSON.stringify({ [licenseId]: { city: 'surgut', stopIds: [42,162] } }) })
+  const selections = [], ranges = [], filters = []; let inventoryReads = 0
+  const license = { id: licenseId, license_id: 'SRG', customer_id: customerId, customers: { name: 'Сургут' }, modules: ['stops'], max_cameras: 30, status: 'active', expires_at: null }
+  try {
+    const server = load('lib/licenses/server.ts', { 'server-only': {}, '@supabase/supabase-js': { createClient: () => ({ from: table => ({ select: () => {
+      if(table === 'license_modules') return Promise.resolve({ data: [], error: null })
+      const q = { order: () => q, range: () => q, eq: (field,value) => { assert.equal(field,'customer_id'); assert.equal(value,customerId); return q }, then: resolve => resolve({ data: [license], count: 1 }) }; return q
+    } }) }) }, '@/lib/notifications/admin': { createNotificationAdminClient: () => { inventoryReads++; return { from: table => ({ select: selection => {
+      selections.push(selection); let offset=0
+      const q = { in: (field,ids) => { filters.push([table,field,ids]); return q }, order: () => q, range: start => { offset=start;ranges.push(start);return q }, then: resolve => resolve(table === 'bus_stops' ? { data: [{ id:42,name:'Остановка',address:'Улица' },{ id:162,name:'Без камер',address:null }] } : { count:201, data: Array.from({length:offset === 0 ? 200 : 1},(_,i)=>({id:offset+i,camera_index:offset+i,name:'Camera',module:'stops',bus_stop_id:42,rtsp_url:'secret',hls_url:'secret'})) }) }; return q
+    } }) } } } })
+    const result = await server.readLicenseDetail(licenseId,userId)
+    assert.equal(result.cameraCount,201); assert.equal(result.exceedsCameraLimit,true)
+    assert.deepEqual(ranges,[0,200]); assert.equal(result.stops.length,2)
+    assert.ok(filters.every(([,field,ids]) => ['id','bus_stop_id'].includes(field) && JSON.stringify(ids)==='[42,162]'))
+    assert.ok(!selections.some(s => /url|credential|ip_address/.test(s)))
+    assert.ok(!JSON.stringify(result).includes('secret'))
+    const before=inventoryReads
+    assert.equal(await server.readLicenseDetail('44444444-4444-4444-4444-444444444444',userId),null)
+    assert.equal(inventoryReads,before)
+    process.env.LICENSE_RESOURCE_SCOPES='{}'
+    const pending=await server.readLicenseDetail(licenseId,userId)
+    assert.equal(pending.assigned,false);assert.equal(pending.city,null);assert.deepEqual(pending.stops,[])
+    assert.equal(inventoryReads,before)
+    const unbound=await server.readLicenseDetail(licenseId,'55555555-5555-5555-5555-555555555555')
+    assert.equal(unbound,null);assert.equal(inventoryReads,before)
+  } finally { keys.forEach((key,i) => { if(previous[i]===undefined) delete process.env[key]; else process.env[key]=previous[i] }) }
+})

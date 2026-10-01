@@ -49,24 +49,24 @@ import {
 // ─── Chart Configs ───────────────────────────────────
 
 const dailyConfig = {
-    glass: { label: "Стекло", color: "var(--chart-1)" },
-    structural: { label: "Конструкция", color: "var(--chart-2)" },
-    graffiti: { label: "Граффити", color: "var(--chart-3)" },
-    postings: { label: "Объявления", color: "var(--chart-4)" },
+    glass: { label: "Стекло", color: "var(--foreground)" },
+    structural: { label: "Конструкция", color: "var(--muted-foreground)" },
+    graffiti: { label: "Граффити", color: "color-mix(in oklab, var(--foreground) 55%, var(--background))" },
+    postings: { label: "Объявления", color: "color-mix(in oklab, var(--foreground) 30%, var(--background))" },
 } satisfies ChartConfig
 
 const hourlyConfig = {
-    glass: { label: "Стекло", color: "var(--chart-1)" },
-    structural: { label: "Конструкция", color: "var(--chart-2)" },
-    graffiti: { label: "Граффити", color: "var(--chart-3)" },
-    postings: { label: "Объявления", color: "var(--chart-4)" },
+    glass: { label: "Стекло", color: "var(--foreground)" },
+    structural: { label: "Конструкция", color: "var(--muted-foreground)" },
+    graffiti: { label: "Граффити", color: "color-mix(in oklab, var(--foreground) 55%, var(--background))" },
+    postings: { label: "Объявления", color: "color-mix(in oklab, var(--foreground) 30%, var(--background))" },
 } satisfies ChartConfig
 
 const stopCompareConfig = {
-    glass: { label: "Стекло", color: "var(--chart-1)" },
-    structural: { label: "Конструкция", color: "var(--chart-2)" },
-    graffiti: { label: "Граффити", color: "var(--chart-3)" },
-    postings: { label: "Объявления", color: "var(--chart-4)" },
+    glass: { label: "Стекло", color: "var(--foreground)" },
+    structural: { label: "Конструкция", color: "var(--muted-foreground)" },
+    graffiti: { label: "Граффити", color: "color-mix(in oklab, var(--foreground) 55%, var(--background))" },
+    postings: { label: "Объявления", color: "color-mix(in oklab, var(--foreground) 30%, var(--background))" },
 } satisfies ChartConfig
 
 const TYPE_ICONS: Record<VandalismType, typeof GlassWater> = {
@@ -76,17 +76,10 @@ const TYPE_ICONS: Record<VandalismType, typeof GlassWater> = {
     postings: StickyNote,
 }
 
-const TYPE_COLORS: Record<VandalismType, string> = {
-    glass: "text-sky-500",
-    structural: "text-orange-500",
-    graffiti: "text-pink-500",
-    postings: "text-yellow-500",
-}
-
 const DAMAGE_COLORS: Record<string, string> = {
-    minor: "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400",
-    moderate: "bg-amber-500/20 text-amber-600 dark:text-amber-400",
-    severe: "bg-red-500/20 text-red-600 dark:text-red-400",
+    minor: "bg-muted text-muted-foreground",
+    moderate: "bg-muted text-foreground",
+    severe: "bg-muted text-foreground font-semibold",
 }
 
 const DAMAGE_LABELS: Record<string, string> = {
@@ -172,7 +165,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                         <Card key={type} className="border-border/60 shadow-sm">
                             <CardContent className="pt-4 pb-3 px-4">
                                 <div className="flex items-center gap-2 mb-1">
-                                    <Icon className={`h-4 w-4 ${TYPE_COLORS[type]}`} />
+                                    <Icon className="h-4 w-4 text-muted-foreground" />
                                     <span className="text-xs text-muted-foreground">{VANDALISM_LABELS[type]}</span>
                                 </div>
                                 <div className="text-3xl font-semibold tabular-nums">{kpiTotals[type]}</div>
@@ -188,7 +181,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                 <Card>
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base">
-                            <Hammer className="h-5 w-5 text-orange-500" />
+                            <Hammer className="h-5 w-5 text-muted-foreground" />
                             Вандализм по дням
                         </CardTitle>
                         <CardDescription>Распределение по дням недели</CardDescription>
@@ -214,7 +207,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                 <Card>
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base">
-                            <GlassWater className="h-5 w-5 text-sky-500" />
+                            <GlassWater className="h-5 w-5 text-muted-foreground" />
                             Почасовое распределение
                         </CardTitle>
                         <CardDescription>Когда чаще всего фиксируется вандализм</CardDescription>
@@ -250,14 +243,14 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                 <Card>
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base">
-                            <Paintbrush className="h-5 w-5 text-pink-500" />
+                            <Paintbrush className="h-5 w-5 text-muted-foreground" />
                             Профиль вандализма
                         </CardTitle>
                         <CardDescription>Сравнительный анализ типов</CardDescription>
                     </CardHeader>
                     <CardContent className="flex justify-center">
                         <ChartContainer
-                            config={{ value: { label: "Кол-во", color: "var(--chart-3)" } }}
+                            config={{ value: { label: "Кол-во", color: "color-mix(in oklab, var(--foreground) 55%, var(--background))" } }}
                             className="h-[280px] w-full"
                         >
                             <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="65%">
@@ -275,8 +268,8 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                                 <Radar
                                     name="События"
                                     dataKey="value"
-                                    stroke="var(--chart-3)"
-                                    fill="var(--chart-3)"
+                                    stroke="color-mix(in oklab, var(--foreground) 55%, var(--background))"
+                                    fill="color-mix(in oklab, var(--foreground) 55%, var(--background))"
                                     fillOpacity={0.15}
                                     strokeWidth={2}
                                 />
@@ -289,7 +282,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                 <Card>
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base">
-                            <Construction className="h-5 w-5 text-orange-500" />
+                            <Construction className="h-5 w-5 text-muted-foreground" />
                             По остановкам
                         </CardTitle>
                         <CardDescription>Вандализм в разрезе остановок</CardDescription>
@@ -327,7 +320,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                 <Card className="col-span-1 lg:col-span-2">
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base">
-                            <Hammer className="h-5 w-5 text-violet-500" />
+                            <Hammer className="h-5 w-5 text-muted-foreground" />
                             Журнал инцидентов вандализма
                         </CardTitle>
                         <CardDescription>Последние зафиксированные события</CardDescription>
@@ -342,7 +335,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                                             key={inc.id}
                                             className="flex items-center gap-3 p-2.5 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
                                         >
-                                            <Icon className={`h-4 w-4 flex-shrink-0 ${TYPE_COLORS[inc.type]}`} />
+                                            <Icon className={`h-4 w-4 flex-shrink-0 text-muted-foreground`} />
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-xs font-mono text-muted-foreground">{inc.id}</span>

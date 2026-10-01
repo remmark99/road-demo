@@ -1,6 +1,7 @@
 import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { createNotificationAdminClient } from '@/lib/notifications/admin'
+import { parseResourceScopes, russianCameraName, russianModuleLabel, type LicenseDetail, type LicenseStop } from './resources'
 import { parseCustomerBindings, licenseStatus, type LicenseResponse } from './types'
 
 // The DB stores customers, not platform auth users. Bind only by explicitly configured UUIDs.
@@ -42,4 +43,47 @@ export async function readCustomerLicenses(userId?: string): Promise<LicenseResp
     }
   }
   return { licenses, moduleLabels: Object.fromEntries((modules || []).map(m => [m.key, m.label])), linked: true }
+}
+
+// Resource display does not alter the signed license or grant access to streams.
+// Verify customer ownership before reading inventory with the service-role client.
+export async function readLicenseDetail(id: string, userId?: string): Promise<LicenseDetail | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null
+  const { licenses, moduleLabels } = await readCustomerLicenses(userId)
+  const license = licenses.find(row => row.id === id)
+  if (!license) return null
+  const scope = parseResourceScopes(process.env.LICENSE_RESOURCE_SCOPES)[id]
+  const result: LicenseDetail = { license, moduleLabels, assigned: !!scope, city: scope ? 'Сургут' : null,
+    stops: [], cameraCount: 0, exceedsCameraLimit: false }
+  if (!scope || !scope.stopIds.length) return result
+  const inventory = createNotificationAdminClient()
+  for (let start = 0; start < scope.stopIds.length; start += 100) {
+    const ids = scope.stopIds.slice(start, start + 100)
+    const { data: stops, error } = await inventory.from('bus_stops').select('id,name,address').in('id', ids)
+    if (error || !stops || stops.length !== ids.length) throw new Error('Incomplete stop assignment')
+    const byId = new Map<number, LicenseStop>(stops.map(stop => [stop.id, {
+      id: stop.id, name: stop.name || `Остановка №${stop.id}`, address: stop.address, cameras: [],
+    }]))
+    let offset = 0
+    for (;;) {
+      const { data: cameras, error: cameraError, count } = await inventory.from('cameras')
+        .select('id,camera_index,name,module,bus_stop_id', { count: 'exact' })
+        .in('bus_stop_id', ids).order('id').range(offset, offset + 199)
+      if (cameraError || !cameras || count == null) throw new Error('Camera inventory read failed')
+      for (const camera of cameras) {
+        const stop = byId.get(camera.bus_stop_id)
+        if (!stop) throw new Error('Camera outside configured scope')
+        stop.cameras.push({ id: camera.id, name: russianCameraName(camera.name, camera.camera_index, camera.id),
+          module: russianModuleLabel(camera.module || 'stops', moduleLabels) })
+        result.cameraCount++
+      }
+      offset += cameras.length
+      if (offset >= count) break
+      if (!cameras.length) throw new Error('Camera pagination did not advance')
+    }
+    result.stops.push(...byId.values())
+  }
+  result.stops.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+  result.exceedsCameraLimit = result.cameraCount > license.max_cameras
+  return result
 }
