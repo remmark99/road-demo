@@ -9,11 +9,11 @@ import {
     CartesianGrid,
     AreaChart,
     Area,
-    RadarChart,
-    Radar,
-    PolarGrid,
-    PolarAngleAxis,
-    PolarRadiusAxis,
+    PieChart,
+    Pie,
+    Cell,
+    LabelList,
+    Label,
 } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -48,26 +48,15 @@ import {
 
 // ─── Chart Configs ───────────────────────────────────
 
-const dailyConfig = {
-    glass: { label: "Стекло", color: "var(--foreground)" },
-    structural: { label: "Конструкция", color: "var(--muted-foreground)" },
-    graffiti: { label: "Граффити", color: "color-mix(in oklab, var(--foreground) 55%, var(--background))" },
-    postings: { label: "Объявления", color: "color-mix(in oklab, var(--foreground) 30%, var(--background))" },
+const typeConfig = {
+    glass: { label: "Стекло", color: "#688faa" },
+    structural: { label: "Конструкция", color: "#bc837c" },
+    graffiti: { label: "Граффити", color: "#8c83ad" },
+    postings: { label: "Объявления", color: "#b59b62" },
 } satisfies ChartConfig
-
-const hourlyConfig = {
-    glass: { label: "Стекло", color: "var(--foreground)" },
-    structural: { label: "Конструкция", color: "var(--muted-foreground)" },
-    graffiti: { label: "Граффити", color: "color-mix(in oklab, var(--foreground) 55%, var(--background))" },
-    postings: { label: "Объявления", color: "color-mix(in oklab, var(--foreground) 30%, var(--background))" },
-} satisfies ChartConfig
-
-const stopCompareConfig = {
-    glass: { label: "Стекло", color: "var(--foreground)" },
-    structural: { label: "Конструкция", color: "var(--muted-foreground)" },
-    graffiti: { label: "Граффити", color: "color-mix(in oklab, var(--foreground) 55%, var(--background))" },
-    postings: { label: "Объявления", color: "color-mix(in oklab, var(--foreground) 30%, var(--background))" },
-} satisfies ChartConfig
+const dailyConfig = { total: { label: "События", color: "#5b9b91" } } satisfies ChartConfig
+const hourlyConfig = typeConfig
+const stopCompareConfig = { total: { label: "События", color: "#688faa" } } satisfies ChartConfig
 
 const TYPE_ICONS: Record<VandalismType, typeof GlassWater> = {
     glass: GlassWater,
@@ -77,9 +66,9 @@ const TYPE_ICONS: Record<VandalismType, typeof GlassWater> = {
 }
 
 const DAMAGE_COLORS: Record<string, string> = {
-    minor: "bg-muted text-muted-foreground",
-    moderate: "bg-muted text-foreground",
-    severe: "bg-muted text-foreground font-semibold",
+    minor: "bg-teal-500/10 text-teal-700 dark:text-teal-300",
+    moderate: "bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    severe: "bg-rose-500/10 text-rose-700 dark:text-rose-300 font-semibold",
 }
 
 const DAMAGE_LABELS: Record<string, string> = {
@@ -115,7 +104,16 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
     }, [eventsFiltered])
 
     // Daily stacked
-    const dailyData = useMemo(() => getDailyVandalismSummary(eventsFiltered), [eventsFiltered])
+    const dailyData = useMemo(() => {
+        const totals = new Map(getDailyVandalismSummary(eventsFiltered).map(row => [row.day, row]))
+        const days = filterByDayResult(Array.from({ length: 30 }, (_, day) => ({ day })), timeRange)
+        return days.sort((a, b) => b.day - a.day).map(({ day }) => {
+            const row = totals.get(day) || { glass: 0, structural: 0, graffiti: 0, postings: 0 }
+            const date = new Date(); date.setDate(date.getDate() - day)
+            return { day, dayLabel: date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
+                total: row.glass + row.structural + row.graffiti + row.postings }
+        })
+    }, [eventsFiltered, timeRange])
 
     // Hourly area chart
     const hourlyData = useMemo(() => {
@@ -133,7 +131,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
     }, [eventsFiltered])
 
     // Per-stop comparison
-    const perStopData = useMemo(() => getPerStopTotals(eventsFiltered), [eventsFiltered])
+    const perStopData = useMemo(() => getPerStopTotals(eventsFiltered).filter(row => selectedStops.includes(row.stopId)), [eventsFiltered, selectedStops])
 
     // Radar data for type comparison
     const radarData = useMemo(() => {
@@ -144,7 +142,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
             postings: "Объявления",
         }
         return (Object.keys(VANDALISM_LABELS) as VandalismType[]).map((type) => ({
-            type: shortLabels[type],
+            type: shortLabels[type], key: type, fill: typeConfig[type].color,
             value: eventsFiltered.filter((e) => e.type === type).reduce((s, e) => s + e.count, 0),
         }))
     }, [eventsFiltered])
@@ -165,7 +163,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                         <Card key={type} className="border-border/60 shadow-sm">
                             <CardContent className="pt-4 pb-3 px-4">
                                 <div className="flex items-center gap-2 mb-1">
-                                    <Icon className="h-4 w-4 text-muted-foreground" />
+                                    <Icon className="h-4 w-4" style={{ color: typeConfig[type].color }} />
                                     <span className="text-xs text-muted-foreground">{VANDALISM_LABELS[type]}</span>
                                 </div>
                                 <div className="text-3xl font-semibold tabular-nums">{kpiTotals[type]}</div>
@@ -176,35 +174,32 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
             </div>
 
             {/* ─── Charts grid ─────────────────────────── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {!eventsFiltered.length ? <Card><CardContent className="py-12 text-center text-muted-foreground">За выбранный период на этих остановках событий вандализма нет.</CardContent></Card> : <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* 1. Daily stacked bar */}
-                <Card>
+                <Card className="min-w-0">
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base">
                             <Hammer className="h-5 w-5 text-muted-foreground" />
                             Вандализм по дням
                         </CardTitle>
-                        <CardDescription>Распределение по дням недели</CardDescription>
+                        <CardDescription>Общее число событий за каждый день выбранного периода</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <ChartContainer config={dailyConfig} className="h-[280px] w-full">
-                            <BarChart data={dailyData} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                                <XAxis dataKey="dayLabel" tickLine={false} axisLine={false} tickMargin={8} />
-                                <YAxis tickLine={false} axisLine={false} tickMargin={8} />
+                            <AreaChart data={dailyData} margin={{ left: 0, right: 16, top: 20, bottom: 0 }}>
+                                <defs><linearGradient id="vandalism-daily-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="var(--color-total)" stopOpacity={0.24} /><stop offset="100%" stopColor="var(--color-total)" stopOpacity={0.02} /></linearGradient></defs>
+                                <CartesianGrid stroke="var(--border)" vertical={false} strokeDasharray="3 6" />
+                                <XAxis dataKey="dayLabel" tickLine={false} axisLine={false} tickMargin={10} />
+                                <YAxis allowDecimals={false} tickLine={false} axisLine={false} width={32} />
                                 <ChartTooltip content={<ChartTooltipContent />} />
-                                <ChartLegend content={<ChartLegendContent />} />
-                                <Bar dataKey="glass" stackId="v" fill="var(--color-glass)" />
-                                <Bar dataKey="structural" stackId="v" fill="var(--color-structural)" />
-                                <Bar dataKey="graffiti" stackId="v" fill="var(--color-graffiti)" />
-                                <Bar dataKey="postings" stackId="v" fill="var(--color-postings)" radius={[4, 4, 0, 0]} />
-                            </BarChart>
+                                <Area type="monotone" dataKey="total" stroke="var(--color-total)" fill="url(#vandalism-daily-fill)" strokeWidth={2.5} dot={{ r: 3, fill: "var(--color-total)", stroke: "var(--background)", strokeWidth: 2 }} activeDot={{ r: 5 }} />
+                            </AreaChart>
                         </ChartContainer>
                     </CardContent>
                 </Card>
 
                 {/* 2. Hourly area chart */}
-                <Card>
+                <Card className="min-w-0">
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base">
                             <GlassWater className="h-5 w-5 text-muted-foreground" />
@@ -217,7 +212,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                             <AreaChart data={hourlyData} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
                                 <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} interval={2} />
-                                <YAxis tickLine={false} axisLine={false} tickMargin={8} />
+                                <YAxis allowDecimals={false} tickLine={false} axisLine={false} tickMargin={8} />
                                 <ChartTooltip content={<ChartTooltipContent />} />
                                 <ChartLegend content={<ChartLegendContent />} />
                                 <defs>
@@ -240,77 +235,59 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                 </Card>
 
                 {/* 3. Radar — type profile */}
-                <Card>
+                <Card className="min-w-0">
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base">
                             <Paintbrush className="h-5 w-5 text-muted-foreground" />
-                            Профиль вандализма
+                            Типы повреждений
                         </CardTitle>
-                        <CardDescription>Сравнительный анализ типов</CardDescription>
+                        <CardDescription>Доля каждого типа в общем числе событий</CardDescription>
                     </CardHeader>
                     <CardContent className="flex justify-center">
-                        <ChartContainer
-                            config={{ value: { label: "Кол-во", color: "color-mix(in oklab, var(--foreground) 55%, var(--background))" } }}
-                            className="h-[280px] w-full"
-                        >
-                            <RadarChart data={radarData} cx="50%" cy="50%" outerRadius="65%">
-                                <PolarGrid stroke="currentColor" className="text-border" />
-                                <PolarAngleAxis
-                                    dataKey="type"
-                                    tick={{ fill: "currentColor", fontSize: 12 }}
-                                    className="text-muted-foreground"
-                                />
-                                <PolarRadiusAxis
-                                    angle={90}
-                                    tick={{ fill: "currentColor", fontSize: 10 }}
-                                    className="text-muted-foreground"
-                                />
-                                <Radar
-                                    name="События"
-                                    dataKey="value"
-                                    stroke="color-mix(in oklab, var(--foreground) 55%, var(--background))"
-                                    fill="color-mix(in oklab, var(--foreground) 55%, var(--background))"
-                                    fillOpacity={0.15}
-                                    strokeWidth={2}
-                                />
-                            </RadarChart>
+                        <ChartContainer config={typeConfig} className="h-[280px] w-full">
+                            <PieChart>
+                                <ChartTooltip content={<ChartTooltipContent nameKey="key" hideLabel />} />
+                                <Pie data={radarData.filter(row => row.value > 0)} dataKey="value" nameKey="key" innerRadius={62} outerRadius={96} paddingAngle={3} cornerRadius={5} stroke="var(--background)" strokeWidth={2}>
+                                    {radarData.filter(row => row.value > 0).map(row => <Cell key={row.key} fill={row.fill} />)}
+                                    <Label content={({ viewBox }) => viewBox && "cx" in viewBox && "cy" in viewBox ? <text x={viewBox.cx} y={viewBox.cy} textAnchor="middle" dominantBaseline="middle"><tspan className="fill-foreground text-3xl font-semibold">{kpiTotals.total}</tspan><tspan x={viewBox.cx} dy={24} className="fill-muted-foreground text-xs">событий</tspan></text> : null} />
+                                </Pie>
+                                <ChartLegend content={<ChartLegendContent nameKey="key" />} />
+                            </PieChart>
                         </ChartContainer>
                     </CardContent>
                 </Card>
 
                 {/* 4. Per-stop horizontal stacked bars */}
-                <Card>
+                <Card className="min-w-0">
                     <CardHeader className="pb-2">
                         <CardTitle className="flex items-center gap-2 text-base">
                             <Construction className="h-5 w-5 text-muted-foreground" />
                             По остановкам
                         </CardTitle>
-                        <CardDescription>Вандализм в разрезе остановок</CardDescription>
+                        <CardDescription>Выбранные остановки — от большего числа событий к меньшему</CardDescription>
                     </CardHeader>
                     <CardContent>
                         <ChartContainer config={stopCompareConfig} className="h-[280px] w-full">
                             <BarChart
                                 data={perStopData}
                                 layout="vertical"
-                                margin={{ left: 12, right: 12, top: 12, bottom: 0 }}
+                                margin={{ left: 0, right: 30, top: 12, bottom: 0 }}
                             >
                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" horizontal={false} />
-                                <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} />
+                                <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} tickMargin={8} />
                                 <YAxis
                                     dataKey="stopName"
                                     type="category"
                                     tickLine={false}
                                     axisLine={false}
                                     tickMargin={8}
-                                    width={100}
+                                    width={132}
                                     style={{ fontSize: "11px" }}
                                 />
                                 <ChartTooltip content={<ChartTooltipContent />} />
-                                <ChartLegend content={<ChartLegendContent />} />
-                                <Bar dataKey="glass" stackId="s" fill="var(--color-glass)" />
-                                <Bar dataKey="structural" stackId="s" fill="var(--color-structural)" />
-                                <Bar dataKey="graffiti" stackId="s" fill="var(--color-graffiti)" />
-                                <Bar dataKey="postings" stackId="s" fill="var(--color-postings)" radius={[0, 4, 4, 0]} />
+                                <Bar dataKey="total" fill="var(--color-total)" radius={[0, 7, 7, 0]} maxBarSize={16} background={{ fill: "var(--muted)", radius: 7 }}>
+                                    <LabelList dataKey="total" position="right" className="fill-foreground" fontSize={12} />
+                                </Bar>
                             </BarChart>
                         </ChartContainer>
                     </CardContent>
@@ -357,7 +334,7 @@ export function VandalismAnalytics({ timeRange, selectedStops }: {
                         </ScrollArea>
                     </CardContent>
                 </Card>
-            </div>
+            </div>}
         </div>
     )
 }
