@@ -54,7 +54,7 @@ import {
 } from "@/lib/stop-analytics-config"
 import { fetchStopActivity, type StopActivityResponse } from "@/lib/api/stop-activity"
 import { fetchEquipmentState, type EquipmentState } from "@/lib/api/equipment"
-import { indexEquipmentStatus, monitoredCameraOnline } from "@/lib/equipment-status"
+import { buildStopEquipmentLists, equipmentListHref } from "@/lib/stop-equipment-lists"
 import { fetchStopDirectory, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { fetchStopDistrictAssignments, fetchStopDistricts } from "@/lib/api/stop-districts"
 import { stopDistrictCoverage, type StopDistrict, type StopDistrictAssignment } from "@/lib/stop-coverage"
@@ -192,14 +192,16 @@ function KpiCard({
     value,
     icon: Icon,
     tone = "normal",
+    href,
 }: {
+    href?: string
     title: string
     value: string
     icon: typeof BusFront
     tone?: KpiTone
 }) {
-    return (
-        <Card className="overflow-hidden">
+    const card = (
+        <Card className={cn("h-full overflow-hidden", href && "transition-colors hover:border-foreground/40")}>
             <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
                 <div className="space-y-1">
                     <CardDescription>{title}</CardDescription>
@@ -226,9 +228,10 @@ function KpiCard({
                     <Icon className="h-5 w-5" />
                 </div>
             </CardHeader>
-
+            {href && <CardContent className="pt-0"><span className="inline-flex items-center gap-1 text-xs text-muted-foreground">Открыть список<ExternalLink className="h-3 w-3" /></span></CardContent>}
         </Card>
     )
+    return href ? <Link href={href} target="_blank" rel="noopener noreferrer" className="block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={`${title}: ${value}. Открыть список в новой вкладке`}>{card}</Link> : card
 }
 
 function LoadingGrid() {
@@ -315,12 +318,11 @@ export function StopKpiCurrentAnalytics() {
     const coverage = useMemo(() => stopDistrictCoverage((directory?.features ?? []).map(stop => stop.properties.id), districtAssignments ?? [], districts ?? [], activity), [directory, districtAssignments, districts, activity])
     const districtChartRows = coverage.rows
     const cityStopTotal = directory?.features.length ?? 0
-    const cameraStatus = indexEquipmentStatus(equipment).cameras
-    const stopIds = new Set((directory?.features ?? []).map(stop => stop.properties.id))
-    const cameras = (currentCameras ?? []).filter(c => c.module === 'stops' && (c.bus_stop_id != null ? stopIds.has(c.bus_stop_id) : c.lat != null && c.lng != null))
-    const camerasOnline = cameras.filter(c => monitoredCameraOnline(cameraStatus, c.camera_index) ?? c.status === 'online').length
-    const sensors = Object.values(activity?.stops ?? {}).filter(s => s.has_controller)
-    const sensorsOnline = sensors.filter(s => s.sensors_online).length
+    const equipmentLists = useMemo(() => buildStopEquipmentLists({ directory, cameras: currentCameras, equipment, activity }), [directory, currentCameras, equipment, activity])
+    const camerasOnline = equipmentLists['cameras-online'].length
+    const camerasOffline = equipmentLists['cameras-offline'].length
+    const sensorsOnline = equipmentLists['sensors-online'].length
+    const sensorsOffline = equipmentLists['sensors-offline'].length
     const safetyNotificationsHref = buildNotificationsHref({
         types: STOP_SAFETY_ALERT_TYPES,
     })
@@ -371,10 +373,10 @@ export function StopKpiCurrentAnalytics() {
             ) : (
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
                     <KpiCard title="Остановок в городе" value={integerFormat.format(cityStopTotal)} icon={BusFront} />
-                    <KpiCard title="Камеры в сети" value={equipment && currentCameras ? integerFormat.format(camerasOnline) : '—'} icon={Camera} tone="success" />
-                    <KpiCard title="Камеры не в сети" value={equipment && currentCameras ? integerFormat.format(cameras.length - camerasOnline) : '—'} icon={Camera} tone="attention" />
-                    <KpiCard title="Остановки с датчиками в сети" value={activity ? integerFormat.format(sensorsOnline) : '—'} icon={BusFront} tone="success" />
-                    <KpiCard title="Остановки с датчиками не в сети" value={activity ? integerFormat.format(sensors.length - sensorsOnline) : '—'} icon={BusFront} tone="attention" />
+                    <KpiCard title="Камеры в сети" href={equipment && currentCameras ? equipmentListHref('cameras-online') : undefined} value={equipment && currentCameras ? integerFormat.format(camerasOnline) : '—'} icon={Camera} tone="success" />
+                    <KpiCard title="Камеры не в сети" href={equipment && currentCameras ? equipmentListHref('cameras-offline') : undefined} value={equipment && currentCameras ? integerFormat.format(camerasOffline) : '—'} icon={Camera} tone="attention" />
+                    <KpiCard title="Остановки с датчиками в сети" href={activity ? equipmentListHref('sensors-online') : undefined} value={activity ? integerFormat.format(sensorsOnline) : '—'} icon={BusFront} tone="success" />
+                    <KpiCard title="Остановки с датчиками не в сети" href={activity ? equipmentListHref('sensors-offline') : undefined} value={activity ? integerFormat.format(sensorsOffline) : '—'} icon={BusFront} tone="attention" />
                 </div>
             )}
 

@@ -23,6 +23,7 @@ export interface RangeBounds {
 }
 
 export interface StopCameraRow {
+    name?: string | null
     id: number
     camera_index: number | null
     module: string | null
@@ -282,7 +283,7 @@ async function loadStopCameras(): Promise<StopCameraRow[]> {
     const supabase = createClient()
     const { data, error } = await supabase
         .from("cameras")
-        .select("id,camera_index,module,bus_stop_id,status,lat,lng,updated_at")
+        .select("id,name,camera_index,module,bus_stop_id,status,lat,lng,updated_at")
         .limit(10000)
 
     if (error) {

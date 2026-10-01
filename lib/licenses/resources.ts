@@ -29,13 +29,21 @@ export function parseResourceScopes(value: string | undefined): Record<string, R
   return scopes as Record<string, ResourceScope>
 }
 export type LicenseCamera = { id: number; name: string; module: string }
+export type InventoryCamera = LicenseCamera & { stopId: number | null; stopName: string | null }
 export type LicenseStop = { id: number; name: string; address: string | null; cameras: LicenseCamera[] }
 export type LicenseDetail = {
   license: CustomerLicense
   moduleLabels: Record<string, string>
   assigned: boolean
+  inventorySource: 'assigned' | 'platform' | 'unavailable'
+  cameras: InventoryCamera[]
   city: string | null
   stops: LicenseStop[]
   cameraCount: number
-  exceedsCameraLimit: boolean
+}
+
+export function inventoryModules(modules: readonly string[]): string[] {
+  const platform = new Set(['roads', 'stops', 'parks', 'shore', 'transport', 'asr'])
+  const stopDetections = new Set(['smoking', 'lying_person', 'bin_fullness', 'dogs_without_people', 'abandoned_object', 'busyness', 'stage2_verification'])
+  return [...new Set(modules.flatMap(key => platform.has(key) ? [key] : stopDetections.has(key) ? ['stops'] : []))]
 }

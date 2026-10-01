@@ -1,7 +1,7 @@
 import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { createNotificationAdminClient } from '@/lib/notifications/admin'
-import { parseResourceScopes, russianCameraName, russianModuleLabel, type LicenseDetail, type LicenseStop } from './resources'
+import { inventoryModules, parseResourceScopes, russianCameraName, russianModuleLabel, type LicenseDetail, type LicenseStop } from './resources'
 import { parseCustomerBindings, licenseStatus, type LicenseResponse } from './types'
 
 // The DB stores customers, not platform auth users. Bind only by explicitly configured UUIDs.
@@ -54,8 +54,14 @@ export async function readLicenseDetail(id: string, userId?: string): Promise<Li
   if (!license) return null
   const scope = parseResourceScopes(process.env.LICENSE_RESOURCE_SCOPES)[id]
   const result: LicenseDetail = { license, moduleLabels, assigned: !!scope, city: scope ? 'Сургут' : null,
-    stops: [], cameraCount: 0, exceedsCameraLimit: false }
-  if (!scope || !scope.stopIds.length) return result
+    stops: [], cameras: [], inventorySource: scope ? 'assigned' : 'unavailable', cameraCount: 0 }
+  if (!scope) {
+    // This instance's customer is configured explicitly; a user binding or customer
+    // name is never used to grant access to another city's inventory.
+    if (license.customer_id !== process.env.LICENSE_PLATFORM_CUSTOMER_ID) return result
+    return readPlatformInventory(result)
+  }
+  if (!scope.stopIds.length) return result
   const inventory = createNotificationAdminClient()
   for (let start = 0; start < scope.stopIds.length; start += 100) {
     const ids = scope.stopIds.slice(start, start + 100)
@@ -75,6 +81,7 @@ export async function readLicenseDetail(id: string, userId?: string): Promise<Li
         if (!stop) throw new Error('Camera outside configured scope')
         stop.cameras.push({ id: camera.id, name: russianCameraName(camera.name, camera.camera_index, camera.id),
           module: russianModuleLabel(camera.module || 'stops', moduleLabels) })
+        result.cameras.push({ ...stop.cameras[stop.cameras.length - 1], stopId: stop.id, stopName: stop.name })
         result.cameraCount++
       }
       offset += cameras.length
@@ -84,6 +91,41 @@ export async function readLicenseDetail(id: string, userId?: string): Promise<Li
     result.stops.push(...byId.values())
   }
   result.stops.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
-  result.exceedsCameraLimit = result.cameraCount > license.max_cameras
+  return result
+}
+
+async function readPlatformInventory(result: LicenseDetail): Promise<LicenseDetail> {
+  const modules = inventoryModules(result.license.modules)
+  result.inventorySource = 'platform'
+  result.city = 'Сургут'
+  if (!modules.length) return result
+  const inventory = createNotificationAdminClient()
+  const rows: { id: number; camera_index: number | null; name: string | null; module: string; bus_stop_id: number | null }[] = []
+  for (let offset = 0; ;) {
+    const { data, error, count } = await inventory.from('cameras')
+      .select('id,camera_index,name,module,bus_stop_id', { count: 'exact' })
+      .in('module', modules).order('id').range(offset, offset + 199)
+    if (error || !data || count == null) throw new Error('Platform camera inventory read failed')
+    if (data.some(camera => !modules.includes(camera.module))) throw new Error('Camera outside licensed modules')
+    rows.push(...data)
+    offset += data.length
+    if (offset >= count) break
+    if (!data.length) throw new Error('Platform camera pagination did not advance')
+  }
+  const stopIds = [...new Set(rows.flatMap(row => row.bus_stop_id == null ? [] : [row.bus_stop_id]))]
+  const stops = new Map<number, LicenseStop>()
+  for (let start = 0; start < stopIds.length; start += 100) {
+    const { data, error } = await inventory.from('bus_stops').select('id,name,address').in('id', stopIds.slice(start, start + 100))
+    if (error || !data) throw new Error('Platform stop inventory read failed')
+    for (const stop of data) stops.set(stop.id, { id: stop.id, name: stop.name || `Остановка №${stop.id}`, address: stop.address, cameras: [] })
+  }
+  result.cameras = rows.map(row => {
+    const stop = row.bus_stop_id == null ? undefined : stops.get(row.bus_stop_id)
+    const camera = { id: row.id, name: russianCameraName(row.name, row.camera_index, row.id), module: russianModuleLabel(row.module, result.moduleLabels) }
+    if (stop) stop.cameras.push(camera)
+    return { ...camera, stopId: row.bus_stop_id, stopName: stop?.name || null }
+  })
+  result.stops = [...stops.values()].sort((a, b) => a.name.localeCompare(b.name, 'ru'))
+  result.cameraCount = result.cameras.length
   return result
 }
