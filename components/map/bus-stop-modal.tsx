@@ -130,7 +130,11 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
     const sensorsOnline = hasRealReadings || Boolean(busStop.sensor_data?.sensors_online)
     const camerasOnline = Boolean(busStop.sensor_data?.cameras_online)
     const onlineCameraCount = busStop.sensor_data?.online_camera_count ?? 0
-    const activityStatus = resolveActivityStatus(sensorsOnline, camerasOnline)
+    // Учётка «только датчики»: без камер, статус — только по контроллеру
+    const sensorsOnlyView = busStop.sensor_data?.sensors_only === true
+    const activityStatus = sensorsOnlyView
+        ? (sensorsOnline ? "active" : "inactive")
+        : resolveActivityStatus(sensorsOnline, camerasOnline)
     const hasEquipment = hasRealReadings || cameras.length > 0 || camerasOnline || Boolean(busStop.sensor_data?.has_equipment)
 
     // Real metric values (no fallbacks to fake random values)
@@ -182,9 +186,9 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                     </DialogDescription>
                 </DialogHeader>
 
-                <Tabs defaultValue={busStop.initialTab ?? "cameras"}>
+                <Tabs defaultValue={sensorsOnlyView ? "sensors" : busStop.initialTab ?? "cameras"}>
                     <TabsList className="w-full" aria-label="Информация об остановке">
-                        <TabsTrigger value="cameras">Камеры ({cameras.length})</TabsTrigger>
+                        {!sensorsOnlyView && <TabsTrigger value="cameras">Камеры ({cameras.length})</TabsTrigger>}
                         <TabsTrigger value="sensors">Датчики</TabsTrigger>
                     </TabsList>
                     <TabsContent value="cameras" className="space-y-4 pt-2">
@@ -223,9 +227,9 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                 <span className={`px-2 py-1 rounded-md border ${sensorsOnline ? "text-green-500 border-green-500/30 bg-green-500/10" : "text-muted-foreground border-border bg-muted/50"}`}>
                                     Датчики: {sensorsOnline ? "в сети" : "не в сети"}
                                 </span>
-                                <span className={`px-2 py-1 rounded-md border ${camerasOnline ? "text-green-500 border-green-500/30 bg-green-500/10" : "text-muted-foreground border-border bg-muted/50"}`}>
+                                {!sensorsOnlyView && <span className={`px-2 py-1 rounded-md border ${camerasOnline ? "text-green-500 border-green-500/30 bg-green-500/10" : "text-muted-foreground border-border bg-muted/50"}`}>
                                     Камеры: {camerasOnline ? `в сети (${onlineCameraCount})` : "не в сети"}
-                                </span>
+                                </span>}
                             </div>
 
                             {/* Critical Alerts Banner: ONLY rendered if there are real active problems */}

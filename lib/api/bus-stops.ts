@@ -30,6 +30,8 @@ export interface BusStopSensorData {
     humidity?: number
     /** Что-то отклонилось от нормы; причина не уточняется. */
     incident?: boolean
+    /** Статус посчитан только по датчикам (учётка подрядчика, см. toSensorsOnlyStops). */
+    sensors_only?: boolean
 }
 
 export interface BusStopProperties {
@@ -88,6 +90,40 @@ export function toSensorData(entry: StopActivityEntry | undefined): BusStopSenso
         last_ping_at: entry.last_ping_at,
         last_sensor_at: entry.last_sensor_at,
         incident: entry.incident,
+    }
+}
+
+/**
+ * Режим «только датчики»: оставляет остановки с контроллером и считает их
+ * статус только по датчикам, без камер. `sensors_only` попадает в свойства
+ * точек на карте, чтобы попап не писал о камерах.
+ */
+export function toSensorsOnlyStops(geoJSON: BusStopsGeoJSON): BusStopsGeoJSON {
+    return {
+        ...geoJSON,
+        features: geoJSON.features
+            .filter(feature => feature.properties.sensor_data?.has_controller === true)
+            .map(feature => {
+                const sd = feature.properties.sensor_data!
+                const status = sd.sensors_history_known === false ? 'unknown' : sd.sensors_online ? 'active' : 'inactive'
+                return {
+                    ...feature,
+                    properties: {
+                        ...feature.properties,
+                        sensor_data: {
+                            ...sd,
+                            activity_status: status,
+                            cameras_online: false,
+                            cameras_history_known: undefined,
+                            online_camera_count: 0,
+                            total_camera_count: 0,
+                            is_online: status === 'active',
+                            is_partly_equipped: false,
+                            sensors_only: true,
+                        },
+                    },
+                }
+            }),
     }
 }
 

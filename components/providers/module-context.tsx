@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { isStopSensorsOnly } from "@/lib/access-scope"
 import { filterModulesByLicense, type LicenseState } from "@/lib/license-modules"
 
 const ACTIVE_MODULES_KEY = "road-demo-active-modules"
@@ -22,6 +23,8 @@ interface ModuleContextType {
     /** Currently active/visible modules (user preference, subset of allModules) */
     modules: string[]
     role: string
+    /** Учётка подрядчика: на карте только остановки с датчиками, без камер и разделов */
+    sensorsOnly: boolean
     /** Optional ФИО from the profile, null when the user has not set it */
     fullName: string | null
     /** Optional contact phone from the profile */
@@ -43,6 +46,7 @@ const ModuleContext = createContext<ModuleContextType>({
     allModules: [],
     modules: [],
     role: 'user',
+    sensorsOnly: false,
     fullName: null,
     phone: null,
     loading: true,
@@ -57,6 +61,7 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
     const [allModules, setAllModules] = useState<string[]>([])
     const [activeModules, setActiveModulesState] = useState<string[] | null>(null)
     const [role, setRole] = useState('user')
+    const [sensorsOnly, setSensorsOnly] = useState(false)
     const [fullName, setFullName] = useState<string | null>(null)
     const [phone, setPhone] = useState<string | null>(null)
     const [loading, setLoading] = useState(true)
@@ -71,6 +76,7 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
                 const { data: { user } } = await supabase.auth.getUser()
 
                 if (user && mounted) {
+                    setSensorsOnly(isStopSensorsOnly(user))
                     let { data, error } = await supabase
                         .from('profiles')
                         .select('role, modules, full_name, phone')
@@ -216,6 +222,7 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
             allModules,
             modules,
             role,
+            sensorsOnly,
             fullName,
             phone,
             loading,

@@ -78,7 +78,9 @@ export function Navigation() {
   const [user, setUser] = useState<SupabaseUser | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [mobileOpen, setMobileOpen] = useState(false)
-  const { role, fullName, allModules, modules: activeModules, toggleModule } = useModuleAccess()
+  const { role, sensorsOnly, fullName, allModules, modules: activeModules, toggleModule } = useModuleAccess()
+  // Учётке «только датчики» доступна одна карта
+  const visibleNavItems = sensorsOnly ? navItems.filter(item => item.href === "/") : navItems
   const { city, setCity } = useCity()
 
   const displayName = getDisplayName(fullName, user?.email)
@@ -136,7 +138,7 @@ export function Navigation() {
                   <div className="px-2 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Разделы
                   </div>
-                  {navItems.map((item) => {
+                  {visibleNavItems.map((item) => {
                     const Icon = item.icon
                     const isActive = pathname === item.href
                     return (
@@ -176,7 +178,7 @@ export function Navigation() {
                       <ExternalLink className="h-3 w-3 opacity-60 ml-auto" />
                     </a>
                   </Button>
-                  <SheetClose asChild>
+                  {!sensorsOnly && <SheetClose asChild>
                     <Button
                       variant={pathname === "/settings" ? "secondary" : "ghost"}
                       className="justify-start gap-3 h-10 w-full"
@@ -187,7 +189,7 @@ export function Navigation() {
                         Настройки
                       </Link>
                     </Button>
-                  </SheetClose>
+                  </SheetClose>}
                   {role === 'admin' && (
                     <SheetClose asChild>
                       <Button
@@ -280,7 +282,7 @@ export function Navigation() {
 
           {/* Desktop Nav Links (≥1024px) */}
           <div className="hidden lg:flex items-center gap-1">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.href
               return (
@@ -431,12 +433,12 @@ export function Navigation() {
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem asChild>
+                  {!sensorsOnly && <DropdownMenuItem asChild>
                     <Link href="/settings" className="cursor-pointer gap-2">
                       <Settings className="h-4 w-4 text-muted-foreground" />
                       <span>Настройки</span>
                     </Link>
-                  </DropdownMenuItem>
+                  </DropdownMenuItem>}
                   {role === 'admin' && (
                     <DropdownMenuItem asChild>
                       <Link href="/admin" className="cursor-pointer gap-2 text-teal-600 dark:text-teal-400 focus:text-teal-700 dark:focus:text-teal-300">

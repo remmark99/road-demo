@@ -11,7 +11,7 @@ import { useModuleAccess } from "@/components/providers/module-context"
 import type { MapFocusTarget, RoadStatus, StopEquipmentClass } from "@/lib/types"
 
 export default function MapPage() {
-  const { hasModule, loading: modulesLoading } = useModuleAccess()
+  const { hasModule, sensorsOnly, loading: modulesLoading } = useModuleAccess()
   const [historyTime, setHistoryTime] = useState<Date | null>(null)
   const { snapshot, loading: historyLoading, error: historyError } = useStopHistory(historyTime, !modulesLoading && hasModule("stops"))
   const [selectedTime, setSelectedTime] = useState<Date>(new Date())
@@ -51,10 +51,11 @@ export default function MapPage() {
                 <Legend />
               </div>
             </details>
-            <div className="absolute bottom-8 left-4 right-4 z-10 max-w-xl">
+            {/* Учётка «только датчики» видит текущий статус, без истории */}
+            {!sensorsOnly && <div className="absolute bottom-8 left-4 right-4 z-10 max-w-xl">
               {historyTime && (historyError || historyLoading) && <p className="mb-1 rounded border bg-background px-2 py-1 text-xs" role="status">{historyError || 'Загрузка истории…'}</p>}
               <TimelineSlider onTimeChange={handleTimeChange} />
-            </div>
+            </div>}
           </div>
 
           {/* Sidebar */}

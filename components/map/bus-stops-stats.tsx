@@ -2,7 +2,7 @@
 
 import { historicalCameras, historicalStops, type StopHistorySnapshot } from "@/lib/stop-history"
 import { useEffect, useMemo, useState } from "react"
-import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
+import { fetchBusStopsGeoJSON, toSensorsOnlyStops, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { fetchCameras } from "@/lib/api/cameras"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -328,7 +328,7 @@ export function BusStopsStats({
     stopClass?: StopEquipmentClass
     onStopClassChange?: (next: StopEquipmentClass) => void
 }) {
-    const { modules, loading: modulesLoading } = useModuleAccess()
+    const { modules, sensorsOnly, loading: modulesLoading } = useModuleAccess()
     const [liveData, setData] = useState<BusStopsGeoJSON | null>(null)
     const [liveCameras, setCameras] = useState<Camera[] | null>(null)
     const cameras = useMemo(() => liveCameras && historicalCameras(liveCameras, historySnapshot), [liveCameras, historySnapshot])
@@ -337,13 +337,15 @@ export function BusStopsStats({
     const [statusFilters, setStatusFilters] = useBusStopStatusFilters()
 
     useEffect(() => {
-        fetchBusStopsGeoJSON().then(setData)
-    }, [])
+        if (modulesLoading) return
+        fetchBusStopsGeoJSON().then(data => setData(sensorsOnly ? toSensorsOnlyStops(data) : data))
+    }, [sensorsOnly, modulesLoading])
 
     useEffect(() => {
         if (modulesLoading) return
-        fetchCameras(modules).then(setCameras)
-    }, [modules, modulesLoading])
+        if (sensorsOnly) setCameras([])
+        else fetchCameras(modules).then(setCameras)
+    }, [modules, sensorsOnly, modulesLoading])
 
     const stats = useMemo(() => {
         if (!data || !cameras) return null
@@ -474,7 +476,7 @@ export function BusStopsStats({
         <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
                 <Activity className="h-4 w-4 shrink-0" />
-                <span className="truncate">Остановки и камеры</span>
+                <span className="truncate">{sensorsOnly ? "Остановки с датчиками" : "Остановки и камеры"}</span>
             </CardTitle>
         </CardHeader>
     )
@@ -499,7 +501,7 @@ export function BusStopsStats({
         <Card className="mb-4">
             {header}
             <CardContent className="space-y-4">
-                <EquipmentRow
+                {!sensorsOnly && <EquipmentRow
                     icon={Video}
                     label="Камеры"
                     unknown={stats.camerasUnknown}
@@ -510,7 +512,7 @@ export function BusStopsStats({
                     offlineKey="cameras-offline"
                     onToggle={handleToggle}
                     onSelect={handleSelect}
-                />
+                />}
                 <EquipmentRow
                     icon={Radio}
                     label="Остановки (датчики)"
@@ -532,12 +534,12 @@ export function BusStopsStats({
                         active={stopClass === "all"}
                         onClick={() => changeClass("all")}
                     />
-                    <ClassRow
+                    {!sensorsOnly && <ClassRow
                         label="С камерами"
                         value={stats.withCameras}
                         active={stopClass === "cameras"}
                         onClick={() => changeClass(stopClass === "cameras" ? "all" : "cameras")}
-                    />
+                    />}
                     <ClassRow
                         label="С датчиками"
                         value={stats.withSensors}

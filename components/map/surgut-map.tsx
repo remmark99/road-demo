@@ -11,7 +11,7 @@ import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
 import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
-import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
+import { fetchBusStopsGeoJSON, toSensorsOnlyStops, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { ACTIVITY_STATUS_LABELS, type StopActivityStatus } from "@/lib/api/stop-activity"
 import { fetchBusStopHeatmapData, fetchBusStopOccupancyHeatmapData, type BusStopHeatmapResult, type BusStopOccupancyHeatmapResult } from "@/lib/api/bus-stop-heatmap"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
@@ -221,7 +221,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const map = useRef<maplibregl.Map | null>(null)
   const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null)
   const [selectedBusStop, setSelectedBusStop] = useState<SelectedBusStop | null>(null)
-  const { modules, hasModule, loading: modulesLoading } = useModuleAccess()
+  const { modules, hasModule, sensorsOnly, loading: modulesLoading } = useModuleAccess()
   const { city } = useCity()
   const [isDark, setIsDark] = useState(true)
   const lastThemeRef = useRef(isDark)
@@ -247,8 +247,11 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [cameraFilters, setCameraFilters] = useMapPreference("cameraFilters", { online: true, offline: false })
   const [busStopFilters, setBusStopFilters] = useBusStopStatusFilters()
   const [showClusters, setShowClusters] = useMapPreference("showClusters", true)
-  const [showHeatmap, setShowHeatmap] = useMapPreference("showHeatmap", false)
-  const [showSmartTransportStops, setShowSmartTransportStops] = useMapPreference("showSmartTransportStops", false)
+  const [showHeatmapPref, setShowHeatmap] = useMapPreference("showHeatmap", false)
+  const [showSmartTransportPref, setShowSmartTransportStops] = useMapPreference("showSmartTransportStops", false)
+  // Учётке «только датчики» дополнительные слои остановок недоступны
+  const showHeatmap = showHeatmapPref && !sensorsOnly
+  const showSmartTransportStops = showSmartTransportPref && !sensorsOnly
   const [smartTransportStops, setSmartTransportStops] = useState<SmartTransportStopsGeoJSON | null>(null)
   // Only the stops module is enabled: hide generic display/camera controls
   const stopsOnly = modules.length > 0 && modules.every(m => m === "stops")
@@ -686,7 +689,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                   ${props.name || 'Остановка'}
                 </div>
                 ${props.address ? `<div class="text-muted-foreground text-xs">${props.address}</div>` : ''}
-                <div class="text-muted-foreground text-xs mt-1">${props.has_equipment === false ? 'Без оборудования' : `${ACTIVITY_STATUS_LABELS[props.activity_status as StopActivityStatus] ?? 'Неактивна'} — ${props.sensors_history_known === false ? 'нет истории датчиков' : props.sensors_online ? 'датчики в сети' : 'датчики не в сети'}, ${props.cameras_history_known === false ? 'нет истории камер' : props.cameras_online ? `камеры в сети (${props.online_camera_count})` : 'камеры не в сети'}`}</div>
+                <div class="text-muted-foreground text-xs mt-1">${props.has_equipment === false ? 'Без оборудования' : props.sensors_only ? (props.sensors_history_known === false ? 'Нет истории датчиков' : props.sensors_online ? 'Датчики в сети' : 'Датчики не в сети') : `${ACTIVITY_STATUS_LABELS[props.activity_status as StopActivityStatus] ?? 'Неактивна'} — ${props.sensors_history_known === false ? 'нет истории датчиков' : props.sensors_online ? 'датчики в сети' : 'датчики не в сети'}, ${props.cameras_history_known === false ? 'нет истории камер' : props.cameras_online ? `камеры в сети (${props.online_camera_count})` : 'камеры не в сети'}`}</div>
               </div>`
               )
               .addTo(map.current!)
@@ -1449,7 +1452,9 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   useEffect(() => {
     if (modulesLoading) return
     let active = true
-    fetchCameras(modules).then(data => { if (active) setCameras(data) })
+    // Учётке «только датчики» камеры не нужны и не показываются
+    if (sensorsOnly) setCameras([])
+    else fetchCameras(modules).then(data => { if (active) setCameras(data) })
 
     if (hasModule('roads')) {
       fetchRoadsGeoJSON().then(data => { if (active) setRoadsData(data) })
@@ -1458,7 +1463,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     }
 
     if (hasModule('stops')) {
-      fetchBusStopsGeoJSON().then(data => { if (active) setBusStopsData(data) })
+      fetchBusStopsGeoJSON().then(data => { if (active) setBusStopsData(sensorsOnly ? toSensorsOnlyStops(data) : data) })
       // fetchBusStopHeatmapData is called in a separate effect below
     } else {
       setBusStopsData({ type: "FeatureCollection", features: [] })
@@ -1483,7 +1488,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       setTkoSitesData({ type: "FeatureCollection", features: [] })
     }
     return () => { active = false }
-  }, [modules, hasModule, modulesLoading])
+  }, [modules, hasModule, sensorsOnly, modulesLoading])
 
   // Realtime subscription for anchors
   useEffect(() => {
@@ -2539,7 +2544,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
             )}
 
             {/* Тепловая карта остановок; фильтры статусов живут в боковой панели */}
-            {hasModule('stops') && (
+            {hasModule('stops') && !sensorsOnly && (
               <div className="space-y-3">
                 <div className="font-medium text-sm border-b pb-1 mb-2">Остановки</div>
                 <div className="flex items-center justify-between">

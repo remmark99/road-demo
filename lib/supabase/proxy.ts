@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { isStopSensorsOnly, STOP_SENSORS_API_PREFIXES } from '@/lib/access-scope'
 
 export async function updateSession(request: NextRequest) {
     let supabaseResponse = NextResponse.next({
@@ -47,6 +48,21 @@ export async function updateSession(request: NextRequest) {
         const url = request.nextUrl.clone()
         url.pathname = '/landing'
         return NextResponse.redirect(url)
+    }
+
+    // Учётка «только датчики остановок»: страница карты и её API, остальное закрыто.
+    if (isStopSensorsOnly(user)) {
+        const path = request.nextUrl.pathname
+        const isAllowedApi = STOP_SENSORS_API_PREFIXES.some(prefix => path === prefix || path.startsWith(`${prefix}/`))
+        if (path.startsWith('/api') && !isAllowedApi) {
+            return NextResponse.json({ error: 'Нет доступа' }, { status: 403 })
+        }
+        if (!path.startsWith('/api') && path !== '/' && !path.startsWith('/login') && !path.startsWith('/auth')) {
+            const url = request.nextUrl.clone()
+            url.pathname = '/'
+            url.search = ''
+            return NextResponse.redirect(url)
+        }
     }
 
     // IMPORTANT: You *must* return the supabaseResponse object as it is.
