@@ -1881,7 +1881,17 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         // (например, «Не в сети» по умолчанию выключено).
         if (stopClass !== "all") {
           if (stopClass === "cameras") return (sd.total_camera_count ?? 0) > 0
-          return sd.has_controller === true
+          if (stopClass === "sensors") return sd.has_controller === true
+          // Клик по цифре «В сети» / «Не в сети» — те же правила, что у счётчиков.
+          if (stopClass === "sensors-online" || stopClass === "sensors-offline") {
+            if (sd.has_controller !== true || sd.sensors_history_known === false) return false
+            return Boolean(sd.sensors_online) === (stopClass === "sensors-online")
+          }
+          const wanted = stopClass === "cameras-online" ? "online" : "offline"
+          return cameras.some(c =>
+            c.busStopId === f.properties.id
+            && c.historyStatus !== "unknown"
+            && (c.status === "online") === (wanted === "online"))
         }
 
         return busStopFilters[busStopStatusKey(sd)]

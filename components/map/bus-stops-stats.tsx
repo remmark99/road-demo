@@ -155,6 +155,7 @@ function EquipmentRow({
                 disabled={items.length === 0}
                 onClick={() => onToggle(tileKey)}
                 aria-expanded={open}
+                title={open ? "Показать на карте все остановки" : "Показать на карте только эти остановки"}
                 className={`bg-muted rounded-md px-2 py-1.5 min-w-0 text-left transition-colors enabled:hover:bg-accent disabled:cursor-default ${open ? "ring-1 ring-ring" : ""}`}
             >
                 <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 min-w-0">
@@ -445,8 +446,17 @@ export function BusStopsStats({
         })
     }
 
+    // Клик по цифре раскрывает список и оставляет на карте только эту группу;
+    // повторный клик снимает выбор.
     const handleToggle = (key: ListKey) => {
-        setOpenList(prev => (prev === key ? null : key))
+        const opening = openList !== key
+        setOpenList(opening ? key : null)
+        onStopClassChange?.(opening ? key : "all")
+    }
+
+    const changeClass = (next: StopEquipmentClass) => {
+        setOpenList(null)
+        onStopClassChange?.(next)
     }
 
     const isSolo = (key: BusStopStatusKey) => BUS_STOP_STATUS_ORDER.every(k => statusFilters[k] === (k === key))
@@ -520,19 +530,19 @@ export function BusStopsStats({
                         label="Всего остановок"
                         value={stats.totalStops}
                         active={stopClass === "all"}
-                        onClick={() => onStopClassChange?.("all")}
+                        onClick={() => changeClass("all")}
                     />
                     <ClassRow
                         label="С камерами"
                         value={stats.withCameras}
                         active={stopClass === "cameras"}
-                        onClick={() => onStopClassChange?.(stopClass === "cameras" ? "all" : "cameras")}
+                        onClick={() => changeClass(stopClass === "cameras" ? "all" : "cameras")}
                     />
                     <ClassRow
                         label="С датчиками"
                         value={stats.withSensors}
                         active={stopClass === "sensors"}
-                        onClick={() => onStopClassChange?.(stopClass === "sensors" ? "all" : "sensors")}
+                        onClick={() => changeClass(stopClass === "sensors" ? "all" : "sensors")}
                     />
                 </div>
 
@@ -552,7 +562,7 @@ export function BusStopsStats({
                     ))}
                     {stopClass !== "all" && (
                         <p className="pt-1 text-[11px] text-muted-foreground">
-                            Выбранная строка оснащения показывает весь класс — статусы не применяются.
+                            На карте выбранная группа остановок — статусы не применяются.
                         </p>
                     )}
                 </div>

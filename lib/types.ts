@@ -134,5 +134,15 @@ export interface MapFocusTarget {
  * Класс считается по оборудованию, а не по списку: "sensors" — смонтирован
  * контроллер, "cameras" — есть привязанные камеры. Остановки без оборудования
  * отбираются статусным фильтром в BUS_STOP_STATUS_ORDER.
+ *
+ * Группы "<оборудование>-online/offline" — клик по цифре «В сети» / «Не в сети»:
+ * остановки, чей контроллер (или хотя бы одна камера) сейчас в этом статусе.
  */
-export type StopEquipmentClass = "all" | "cameras" | "sensors"
+export type StopEquipmentClass =
+    | "all"
+    | "cameras"
+    | "sensors"
+    | "cameras-online"
+    | "cameras-offline"
+    | "sensors-online"
+    | "sensors-offline"
