@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { russianModuleLabel, type LicenseDetail } from '@/lib/licenses/resources'
+import { priceListModules, russianModuleLabel, type LicenseDetail } from '@/lib/licenses/resources'
 import { filterLicenses, formatLicenseDate, LICENSE_STATUSES } from '@/lib/licenses/presentation'
 import { isPerpetual, type CustomerLicense, type LicenseResponse } from '@/lib/licenses/types'
 import { LicenseEditor } from './license-editor'
@@ -26,7 +26,7 @@ function PriceComposition({ license, moduleLabels, connected }: { license: Custo
   const support = new Map(license.support.map(row => [row.module, row.support_until]))
   return <div className="space-y-3 text-sm">
     <p className="font-medium">Состав по прайсу</p>
-    {license.modules.length ? license.modules.map(module => {
+    {license.modules.length ? priceListModules(license.modules).map(module => {
       const until = support.get(module)
       return <div key={module} className="rounded-md border p-3">
         <p className="font-medium">Неисключительное право пользования модулем «{russianModuleLabel(module, moduleLabels)}»</p>
@@ -132,7 +132,7 @@ export function LicensePanel({ admin = false }: { admin?: boolean }) {
             <td className="p-3"><button className="font-medium underline underline-offset-4 focus-visible:outline-ring" onClick={() => setSelected(license.id)} aria-label={`Открыть лицензию ${license.license_id}`}>{license.license_id}</button><p className="text-muted-foreground">Договор: {license.contract_no || 'Не указан'}</p></td>
             <td className="p-3"><p>{LICENSE_STATUSES[license.status] || 'Статус не указан'}</p>{admin && license.needs_signing && license.status !== 'pending' && <p className="text-xs text-amber-600 dark:text-amber-400">Нужна переподпись license.key</p>}</td>
             <td className="p-3"><LicensePeriod license={license} /></td>
-            <td className="p-3"><p>{license.modules.map(module => russianModuleLabel(module, data.moduleLabels)).join(', ') || 'Модули не указаны'}</p><SupportLines license={license} moduleLabels={data.moduleLabels} /></td>
+            <td className="p-3"><p>{priceListModules(license.modules).map(module => russianModuleLabel(module, data.moduleLabels)).join(', ') || 'Модули не указаны'}</p><SupportLines license={license} moduleLabels={data.moduleLabels} /></td>
           </tr>)}</tbody>
         </table></div>}
       <Dialog open={!!selected} onOpenChange={open => { if (!open) setSelected(null) }}>

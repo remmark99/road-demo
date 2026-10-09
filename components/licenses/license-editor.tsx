@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { addYears, EDITABLE_STATUSES, type LicenseForm } from '@/lib/licenses/editor'
 import { LICENSE_STATUSES } from '@/lib/licenses/presentation'
-import { LICENSE_MODULES, russianModuleLabel } from '@/lib/licenses/resources'
+import { LICENSE_MODULES, priceListModules, russianModuleLabel } from '@/lib/licenses/resources'
 import { isPerpetual, type CustomerLicense } from '@/lib/licenses/types'
 
 const NEW_CUSTOMER = 'new'
@@ -23,7 +23,7 @@ function formFor(license: CustomerLicense | null): LicenseForm {
   }
   return {
     customerId: license.customer_id, customerName: license.customer, prefix: license.license_id.split('-')[0] || 'SRG',
-    contractNo: license.contract_no || '', modules: [...license.modules], maxCameras: license.max_cameras,
+    contractNo: license.contract_no || '', modules: priceListModules(license.modules).filter(m => (LICENSE_MODULES as readonly string[]).includes(m)), maxCameras: license.max_cameras,
     expiresOn: license.expires_at ? license.expires_at.slice(0, 10) : addYears(today, 1), perpetual: isPerpetual(license.expires_at),
     support: Object.fromEntries(license.support.map(row => [row.module, row.support_until])),
     status: license.status === 'expired' ? 'active' : license.status, reason: '', notes: '',

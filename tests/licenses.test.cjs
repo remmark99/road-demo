@@ -226,3 +226,9 @@ test('price-list module names', () => {
   assert.equal(russianModuleLabel('transport'), 'Общественный транспорт')
   assert.equal(russianModuleLabel('asr'), 'Мониторинг ТКО')
 })
+test('legacy detection modules show as price-list modules', () => {
+  const { priceListModules } = load('lib/licenses/resources.ts')
+  assert.deepEqual(priceListModules(['smoking','lying_person','bin_fullness']), ['stops'])
+  assert.deepEqual(priceListModules(['roads','busyness','stops']), ['stops','roads'])
+  assert.deepEqual(priceListModules(['custom','asr']), ['asr','custom'])
+})

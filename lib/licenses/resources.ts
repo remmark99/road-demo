@@ -10,6 +10,14 @@ const MODULE_LABELS: Record<string, string> = {
 }
 /** Модули, которые продаются лицензией, в порядке прайса. */
 export const LICENSE_MODULES = ['stops', 'roads', 'shore', 'transport', 'parks', 'asr'] as const
+// Лицензии, выпущенные до перехода на модули, перечисляют детекции пайплайна
+// остановок. Подписанные данные не трогаем — сводим к модулю прайса при показе.
+const STOP_DETECTIONS = new Set(['smoking', 'lying_person', 'bin_fullness', 'dogs_without_people', 'abandoned_object', 'busyness', 'stage2_verification'])
+export function priceListModules(modules: readonly string[]): string[] {
+  const keys = new Set(modules.map(key => STOP_DETECTIONS.has(key) ? 'stops' : key))
+  const known = LICENSE_MODULES.filter(key => keys.has(key))
+  return [...known, ...[...keys].filter(key => !(LICENSE_MODULES as readonly string[]).includes(key))]
+}
 export function russianModuleLabel(key: string, catalog: Record<string, string> = {}): string {
   return MODULE_LABELS[key] || (/[А-Яа-яЁё]/.test(catalog[key] || '') ? catalog[key] : 'Дополнительный модуль')
 }
