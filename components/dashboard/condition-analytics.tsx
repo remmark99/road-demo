@@ -35,10 +35,8 @@ import {
     Activity,
     AlertCircle,
     DoorOpen,
-    Droplets,
     Flame,
     Gauge,
-    Hammer,
     MoveRight,
     ShieldAlert,
     ShieldCheck,
@@ -80,27 +78,27 @@ import { cn } from "@/lib/utils"
 // ─── Chart Configs ───────────────────────────────────
 
 const pulseConfig = {
-    healthScore: { label: "Индекс здоровья", color: "hsl(152, 57%, 40%)" },
-    alertCount: { label: "Все тревоги", color: "hsl(32, 95%, 53%)" },
-    criticalCount: { label: "Критические", color: "hsl(0, 84%, 60%)" },
+    healthScore: { label: "Индекс здоровья", color: "hsl(215, 20%, 45%)" },
+    alertCount: { label: "Все тревоги", color: "hsl(215, 14%, 70%)" },
+    criticalCount: { label: "Критические", color: "hsl(0, 65%, 55%)" },
 } satisfies ChartConfig
 
 const issueMixConfig = {
-    warningCount: { label: "Предупреждения", color: "hsl(38, 92%, 50%)" },
-    criticalCount: { label: "Критические", color: "hsl(0, 84%, 60%)" },
+    warningCount: { label: "Предупреждения", color: "hsl(215, 14%, 70%)" },
+    criticalCount: { label: "Критические", color: "hsl(0, 65%, 55%)" },
 } satisfies ChartConfig
 
 const sensorTrendConfig = {
-    insideTemperature: { label: "Температура внутри, °C", color: "hsl(24, 95%, 53%)" },
-    humidity: { label: "Влажность, %", color: "hsl(199, 89%, 48%)" },
-    voltage: { label: "Напряжение, В", color: "hsl(262, 83%, 58%)" },
-    glassBreakEvents: { label: "Разбитие стекла", color: "hsl(0, 84%, 60%)" },
+    insideTemperature: { label: "Температура внутри, °C", color: "hsl(215, 25%, 35%)" },
+    humidity: { label: "Влажность, %", color: "hsl(215, 14%, 62%)" },
+    voltage: { label: "Напряжение, В", color: "hsl(215, 20%, 45%)" },
+    glassBreakEvents: { label: "Разбитие стекла", color: "hsl(0, 65%, 55%)" },
 } satisfies ChartConfig
 
 const doorTrendConfig = {
-    openCount: { label: "Открытия", color: "hsl(199, 89%, 48%)" },
-    longOpenCount: { label: "Долго открыта", color: "hsl(0, 84%, 60%)" },
-    openPct: { label: "Время открытой двери, %", color: "hsl(38, 92%, 50%)" },
+    openCount: { label: "Открытия", color: "hsl(215, 20%, 45%)" },
+    longOpenCount: { label: "Долго открыта", color: "hsl(0, 65%, 55%)" },
+    openPct: { label: "Время открытой двери, %", color: "hsl(215, 14%, 62%)" },
 } satisfies ChartConfig
 
 const STATUS_META: Record<
@@ -115,23 +113,23 @@ const STATUS_META: Record<
 > = {
     healthy: {
         label: "Стабильно",
-        barClassName: "bg-emerald-500",
-        badgeClassName: "border-emerald-500/20 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
-        panelClassName: "border-emerald-500/20 bg-emerald-500/[0.07]",
-        textClassName: "text-emerald-600 dark:text-emerald-400",
+        barClassName: "bg-muted-foreground/60",
+        badgeClassName: "text-muted-foreground",
+        panelClassName: "",
+        textClassName: "text-foreground",
     },
     attention: {
         label: "Под наблюдением",
         barClassName: "bg-amber-500",
-        badgeClassName: "border-amber-500/20 bg-amber-500/12 text-amber-700 dark:text-amber-300",
-        panelClassName: "border-amber-500/20 bg-amber-500/[0.07]",
+        badgeClassName: "text-amber-700 dark:text-amber-300",
+        panelClassName: "",
         textClassName: "text-amber-600 dark:text-amber-400",
     },
     critical: {
         label: "Нужен выезд",
         barClassName: "bg-red-500",
-        badgeClassName: "border-red-500/20 bg-red-500/12 text-red-700 dark:text-red-300",
-        panelClassName: "border-red-500/20 bg-red-500/[0.07]",
+        badgeClassName: "text-red-700 dark:text-red-300",
+        panelClassName: "border-red-500/30",
         textClassName: "text-red-600 dark:text-red-400",
     },
 }
@@ -151,17 +149,17 @@ const ISSUE_META: Record<
         label: "Мусор и переполнение урн",
         shortLabel: CONDITION_SHORT_LABELS.trash,
         icon: Trash2,
-        iconClassName: "text-orange-500",
-        accentClassName: "bg-orange-500",
-        panelClassName: "border-orange-500/20 bg-orange-500/[0.06]",
+        iconClassName: "text-muted-foreground",
+        accentClassName: "bg-muted-foreground/60",
+        panelClassName: "",
     },
     fogging: {
         label: "Запотевание и обмерзание стёкол",
         shortLabel: CONDITION_SHORT_LABELS.fogging,
         icon: Snowflake,
-        iconClassName: "text-sky-500",
-        accentClassName: "bg-sky-500",
-        panelClassName: "border-sky-500/20 bg-sky-500/[0.06]",
+        iconClassName: "text-muted-foreground",
+        accentClassName: "bg-muted-foreground/60",
+        panelClassName: "",
     },
 }
 
@@ -481,20 +479,6 @@ export function ConditionAnalytics() {
     const sensorSnapshots = useMemo(() => buildStopSensorSnapshots(readingsFiltered), [readingsFiltered])
     const sensorProblemStops = sensorSnapshots.filter((snapshot) => snapshot.status !== "healthy")
     const sensorHealthyStops = sensorSnapshots.filter((snapshot) => snapshot.status === "healthy").length
-    const avgInsideTemperature = roundAverage(
-        readingsFiltered.reduce((sum, reading) => sum + reading.insideTemperature, 0),
-        readingsFiltered.length,
-        1
-    )
-    const avgHumidity = roundAverage(
-        readingsFiltered.reduce((sum, reading) => sum + reading.humidity, 0),
-        readingsFiltered.length
-    )
-    const minVoltage = readingsFiltered.reduce(
-        (minValue, reading) => Math.min(minValue, reading.voltage),
-        Number.POSITIVE_INFINITY
-    )
-    const glassBreakEvents = readingsFiltered.filter((reading) => reading.glassBreakLevel >= 80).length
 
     const selectedLabel =
         selectedStops.length === BUS_STOPS.length
@@ -599,12 +583,12 @@ export function ConditionAnalytics() {
                 ) : (
                     <>
                         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                            <Card className="bg-gradient-to-br from-sky-500/10 to-emerald-500/5 border-sky-500/20">
+                            <Card>
                                 <CardContent className="pt-4 pb-3 px-4">
                                     <div className="flex items-start justify-between gap-3">
                                         <div>
                                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                <ShieldCheck className="h-4 w-4 text-sky-500" />
+                                                <ShieldCheck className="h-4 w-4 text-muted-foreground" />
                                                 Индекс здоровья сети
                                             </div>
                                             <div className="mt-3 flex items-end gap-2">
@@ -625,10 +609,10 @@ export function ConditionAnalytics() {
                                 </CardContent>
                             </Card>
 
-                            <Card className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 border-emerald-500/20">
+                            <Card>
                                 <CardContent className="pt-4 pb-3 px-4">
                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                                        <ShieldCheck className="h-4 w-4 text-muted-foreground" />
                                         Стабильно
                                     </div>
                                     <div className="mt-3 text-3xl font-semibold tabular-nums">{overview.healthyStops}</div>
@@ -638,10 +622,10 @@ export function ConditionAnalytics() {
                                 </CardContent>
                             </Card>
 
-                            <Card className="bg-gradient-to-br from-amber-500/10 to-amber-600/5 border-amber-500/20">
+                            <Card>
                                 <CardContent className="pt-4 pb-3 px-4">
                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <TriangleAlert className="h-4 w-4 text-amber-500" />
+                                        <TriangleAlert className="h-4 w-4 text-muted-foreground" />
                                         Нужны действия
                                     </div>
                                     <div className="mt-3 text-3xl font-semibold tabular-nums">{overview.atRiskStops}</div>
@@ -651,10 +635,10 @@ export function ConditionAnalytics() {
                                 </CardContent>
                             </Card>
 
-                            <Card className="bg-gradient-to-br from-slate-500/10 to-sky-500/5 border-slate-500/20">
+                            <Card>
                                 <CardContent className="pt-4 pb-3 px-4">
                                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <TimerReset className="h-4 w-4 text-sky-500" />
+                                        <TimerReset className="h-4 w-4 text-muted-foreground" />
                                         Пик риска
                                     </div>
                                     <div className="mt-3 text-2xl font-semibold">{formatHourWindow(overview.worstHour)}</div>
@@ -669,67 +653,11 @@ export function ConditionAnalytics() {
                             </Card>
                         </div>
 
-                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-                            <Card className="border-orange-500/20 bg-orange-500/[0.05]">
-                                <CardContent className="pt-4 pb-3 px-4">
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Thermometer className="h-4 w-4 text-orange-500" />
-                                        Температура внутри
-                                    </div>
-                                    <div className="mt-3 text-3xl font-semibold tabular-nums">{avgInsideTemperature}°C</div>
-                                    <p className="mt-2 text-sm text-muted-foreground">
-                                        Норма 18-26°C, просадки подсвечены в списке датчиков.
-                                    </p>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="border-sky-500/20 bg-sky-500/[0.05]">
-                                <CardContent className="pt-4 pb-3 px-4">
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Droplets className="h-4 w-4 text-sky-500" />
-                                        Влажность
-                                    </div>
-                                    <div className="mt-3 text-3xl font-semibold tabular-nums">{avgHumidity}%</div>
-                                    <p className="mt-2 text-sm text-muted-foreground">
-                                        Большинство павильонов держится в комфортной зоне.
-                                    </p>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="border-violet-500/20 bg-violet-500/[0.05]">
-                                <CardContent className="pt-4 pb-3 px-4">
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Zap className="h-4 w-4 text-violet-500" />
-                                        Минимум напряжения
-                                    </div>
-                                    <div className="mt-3 text-3xl font-semibold tabular-nums">
-                                        {Number.isFinite(minVoltage) ? minVoltage : 0} В
-                                    </div>
-                                    <p className="mt-2 text-sm text-muted-foreground">
-                                        Ниже 210 В считается проблемным питанием.
-                                    </p>
-                                </CardContent>
-                            </Card>
-
-                            <Card className="border-red-500/20 bg-red-500/[0.05]">
-                                <CardContent className="pt-4 pb-3 px-4">
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Hammer className="h-4 w-4 text-red-500" />
-                                        Разбитие стекла
-                                    </div>
-                                    <div className="mt-3 text-3xl font-semibold tabular-nums">{glassBreakEvents}</div>
-                                    <p className="mt-2 text-sm text-muted-foreground">
-                                        Учебные срабатывания датчика за выбранный период.
-                                    </p>
-                                </CardContent>
-                            </Card>
-                        </div>
-
                         <div className="grid gap-6 xl:grid-cols-12">
                             <Card className="xl:col-span-7">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
-                                        <Thermometer className="h-5 w-5 text-orange-500" />
+                                        <Thermometer className="h-5 w-5 text-muted-foreground" />
                                         Микроклимат павильонов
                                     </CardTitle>
                                     <CardDescription>
@@ -737,7 +665,7 @@ export function ConditionAnalytics() {
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <ChartContainer config={sensorTrendConfig} className="h-[300px] w-full">
+                                    <ChartContainer config={sensorTrendConfig} className="h-[220px] w-full">
                                         <ComposedChart data={sensorHourlyRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                             <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} interval={2} />
@@ -756,7 +684,7 @@ export function ConditionAnalytics() {
                             <Card className="xl:col-span-5">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
-                                        <Zap className="h-5 w-5 text-violet-500" />
+                                        <Zap className="h-5 w-5 text-muted-foreground" />
                                         Питание и стекло
                                     </CardTitle>
                                     <CardDescription>
@@ -764,7 +692,7 @@ export function ConditionAnalytics() {
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <ChartContainer config={sensorTrendConfig} className="h-[300px] w-full">
+                                    <ChartContainer config={sensorTrendConfig} className="h-[220px] w-full">
                                         <ComposedChart data={sensorHourlyRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                             <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} interval={2} />
@@ -784,7 +712,7 @@ export function ConditionAnalytics() {
                         <Card>
                             <CardHeader className="pb-2">
                                 <CardTitle className="flex items-center gap-2 text-base">
-                                    <Gauge className="h-5 w-5 text-emerald-500" />
+                                    <Gauge className="h-5 w-5 text-muted-foreground" />
                                     Датчики по остановкам
                                 </CardTitle>
                                 <CardDescription>
@@ -793,11 +721,11 @@ export function ConditionAnalytics() {
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                                    <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/[0.06] p-3">
+                                    <div className="rounded-lg border p-3">
                                         <div className="text-xs text-muted-foreground">В норме</div>
                                         <div className="mt-2 text-2xl font-semibold tabular-nums">{sensorHealthyStops}</div>
                                     </div>
-                                    <div className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] p-3">
+                                    <div className="rounded-lg border p-3">
                                         <div className="text-xs text-muted-foreground">С проблемами</div>
                                         <div className="mt-2 text-2xl font-semibold tabular-nums">{sensorProblemStops.length}</div>
                                     </div>
@@ -839,7 +767,7 @@ export function ConditionAnalytics() {
                             <Card className="xl:col-span-8">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
-                                        <Activity className="h-5 w-5 text-emerald-500" />
+                                        <Activity className="h-5 w-5 text-muted-foreground" />
                                         Пульс состояния по часам
                                     </CardTitle>
                                     <CardDescription>
@@ -848,7 +776,7 @@ export function ConditionAnalytics() {
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
-                                    <ChartContainer config={pulseConfig} className="h-[320px] w-full">
+                                    <ChartContainer config={pulseConfig} className="h-[240px] w-full">
                                         <ComposedChart
                                             data={hourlyHealth}
                                             margin={{ left: 0, right: 12, top: 12, bottom: 0 }}
@@ -929,7 +857,7 @@ export function ConditionAnalytics() {
                             <Card className="xl:col-span-4">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
-                                        <Flame className="h-5 w-5 text-orange-500" />
+                                        <Flame className="h-5 w-5 text-muted-foreground" />
                                         Структура сигналов
                                     </CardTitle>
                                     <CardDescription>
@@ -937,7 +865,7 @@ export function ConditionAnalytics() {
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
-                                    <ChartContainer config={issueMixConfig} className="h-[210px] w-full">
+                                    <ChartContainer config={issueMixConfig} className="h-[180px] w-full">
                                         <BarChart
                                             data={issueMixChartData}
                                             layout="vertical"
@@ -1015,7 +943,7 @@ export function ConditionAnalytics() {
                             <Card className="xl:col-span-7">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
-                                        <ShieldAlert className="h-5 w-5 text-amber-500" />
+                                        <ShieldAlert className="h-5 w-5 text-muted-foreground" />
                                         Приоритет обслуживания
                                     </CardTitle>
                                     <CardDescription>
@@ -1052,7 +980,7 @@ export function ConditionAnalytics() {
                                                 </div>
 
                                                 <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                                                    <div className="rounded-xl border border-orange-500/15 bg-orange-500/[0.05] p-3">
+                                                    <div className="rounded-xl border p-3">
                                                         <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                                                             Урны
                                                         </div>
@@ -1060,7 +988,7 @@ export function ConditionAnalytics() {
                                                             {stop.avgTrash}%
                                                         </div>
                                                     </div>
-                                                    <div className="rounded-xl border border-sky-500/15 bg-sky-500/[0.05] p-3">
+                                                    <div className="rounded-xl border p-3">
                                                         <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                                                             Стекло
                                                         </div>
@@ -1068,7 +996,7 @@ export function ConditionAnalytics() {
                                                             {stop.avgFogging}%
                                                         </div>
                                                     </div>
-                                                    <div className="rounded-xl border border-slate-500/15 bg-muted/40 p-3">
+                                                    <div className="rounded-xl border p-3">
                                                         <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
                                                             Тревоги
                                                         </div>
@@ -1099,7 +1027,7 @@ export function ConditionAnalytics() {
                             <Card className="xl:col-span-5">
                                 <CardHeader className="pb-2">
                                     <CardTitle className="flex items-center gap-2 text-base">
-                                        <Gauge className="h-5 w-5 text-violet-500" />
+                                        <Gauge className="h-5 w-5 text-muted-foreground" />
                                         Снимок по остановкам
                                     </CardTitle>
                                     <CardDescription>
@@ -1159,7 +1087,7 @@ export function ConditionAnalytics() {
                         <Card>
                             <CardHeader className="pb-2">
                                 <CardTitle className="flex items-center gap-2 text-base">
-                                    <Sparkles className="h-5 w-5 text-sky-500" />
+                                    <Sparkles className="h-5 w-5 text-muted-foreground" />
                                     Очередь действий для диспетчера
                                 </CardTitle>
                                 <CardDescription>
@@ -1209,9 +1137,9 @@ export function ConditionAnalytics() {
                                 </div>
 
                                 {bestStop && (
-                                    <div className="mt-6 rounded-2xl border border-dashed border-emerald-500/30 bg-emerald-500/[0.05] p-4">
+                                    <div className="mt-6 rounded-2xl border border-dashed p-4">
                                         <div className="flex flex-wrap items-center gap-2 text-sm">
-                                            <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                                            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
                                             <span className="font-medium">Наиболее стабильная остановка сейчас:</span>
                                             <span className="font-semibold">{bestStop.stopName}</span>
                                             <span className="text-muted-foreground">
