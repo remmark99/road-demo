@@ -56,7 +56,8 @@ async function supabase(path, init = {}) {
         signal: AbortSignal.timeout(60_000),
     })
     if (!res.ok) throw new Error(`Supabase ${path.split('?')[0]}: HTTP ${res.status} ${await res.text()}`)
-    return res.status === 204 ? null : res.json()
+    const body = await res.text()
+    return body ? JSON.parse(body) : null
 }
 
 async function loadBusStops() {
