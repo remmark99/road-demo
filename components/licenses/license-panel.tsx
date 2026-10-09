@@ -5,9 +5,7 @@ import { ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { russianModuleLabel, type LicenseDetail } from '@/lib/licenses/resources'
 import { filterLicenses, formatLicenseDate, LICENSE_STATUSES } from '@/lib/licenses/presentation'
 import { isPerpetual, type CustomerLicense, type LicenseResponse } from '@/lib/licenses/types'
@@ -20,6 +18,34 @@ function SupportLines({ license, moduleLabels }: { license: CustomerLicense; mod
       Техническая поддержка модуля «{russianModuleLabel(row.module, moduleLabels)}» — до {formatLicenseDate(`${row.support_until}T00:00:00`)?.date || row.support_until}
     </li>)}
   </ul>
+}
+
+// Состав лицензии позициями прайс-листа платформы от 01.10.2026: право пользования
+// модулем, лицензии на камеры и техподдержка отдельной строкой со сроком.
+function PriceComposition({ license, moduleLabels, connected }: { license: CustomerLicense; moduleLabels: Record<string, string>; connected: number | null }) {
+  const support = new Map(license.support.map(row => [row.module, row.support_until]))
+  return <div className="space-y-3 text-sm">
+    <p className="font-medium">Состав по прайсу</p>
+    {license.modules.length ? license.modules.map(module => {
+      const until = support.get(module)
+      return <div key={module} className="rounded-md border p-3">
+        <p className="font-medium">Неисключительное право пользования модулем «{russianModuleLabel(module, moduleLabels)}»</p>
+        <p className="mt-1 text-muted-foreground">
+          Техническая поддержка модуля «{russianModuleLabel(module, moduleLabels)}» — {until ? `до ${formatLicenseDate(`${until}T00:00:00`)?.date || until}` : 'не оформлена'}
+        </p>
+      </div>
+    }) : <p className="text-muted-foreground">Модули не указаны</p>}
+    <div className="rounded-md border p-3">
+      <p className="font-medium">Лицензии на камеры с видеоаналитикой</p>
+      <div className="mt-1 flex flex-wrap gap-x-6 gap-y-1 text-muted-foreground">
+        <span>Куплено: <span className="font-medium text-foreground">{license.max_cameras}</span></span>
+        {connected !== null && <>
+          <span>Подключено: <span className="font-medium text-foreground">{connected}</span></span>
+          <span>Осталось: <span className={`font-medium ${connected > license.max_cameras ? 'text-destructive' : 'text-foreground'}`}>{license.max_cameras - connected}</span></span>
+        </>}
+      </div>
+    </div>
+  </div>
 }
 
 function LicensePeriod({ license }: { license: CustomerLicense }) {
@@ -45,12 +71,11 @@ export function LicensePanel({ admin = false }: { admin?: boolean }) {
   const [selected, setSelected] = useState<string | null>(null)
   const [detail, setDetail] = useState<LicenseDetail | null>(null)
   const [detailError, setDetailError] = useState('')
-  const [search, setSearch] = useState('')
   const [editing, setEditing] = useState<CustomerLicense | 'new' | null>(null)
   const [notice, setNotice] = useState('')
   const endpoint = admin ? '/api/admin/licenses' : '/api/settings/licenses'
   useEffect(() => {
-    setDetail(null); setDetailError(''); setSearch('')
+    setDetail(null); setDetailError('')
     if (!selected) return
     const controller = new AbortController()
     fetch(`${endpoint}/${encodeURIComponent(selected)}`, { cache: 'no-store', signal: controller.signal })
@@ -77,9 +102,6 @@ export function LicensePanel({ admin = false }: { admin?: boolean }) {
   }, [endpoint, reload])
   const customers = useMemo(() => [...new Map((data?.licenses || []).map(license => [license.customer_id, license.customer])).entries()].sort((a,b) => a[1].localeCompare(b[1], 'ru')), [data])
   const visible = filterLicenses(data?.licenses || [], status, customer)
-  const q = search.trim().toLocaleLowerCase('ru')
-  const cameras = detail?.cameras?.filter(camera => [camera.name, camera.module, camera.stopName || ''].some(value => value.toLocaleLowerCase('ru').includes(q))) || []
-  const stops = detail?.stops.filter(stop => [stop.name, stop.address || '', ...stop.cameras.map(camera => camera.name)].some(value => value.toLocaleLowerCase('ru').includes(q))) || []
 
   return <Card className="mb-6">
     <CardHeader className="flex flex-row items-center justify-between gap-4">
@@ -115,30 +137,22 @@ export function LicensePanel({ admin = false }: { admin?: boolean }) {
         </table></div>}
       <Dialog open={!!selected} onOpenChange={open => { if (!open) setSelected(null) }}>
         <DialogContent className="max-h-[85dvh] overflow-y-auto sm:max-w-3xl">
-          <DialogHeader><DialogTitle>{detail ? `Лицензия ${detail.license.license_id}` : 'Состав лицензии'}</DialogTitle><DialogDescription>Срок действия, модули и камеры города.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{detail ? `Лицензия ${detail.license.license_id}` : 'Состав лицензии'}</DialogTitle><DialogDescription>Состав лицензии по позициям прайс-листа.</DialogDescription></DialogHeader>
           {detailError ? <div role="alert"><p className="text-destructive">{detailError}</p><Button variant="outline" onClick={() => setReload(n => n + 1)}>Повторить</Button></div> : !detail ?
             <p role="status">Загрузка состава лицензии…</p> : <div className="space-y-4">
               <dl className="grid gap-3 text-sm sm:grid-cols-2">
                 <div><dt className="text-muted-foreground">Клиент</dt><dd>{detail.license.customer}</dd></div>
                 <div><dt className="text-muted-foreground">Статус</dt><dd>{LICENSE_STATUSES[detail.license.status] || 'Статус не указан'}</dd></div>
                 <div><dt className="mb-1 text-muted-foreground">Срок действия</dt><dd><LicensePeriod license={detail.license} /></dd></div>
-                <div><dt className="text-muted-foreground">Модули</dt><dd>{detail.license.modules.map(key => russianModuleLabel(key, detail.moduleLabels)).join(', ') || 'Модули не указаны'}</dd></div>
-                {detail.license.support.length > 0 && <div className="sm:col-span-2"><dt className="text-muted-foreground">Техническая поддержка</dt><dd><SupportLines license={detail.license} moduleLabels={detail.moduleLabels} /></dd></div>}
+                <div><dt className="text-muted-foreground">Договор</dt><dd>{detail.license.contract_no || 'Не указан'}</dd></div>
               </dl>
+              <PriceComposition license={detail.license} moduleLabels={detail.moduleLabels} connected={detail.inventorySource === 'unavailable' ? null : detail.cameraCount} />
               {admin && <div className="flex flex-wrap items-center gap-3">
                 <Button variant="outline" onClick={() => { setNotice(''); setEditing(detail.license) }}>Изменить / продлить</Button>
                 {detail.license.status === 'pending'
                   ? <span className="text-sm text-muted-foreground">Ждёт подписи: license_tool.py sign {detail.license.license_id}</span>
                   : detail.license.needs_signing && <span className="text-sm text-amber-600 dark:text-amber-400">Права изменены — нужна переподпись: license_tool.py sign {detail.license.license_id}</span>}
               </div>}
-              {detail.inventorySource === 'unavailable' ? <p className="rounded-md bg-muted p-3 text-sm">Камеры этого клиента пока не подключены к платформе.</p> : <>
-                <div className="flex flex-wrap items-center gap-3 text-sm"><span className="font-medium">Город: {detail.city}</span><span>Остановок: {detail.stops.length}</span><span>Камер: {detail.cameraCount}</span></div>
-                <Input aria-label="Поиск остановки или камеры" placeholder="Поиск по остановке, адресу или камере" value={search} onChange={e => setSearch(e.target.value)} />
-                <Tabs defaultValue="cameras"><TabsList><TabsTrigger value="cameras">Камеры ({detail.cameraCount})</TabsTrigger><TabsTrigger value="stops">Остановки ({detail.stops.length})</TabsTrigger></TabsList>
-                  <TabsContent value="cameras"><div className="space-y-2">{cameras.length ? cameras.map(camera => <div key={camera.id} className="rounded-md border p-3 text-sm"><p className="font-medium">{camera.name}</p><p className="text-muted-foreground">{camera.module} · {camera.stopName || 'Остановка не привязана'}</p></div>) : <p className="text-muted-foreground">{q ? 'Ничего не найдено.' : 'Камеры не найдены.'}</p>}</div></TabsContent>
-                  <TabsContent value="stops"><div className="space-y-2">{stops.length ? stops.map(stop => <div key={stop.id} className="rounded-md border p-3 text-sm"><p className="font-medium">{stop.name}</p>{stop.address && <p className="text-muted-foreground">{stop.address}</p>}{stop.cameras.length ? <ul className="mt-2 space-y-1">{stop.cameras.map(camera => <li key={camera.id}>{camera.name}</li>)}</ul> : <p className="mt-2 text-muted-foreground">Камеры не привязаны</p>}</div>) : <p className="text-muted-foreground">{q ? 'Ничего не найдено.' : 'Остановки не найдены.'}</p>}</div></TabsContent>
-                </Tabs>
-              </>}
             </div>}
         </DialogContent>
       </Dialog>
