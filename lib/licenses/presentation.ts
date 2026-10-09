@@ -1,5 +1,5 @@
 import type { CustomerLicense } from './types'
-export const LICENSE_STATUSES: Record<string, string> = { active: 'Действует', expired: 'Истекла', revoked: 'Отозвана', suspended: 'Приостановлена' }
+export const LICENSE_STATUSES: Record<string, string> = { pending: 'Ожидает подписи', active: 'Действует', expired: 'Истекла', revoked: 'Отозвана', suspended: 'Приостановлена' }
 export function formatLicenseDate(value: string | null): { date: string; time: string; full: string } | null {
   if (!value) return null
   const date = new Date(value)

@@ -10,6 +10,19 @@ export type CustomerLicense = {
   modules: string[]
   max_cameras: number
   users: { id: string; email: string }[]
+  /** Срок технической поддержки по модулям, отдельно от срока лицензии. */
+  support: LicenseSupport[]
+  /** Только для админа: права в реестре разошлись с подписанным license.key. */
+  needs_signing?: boolean
+}
+
+export type LicenseSupport = { module: string; support_until: string }
+
+/** Бессрочная лицензия хранится датой, протокол проверки подписи не меняется. */
+export const PERPETUAL_EXPIRES_AT = '2099-12-31T23:59:59Z'
+export function isPerpetual(expiresAt: string | null): boolean {
+  const time = expiresAt ? Date.parse(expiresAt) : NaN
+  return Number.isFinite(time) && new Date(time).getUTCFullYear() >= 2099
 }
 
 export type LicenseResponse = {

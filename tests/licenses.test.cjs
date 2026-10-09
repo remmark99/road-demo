@@ -29,11 +29,14 @@ test('expiry does not overwrite revoked status and expires at the boundary', () 
   assert.equal(licenseStatus('revoked', deadline, Date.parse(deadline)), 'revoked')
   assert.equal(licenseStatus('active', null), 'active')
 })
+const adminMock = { createLicenseDraft: async () => { throw Error('Unexpected registry write') }, updateLicense: async () => { throw Error('Unexpected registry write') }, LicenseEditError: class extends Error {} }
+const editorMock = { parseLicenseInput: () => ({ error: 'mock' }) }
 function route(file, user, role, reader) {
   return load(file, {
     'next/server': { NextResponse: { json: (body, options = {}) => ({ body, status: options.status || 200, headers: options.headers }) } },
     '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => ({ data: { user } }) }, from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: { role } }) }) }) }) }) },
     '@/lib/licenses/server': { readCustomerLicenses: reader },
+    '@/lib/licenses/admin': adminMock, '@/lib/licenses/editor': editorMock,
   })
 }
 test('anonymous and non-admin callers cannot read customer list', async () => {
@@ -71,6 +74,7 @@ test('customer filter and paginated read exclude signing credentials', async () 
     const server = load('lib/licenses/server.ts', { 'server-only': {}, '@/lib/notifications/admin': {}, '@supabase/supabase-js': { createClient: () => ({ from: table => ({ select: selection => {
       assert.ok(!selection.includes('credential'))
       if (table === 'license_modules') return Promise.resolve({ data: [{ key: 'bin_fullness', label: 'Наполнение' }], error: null })
+      if (table === 'license_support') return { in: () => Promise.resolve({ data: [], error: null }) }
       let offset
       const query = { order: () => query, range: start => { offset = start; ranges.push(start); return query }, eq: (field, value) => { filters.push([field,value]); return query }, then: resolve => resolve({ error: null, count: 201, data: Array.from({ length: offset === 0 ? 200 : 1 }, (_, i) => ({ id: String(offset+i), license_id: String(offset+i), customer_id: customerId, customers: { name: 'Customer' }, modules: ['bin_fullness'], status: 'active', expires_at: '2099-01-01' })) }) }
       return query
@@ -109,6 +113,7 @@ function detailRoute(file, user, role, reader) {
     'next/server': { NextResponse: { json: (body, options = {}) => ({ body, status: options.status || 200, headers: options.headers }) } },
     '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => ({ data: { user } }) }, from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: { role } }) }) }) }) }) },
     '@/lib/licenses/server': { readLicenseDetail: reader },
+    '@/lib/licenses/admin': adminMock, '@/lib/licenses/editor': editorMock,
   })
 }
 test('detail endpoints reject anonymous and non-admin callers, bind owner and mask errors', async () => {
@@ -135,6 +140,7 @@ test('detail reads only explicit stops, paginates cameras, keeps every camera an
   try {
     const server = load('lib/licenses/server.ts', { 'server-only': {}, '@supabase/supabase-js': { createClient: () => ({ from: table => ({ select: () => {
       if(table === 'license_modules') return Promise.resolve({ data: [], error: null })
+      if(table === 'license_support') return { in: () => Promise.resolve({ data: [{ license_id: 'SRG', module: 'stops', support_until: '2027-01-01' }], error: null }) }
       const q = { order: () => q, range: () => q, eq: (field,value) => { assert.equal(field,'customer_id'); assert.equal(value,customerId); return q }, then: resolve => resolve({ data: [license], count: 1 }) }; return q
     } }) }) }, '@/lib/notifications/admin': { createNotificationAdminClient: () => { inventoryReads++; return { from: table => ({ select: selection => {
       selections.push(selection); let offset=0
@@ -178,6 +184,7 @@ test('platform inventory fallback is explicit per customer, keeps every camera a
     const license={id:licenseId,license_id:'SRG',customer_id:customerId,modules:['smoking'],max_cameras:30,customers:{name:'Клиент'},status:'active',expires_at:null}
     const server=load('lib/licenses/server.ts',{'server-only':{},'@supabase/supabase-js':{createClient:()=>({from:table=>({select:()=>{
       if(table==='license_modules')return Promise.resolve({data:[]})
+      if(table==='license_support')return {in:()=>Promise.resolve({error:{code:'PGRST205'}})}
       const q={order:()=>q,range:()=>q,eq:()=>q,then:r=>r({data:[license],count:1})};return q
     }})})},'@/lib/notifications/admin':{createNotificationAdminClient:()=>{reads++;return {from:table=>({select:selection=>{
       assert.ok(!/url|credential|ip_address/.test(selection))
@@ -190,4 +197,32 @@ test('platform inventory fallback is explicit per customer, keeps every camera a
     const unavailable=await server.readLicenseDetail(licenseId,userId);assert.equal(unavailable.inventorySource,'unavailable');assert.equal(reads,before)
     assert.equal(await server.readLicenseDetail(licenseId,'55555555-5555-5555-5555-555555555555'),null);assert.equal(reads,before)
   }finally{for(const[k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v}}
+})
+
+const { parseLicenseInput, nextLicenseId, addYears } = load('lib/licenses/editor.ts')
+const { isPerpetual, PERPETUAL_EXPIRES_AT } = load('lib/licenses/types.ts')
+test('license form: perpetual term, per-module support and validation', () => {
+  const base = { customerName: 'Администрация', modules: ['stops','roads'], maxCameras: 40, expiresOn: '2027-08-07', support: { stops: '2027-01-31', roads: '' } }
+  const created = parseLicenseInput(base, 'create').value
+  assert.equal(created.expiresAt, '2027-08-07T23:59:59Z')
+  assert.deepEqual(created.support, [{ module: 'stops', support_until: '2027-01-31' }])
+  assert.equal(created.prefix, 'LIC')
+  assert.equal(parseLicenseInput({ ...base, perpetual: true, expiresOn: '' }, 'create').value.expiresAt, PERPETUAL_EXPIRES_AT)
+  assert.ok(isPerpetual(PERPETUAL_EXPIRES_AT)); assert.ok(!isPerpetual('2027-08-07T23:59:59Z')); assert.ok(!isPerpetual(null))
+  for (const bad of [{ modules: [] }, { modules: ['smoking'] }, { modules: ['stops','stops'] }, { maxCameras: -1 }, { maxCameras: 1.5 },
+    { expiresOn: '2027-02-30' }, { support: { parks: '2027-01-01' } }, { support: { stops: 'завтра' } }, { prefix: 'ЛИЦ' }, { customerName: '' }]) {
+    assert.ok('error' in parseLicenseInput({ ...base, ...bad }, 'create'), JSON.stringify(bad))
+  }
+  assert.ok('error' in parseLicenseInput({ ...base, status: 'pending' }, 'update'))
+  assert.equal(parseLicenseInput({ ...base, customerName: '', status: 'suspended', reason: ' письмо ' }, 'update').value.reason, 'письмо')
+})
+test('license number continues the max, not the count', () => {
+  assert.equal(nextLicenseId('SRG', 2026, []), 'SRG-2026-001')
+  assert.equal(nextLicenseId('SRG', 2026, ['SRG-2026-001','SRG-2026-007','SRG-2025-009','LIC-2026-010']), 'SRG-2026-008')
+  assert.equal(addYears('2026-10-09', 1), '2027-10-09')
+})
+test('price-list module names', () => {
+  assert.equal(russianModuleLabel('stops', { stops: 'Остановки' }), 'Остановочные павильоны')
+  assert.equal(russianModuleLabel('transport'), 'Общественный транспорт')
+  assert.equal(russianModuleLabel('asr'), 'Мониторинг ТКО')
 })

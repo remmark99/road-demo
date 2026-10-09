@@ -2,7 +2,7 @@ import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { createNotificationAdminClient } from '@/lib/notifications/admin'
 import { inventoryModules, parseResourceScopes, russianCameraName, russianModuleLabel, type LicenseDetail, type LicenseStop } from './resources'
-import { parseCustomerBindings, licenseStatus, type LicenseResponse } from './types'
+import { parseCustomerBindings, licenseStatus, type CustomerLicense, type LicenseResponse } from './types'
 
 // The DB stores customers, not platform auth users. Bind only by explicitly configured UUIDs.
 export async function readCustomerLicenses(userId?: string): Promise<LicenseResponse> {
@@ -25,7 +25,7 @@ export async function readCustomerLicenses(userId?: string): Promise<LicenseResp
       licenses.push({ id: row.id, license_id: row.license_id, customer_id: row.customer_id,
         customer: customer?.name || 'Клиент не указан', contract_no: row.contract_no,
         status: licenseStatus(row.status, row.expires_at), issued_at: row.issued_at,
-        expires_at: row.expires_at, modules: row.modules || [], max_cameras: row.max_cameras, users: [] })
+        expires_at: row.expires_at, modules: row.modules || [], max_cameras: row.max_cameras, users: [], support: [] })
     }
     if (count === null || count === undefined) throw new Error('License count unavailable')
     start += data.length
@@ -34,7 +34,9 @@ export async function readCustomerLicenses(userId?: string): Promise<LicenseResp
   }
   const { data: modules, error: moduleError } = await db.from('license_modules').select('key,label')
   if (moduleError) throw new Error('License modules read failed')
+  await attachSupport(db, licenses)
   if (!userId) {
+    await attachSigningState(db, licenses)
     const userIds = Object.keys(bindings).filter(id => licenses.some(l => l.customer_id === bindings[id]))
     if (userIds.length) {
       const { data: profiles, error } = await createNotificationAdminClient().from('profiles').select('id,email').in('id', userIds)
@@ -43,6 +45,47 @@ export async function readCustomerLicenses(userId?: string): Promise<LicenseResp
     }
   }
   return { licenses, moduleLabels: Object.fromEntries((modules || []).map(m => [m.key, m.label])), linked: true }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- реестр без сгенерированных типов
+type RegistryClient = ReturnType<typeof createClient<any>>
+// PostgREST: таблицы ещё нет — реестр до sql/003_admin_panel.sql.
+const MISSING_TABLE = new Set(['PGRST205', '42P01'])
+
+async function attachSupport(db: RegistryClient, licenses: CustomerLicense[]) {
+  const byLicenseId = new Map(licenses.map(license => [license.license_id, license]))
+  for (let start = 0; start < licenses.length; start += 200) {
+    const ids = licenses.slice(start, start + 200).map(license => license.license_id)
+    const { data, error } = await db.from('license_support').select('license_id,module,support_until').in('license_id', ids)
+    if (error && MISSING_TABLE.has(error.code)) return
+    if (error || !data) throw new Error('License support read failed')
+    for (const row of data) byLicenseId.get(row.license_id)?.support.push({ module: row.module, support_until: row.support_until })
+  }
+}
+
+// Удостоверение читается только для админа и наружу не отдаётся: нужен лишь факт,
+// совпадают ли права в реестре с подписанными в license.key.
+async function attachSigningState(db: RegistryClient, licenses: CustomerLicense[]) {
+  const byId = new Map(licenses.map(license => [license.id, license]))
+  for (let start = 0; start < licenses.length; start += 200) {
+    const ids = licenses.slice(start, start + 200).map(license => license.id)
+    const { data, error } = await db.from('licenses').select('id,signed:credential_payload').in('id', ids)
+    if (error || !data) throw new Error('License signing state read failed')
+    for (const row of data) {
+      const license = byId.get(row.id)
+      if (license) license.needs_signing = license.status !== 'revoked' && !signedMatches(row.signed, license)
+    }
+  }
+}
+
+function signedMatches(signed: unknown, license: CustomerLicense): boolean {
+  if (!signed || typeof signed !== 'object') return false
+  const payload = signed as { expires_at?: unknown; modules?: unknown; max_cameras?: unknown }
+  const sameModules = Array.isArray(payload.modules) &&
+    [...payload.modules].map(String).sort().join() === [...license.modules].sort().join()
+  return sameModules && payload.max_cameras === license.max_cameras &&
+    typeof payload.expires_at === 'string' && license.expires_at !== null &&
+    Date.parse(payload.expires_at) === Date.parse(license.expires_at)
 }
 
 // Resource display does not alter the signed license or grant access to streams.

@@ -1,12 +1,15 @@
 import type { CustomerLicense } from './types'
 
+// Названия модулей как в прайс-листе платформы от 01.10.2026.
 const MODULE_LABELS: Record<string, string> = {
-  roads: 'Состояние дорог', stops: 'Остановки', parks: 'Безопасный парк',
-  shore: 'Безопасный берег', transport: 'Контроль транспорта', asr: 'Площадки ТКО',
+  roads: 'Состояние дорог', stops: 'Остановочные павильоны', parks: 'Безопасный парк',
+  shore: 'Безопасный берег', transport: 'Общественный транспорт', asr: 'Мониторинг ТКО',
   smoking: 'Курение', lying_person: 'Лежащий человек', bin_fullness: 'Наполнение урн',
   dogs_without_people: 'Собаки без сопровождающих', abandoned_object: 'Оставленные предметы',
   busyness: 'Загруженность остановок', stage2_verification: 'Проверка событий',
 }
+/** Модули, которые продаются лицензией, в порядке прайса. */
+export const LICENSE_MODULES = ['stops', 'roads', 'shore', 'transport', 'parks', 'asr'] as const
 export function russianModuleLabel(key: string, catalog: Record<string, string> = {}): string {
   return MODULE_LABELS[key] || (/[А-Яа-яЁё]/.test(catalog[key] || '') ? catalog[key] : 'Дополнительный модуль')
 }
