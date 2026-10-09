@@ -15,6 +15,7 @@ import { fetchBusStopsGeoJSON, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { ACTIVITY_STATUS_LABELS, type StopActivityStatus } from "@/lib/api/stop-activity"
 import { fetchBusStopHeatmapData, fetchBusStopOccupancyHeatmapData, type BusStopHeatmapResult, type BusStopOccupancyHeatmapResult } from "@/lib/api/bus-stop-heatmap"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
+import { fetchSmartTransportStops, SMART_TRANSPORT_MATCH_RADIUS_M, type SmartTransportStopsGeoJSON } from "@/lib/api/smart-transport-stops"
 import { fetchAnchorsGeoJSON } from "@/lib/api/anchors"
 import { fetchTkoSitesGeoJSON } from "@/lib/api/tko-sites"
 import { SHORELINE_GEOJSON } from "@/lib/mock/shoreline"
@@ -247,6 +248,8 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   const [busStopFilters, setBusStopFilters] = useBusStopStatusFilters()
   const [showClusters, setShowClusters] = useMapPreference("showClusters", true)
   const [showHeatmap, setShowHeatmap] = useMapPreference("showHeatmap", false)
+  const [showSmartTransportStops, setShowSmartTransportStops] = useMapPreference("showSmartTransportStops", false)
+  const [smartTransportStops, setSmartTransportStops] = useState<SmartTransportStopsGeoJSON | null>(null)
   // Only the stops module is enabled: hide generic display/camera controls
   const stopsOnly = modules.length > 0 && modules.every(m => m === "stops")
   
@@ -1332,6 +1335,87 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     }, "bus-stops-clusters") // Insert below bus stop clusters
   }, [isDark])
 
+  // Остановки «Умного транспорта» для сравнения с нашими: цвет — расстояние до ближайшей нашей
+  const addSmartTransportStops = useCallback(() => {
+    if (!map.current) return
+
+    const sourceId = "smart-transport-stops"
+    const layerId = "smart-transport-stops-layer"
+    if (map.current.getSource(sourceId)) return
+
+    map.current.addSource(sourceId, {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] }
+    })
+
+    map.current.addLayer({
+      id: layerId,
+      type: "circle",
+      source: sourceId,
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 10, 3, 14, 6, 17, 9],
+        "circle-color": [
+          "case",
+          ["!", ["has", "nearest_distance_m"]], "#a855f7",
+          ["<=", ["get", "nearest_distance_m"], SMART_TRANSPORT_MATCH_RADIUS_M], "#8b5cf6",
+          ["<=", ["get", "nearest_distance_m"], 150], "#f59e0b",
+          "#ec4899"
+        ],
+        "circle-stroke-width": 2,
+        "circle-stroke-color": isDark ? "#0f172a" : "#ffffff",
+        "circle-opacity": 0.9
+      },
+      layout: { "visibility": "none" }
+    })
+
+    map.current.addLayer({
+      id: `${layerId}-labels`,
+      type: "symbol",
+      source: sourceId,
+      minzoom: 15,
+      layout: {
+        "text-field": ["get", "name"],
+        "text-size": 11,
+        "text-offset": [0, 1.2],
+        "text-anchor": "top",
+        "visibility": "none"
+      },
+      paint: {
+        "text-color": isDark ? "#e9d5ff" : "#6b21a8",
+        "text-halo-color": isDark ? "#0f172a" : "#ffffff",
+        "text-halo-width": 1.5
+      }
+    })
+
+    const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10 })
+    const escape = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
+    const meters = (value: unknown) => value == null || value === "null" ? "—" : `${Math.round(Number(value))} м`
+
+    map.current.on("mouseenter", layerId, (e) => {
+      map.current!.getCanvas().style.cursor = "pointer"
+      const props = e.features?.[0]?.properties as Record<string, unknown> | undefined
+      if (!props) return
+      const sameId = props.same_id_distance_m == null || props.same_id_distance_m === "null"
+        ? "нет такого id"
+        : `${escape(props.same_id_bus_stop_name)} · ${meters(props.same_id_distance_m)}`
+      popup
+        .setLngLat(e.lngLat)
+        .setHTML(
+          `<div class="p-2 text-sm space-y-1">
+            <div class="font-semibold text-violet-500">Умный транспорт: ${escape(props.name)} <span class="text-[10px] opacity-60">#${escape(props.id)}</span></div>
+            <div class="text-xs text-muted-foreground">${escape(props.description) || "Без направления"}</div>
+            <div class="text-xs">Ближайшая наша: ${escape(props.nearest_bus_stop_name) || "—"} <span class="opacity-60">#${escape(props.nearest_bus_stop_id)}</span> · ${meters(props.nearest_distance_m)}</div>
+            <div class="text-xs">Наша с тем же id: ${sameId}</div>
+          </div>`
+        )
+        .addTo(map.current!)
+    })
+    map.current.on("mouseleave", layerId, () => {
+      map.current!.getCanvas().style.cursor = ""
+      popup.remove()
+    })
+  }, [isDark])
+
   const addShoreline = useCallback(() => {
     if (!map.current) return
 
@@ -1588,11 +1672,12 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
     addRoads()
     addBusStops()
     addBusStopHeatmap()
+    addSmartTransportStops()
     addCameraLayers()
     addAnchors()
 
 
-  }, [mapLoaded, addRoads, addBusStops, addBusStopHeatmap, addCameraLayers, addParks, addAnchors, addShoreline, addTkoSites])
+  }, [mapLoaded, addRoads, addBusStops, addBusStopHeatmap, addSmartTransportStops, addCameraLayers, addParks, addAnchors, addShoreline, addTkoSites])
 
   // Sync parks data to source
   useEffect(() => {
@@ -1821,6 +1906,25 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       rawSource.setData(flatData as any)
     }
   }, [busStopsData, cameras, mapLoaded, addBusStops, busStopFilters, stopClass])
+
+  // Остановки «Умного транспорта» грузятся только при включённом слое
+  useEffect(() => {
+    if (!showSmartTransportStops || !hasModule("stops") || smartTransportStops) return
+    let active = true
+    fetchSmartTransportStops().then(data => { if (active) setSmartTransportStops(data) })
+    return () => { active = false }
+  }, [showSmartTransportStops, hasModule, smartTransportStops])
+
+  useEffect(() => {
+    if (!map.current || !mapLoaded) return
+    const source = map.current.getSource("smart-transport-stops") as maplibregl.GeoJSONSource
+    if (!source) return
+    if (smartTransportStops) source.setData(smartTransportStops as any)
+    const visibility = showSmartTransportStops && hasModule("stops") ? "visible" : "none"
+    for (const layer of ["smart-transport-stops-layer", "smart-transport-stops-layer-labels"]) {
+      if (map.current.getLayer(layer)) map.current.setLayoutProperty(layer, "visibility", visibility)
+    }
+  }, [mapLoaded, smartTransportStops, showSmartTransportStops, hasModule, addSmartTransportStops])
 
   // Sync heatmap data to the GeoJSON source
   useEffect(() => {
@@ -2506,6 +2610,31 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                     {heatmapMode === "safety" && heatmapData
                       ? `${heatmapData.totalAlerts} событий за выбранный период`
                       : "Загруженность по датчикам пассажиропотока"}
+                  </div>
+                )}
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="smart-transport-stops" checked={showSmartTransportStops} onCheckedChange={(checked) => setShowSmartTransportStops(!!checked)} />
+                  <Label htmlFor="smart-transport-stops" className="text-sm cursor-pointer font-medium">Остановки «Умного транспорта»</Label>
+                </div>
+                {showSmartTransportStops && (
+                  <div className="text-xs text-muted-foreground pl-6 -mt-1 space-y-1">
+                    <div>
+                      {smartTransportStops
+                        ? `${smartTransportStops.features.length} остановок${smartTransportStops.features[0] ? `, выгрузка ${new Date(smartTransportStops.features[0].properties.fetched_at).toLocaleDateString("ru-RU")}` : ""}`
+                        : "Загрузка…"}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#8b5cf6]" />
+                      <span>Есть наша в пределах {SMART_TRANSPORT_MATCH_RADIUS_M} м</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#f59e0b]" />
+                      <span>Ближайшая наша в {SMART_TRANSPORT_MATCH_RADIUS_M}–150 м</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#ec4899]" />
+                      <span>Нашей рядом нет (&gt;150 м)</span>
+                    </div>
                   </div>
                 )}
               </div>
