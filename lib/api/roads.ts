@@ -2,10 +2,12 @@ export interface RoadProperties {
     osm_id: number
     name: string | null
     highway: string
-    lanes: number | null
-    maxspeed: string | null
-    surface: string | null
-    oneway: boolean | null
+    // Карта эти поля не читает, поэтому /api/roads их не отдаёт — ответ легче.
+    lanes?: number | null
+    maxspeed?: string | null
+    surface?: string | null
+    oneway?: boolean | null
+    status?: string
     contractor?: string
 }
 

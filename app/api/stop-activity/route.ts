@@ -9,12 +9,20 @@ import {
     type StopActivityResponse,
 } from '@/lib/api/stop-activity'
 import type { EquipmentStatusRow } from '@/lib/equipment-status'
+import { getAuthenticatedUser, jsonError } from '@/lib/notifications/http'
 import { createClient } from '@/lib/supabase/server'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 const MISSING_COLUMN = '42703'
+
+// Карту опрашивают все открытые вкладки каждые несколько секунд. Один общий
+// результат на короткое окно снимает с БД повторные 4 запроса на каждый опрос,
+// а свежесть при этом остаётся в пределах тика поллера датчиков (~2–3 с).
+const SHARED_CACHE_MS = 2000
+let sharedCache: { at: number; body: StopActivityResponse } | null = null
+let inflight: Promise<StopActivityResponse> | null = null
 
 function freshnessMs() {
     const raw = Number(process.env.STOP_ACTIVITY_FRESHNESS_MINUTES)
@@ -58,7 +66,7 @@ async function loadBusStops(supabase: Awaited<ReturnType<typeof createClient>>):
     return []
 }
 
-export async function GET() {
+async function buildBody(): Promise<StopActivityResponse> {
     const supabase = await createClient()
     const windowMs = freshnessMs()
 
@@ -77,7 +85,7 @@ export async function GET() {
     if (cameras.error) console.error('Error fetching cameras:', cameras.error)
     if (equipment.error) console.warn('equipment_state unavailable, falling back to legacy status:', equipment.error.message)
 
-    const body: StopActivityResponse = {
+    return {
         freshnessMs: windowMs,
         stops: buildStopActivity({
             busStops,
@@ -87,6 +95,28 @@ export async function GET() {
             windowMs,
         }),
     }
+}
+
+export async function GET() {
+    // Живой статус датчиков и камер по остановкам — только для вошедших.
+    const user = await getAuthenticatedUser()
+    if (!user) return jsonError('Требуется авторизация', 401)
+
+    const now = Date.now()
+    if (sharedCache && now - sharedCache.at < SHARED_CACHE_MS) {
+        return NextResponse.json(sharedCache.body, { headers: { 'Cache-Control': 'no-store' } })
+    }
+
+    // Параллельные запросы в одно окно ждут один и тот же расчёт.
+    if (!inflight) {
+        inflight = buildBody()
+            .then((body) => {
+                sharedCache = { at: Date.now(), body }
+                return body
+            })
+            .finally(() => { inflight = null })
+    }
+    const body = await inflight
 
     return NextResponse.json(body, { headers: { 'Cache-Control': 'no-store' } })
 }

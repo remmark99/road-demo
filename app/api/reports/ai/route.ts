@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
+import { getAuthenticatedUser, jsonError } from "@/lib/notifications/http"
 import {
     createGigaChatCompletion,
     GigaChatConfigError,
@@ -623,6 +624,10 @@ function getSafeErrorSummary(error: unknown) {
 }
 
 export async function POST(request: Request) {
+    // Отчёты генерируются через GigaChat и читают БД под service-role — только для вошедших.
+    const user = await getAuthenticatedUser()
+    if (!user) return jsonError("Требуется авторизация", 401)
+
     let body: unknown
 
     try {

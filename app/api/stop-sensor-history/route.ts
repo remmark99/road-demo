@@ -10,6 +10,7 @@ import {
     type StopSensorOption,
     type StopSensorSeriesPoint,
 } from "@/lib/api/stop-sensor-history"
+import { getAuthenticatedUser, jsonError } from "@/lib/notifications/http"
 import { createClient } from "@/lib/supabase/server"
 
 export const dynamic = "force-dynamic"
@@ -134,6 +135,10 @@ function aggregateAcrossStops(rows: DatabaseHistoryRow[], bucketMinutes: number)
 }
 
 export async function GET(request: NextRequest) {
+    // Живые показания датчиков по остановкам — только для вошедших пользователей.
+    const user = await getAuthenticatedUser()
+    if (!user) return jsonError("Требуется авторизация", 401)
+
     const hours = parseHours(request.nextUrl.searchParams.get("hours"))
     const busStopId = parseBusStopId(request.nextUrl.searchParams.get("busStopId"))
     const to = new Date()

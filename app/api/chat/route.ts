@@ -3,6 +3,7 @@ import {
     createUIMessageStreamResponse,
     type UIMessage,
 } from "ai"
+import { getAuthenticatedUser, jsonError } from "@/lib/notifications/http"
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -3089,6 +3090,10 @@ function sanitizeError(error: unknown) {
 }
 
 export async function POST(req: Request) {
+    // Ассистент ходит в GigaChat и в БД под service-role — только для вошедших.
+    const user = await getAuthenticatedUser()
+    if (!user) return jsonError("Требуется авторизация", 401)
+
     const body = await req.json().catch(() => ({}))
     const messages = Array.isArray(body.messages) ? body.messages as UIMessage[] : []
     const mode = getAssistantMode(body.mode)
