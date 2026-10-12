@@ -1,8 +1,8 @@
-import { sensorCalendarBounds } from "@/lib/sensor-history-period"
 import { NextRequest, NextResponse } from "next/server"
 
 import {
     SENSOR_HISTORY_PERIODS,
+    type GlassEvent,
     type SensorHistoryHours,
     type SensorHistoryStop,
     type StopSensorHistoryResponse,
@@ -15,19 +15,20 @@ import { createClient } from "@/lib/supabase/server"
 export const dynamic = "force-dynamic"
 export const revalidate = 0
 
-const PAGE_SIZE = 1000
-const MAX_SOURCE_ROWS = 60_000
-const HISTORY_COLUMNS = "id,bus_stop_id,element,address,category,name,value,alarm,recorded_at"
-// Разбитие стекла и совмещённый датчик температуры и влажности — всё, что
-// стоит на остановке. Свободные каналы контроллера в истории игнорируются:
-// строки по ним копились до того, как воркер перестал их писать.
-const VERIFIED_SENSOR_ELEMENTS = [1, 13]
+// Newest rows pulled for the temperature/humidity charts. Charts show a cross-stop
+// average and min–max band per time bucket, so a recent sample is enough and the
+// response stays tiny and fast regardless of how much history has piled up.
+const CHART_SOURCE_ROWS = 12_000
+const CHART_PAGE = 1000
+// Elements charted as time series. Temperature and humidity both live on element 13.
+const CHART_ELEMENTS = [13]
+const RECENT_TABLE_ROWS = 40
+const GLASS_EVENTS = 50
 
 interface DatabaseHistoryRow {
-    id: number
     bus_stop_id: number
     element: number
-    address: number
+    address: number | null
     category: string | null
     name: string | null
     value: number | null
@@ -43,24 +44,29 @@ interface BusStopRow {
     address: string | null
 }
 
-interface SeriesAccumulator {
+interface AlertRow {
+    id: number | string
+    bus_stop_id: number | null
+    category: string | null
+    alarm: string | null
+    prev_alarm: string | null
+    message: string | null
+    created_at: string
+}
+
+interface BucketAccumulator {
     bucket: string
-    busStopId: number
-    element: number
-    address: number
     category: string
-    name: string
     sum: number
     samples: number
-    minimum: number | null
-    maximum: number | null
-    alarm: string
+    minimum: number
+    maximum: number
 }
 
 function parseHours(value: string | null): SensorHistoryHours {
     const parsed = Number(value)
     return SENSOR_HISTORY_PERIODS.includes(parsed as SensorHistoryHours)
-        ? parsed as SensorHistoryHours
+        ? (parsed as SensorHistoryHours)
         : 24
 }
 
@@ -70,7 +76,7 @@ function parseBusStopId(value: string | null) {
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null
 }
 
-function getBucketMinutes(hours: number) {
+function getBucketMinutes(hours: SensorHistoryHours) {
     if (hours <= 1) return 1
     if (hours <= 6) return 5
     if (hours <= 24) return 15
@@ -84,203 +90,162 @@ function floorToBucket(iso: string, bucketMinutes: number) {
     return date.toISOString()
 }
 
-function alarmRank(alarm: string) {
-    switch (alarm.toLowerCase()) {
-        case "critical": return 4
-        case "alarm": return 3
-        case "warning": return 2
-        default: return 1
-    }
-}
-
-function normalizeRow(row: DatabaseHistoryRow): StopSensorHistoryRow {
-    return {
-        id: Number(row.id),
-        busStopId: Number(row.bus_stop_id),
-        element: Number(row.element),
-        address: Number(row.address ?? 0),
-        category: row.category || "sensor",
-        name: row.name || "Датчик",
-        value: row.value === null ? null : Number(row.value),
-        alarm: row.alarm || "normal",
-        recordedAt: row.recorded_at,
-    }
-}
-
-function aggregateRows(rows: StopSensorHistoryRow[], bucketMinutes: number) {
-    const buckets = new Map<string, SeriesAccumulator>()
-
+/** Collapse all stops' readings into one average + min–max band per (category, bucket). */
+function aggregateAcrossStops(rows: DatabaseHistoryRow[], bucketMinutes: number): StopSensorSeriesPoint[] {
+    const buckets = new Map<string, BucketAccumulator>()
     for (const row of rows) {
-        const bucket = floorToBucket(row.recordedAt, bucketMinutes)
-        const key = [row.busStopId, row.element, row.address, row.category, bucket].join(":")
-        const current = buckets.get(key) ?? {
-            bucket,
-            busStopId: row.busStopId,
-            element: row.element,
-            address: row.address,
-            category: row.category,
-            name: row.name,
-            sum: 0,
-            samples: 0,
-            minimum: null,
-            maximum: null,
-            alarm: "normal",
-        }
-
-        if (row.value !== null && Number.isFinite(row.value)) {
+        if (row.value === null || !Number.isFinite(row.value)) continue
+        const category = row.category || "sensor"
+        const bucket = floorToBucket(row.recorded_at, bucketMinutes)
+        const key = `${category}:${bucket}`
+        const current = buckets.get(key)
+        if (current) {
             current.sum += row.value
             current.samples += 1
-            current.minimum = current.minimum === null ? row.value : Math.min(current.minimum, row.value)
-            current.maximum = current.maximum === null ? row.value : Math.max(current.maximum, row.value)
+            current.minimum = Math.min(current.minimum, row.value)
+            current.maximum = Math.max(current.maximum, row.value)
+        } else {
+            buckets.set(key, {
+                bucket,
+                category,
+                sum: row.value,
+                samples: 1,
+                minimum: row.value,
+                maximum: row.value,
+            })
         }
-
-        if (alarmRank(row.alarm) > alarmRank(current.alarm)) current.alarm = row.alarm
-        buckets.set(key, current)
     }
 
     return Array.from(buckets.values())
-        .map<StopSensorSeriesPoint>((value) => ({
-            bucket: value.bucket,
-            busStopId: value.busStopId,
-            element: value.element,
-            address: value.address,
-            category: value.category,
-            name: value.name,
-            average: value.samples ? value.sum / value.samples : null,
-            minimum: value.minimum,
-            maximum: value.maximum,
-            alarm: value.alarm,
-            samples: value.samples,
+        .map<StopSensorSeriesPoint>((acc) => ({
+            bucket: acc.bucket,
+            busStopId: 0,
+            element: 13,
+            address: 0,
+            category: acc.category,
+            name: acc.category,
+            average: acc.sum / acc.samples,
+            minimum: acc.minimum,
+            maximum: acc.maximum,
+            alarm: "normal",
+            samples: acc.samples,
         }))
         .sort((left, right) => left.bucket.localeCompare(right.bucket))
-}
-
-function buildSensorOptions(rows: StopSensorHistoryRow[]) {
-    const options = new Map<string, StopSensorOption>()
-
-    for (const row of rows) {
-        const key = `${row.busStopId}:${row.element}:${row.address}:${row.category}`
-        options.set(key, {
-            key,
-            busStopId: row.busStopId,
-            element: row.element,
-            address: row.address,
-            category: row.category,
-            name: row.name,
-        })
-    }
-
-    return Array.from(options.values()).sort((left, right) =>
-        left.busStopId - right.busStopId
-        || left.category.localeCompare(right.category, "ru")
-        || left.element - right.element
-        || left.address - right.address
-    )
-}
-
-async function loadStops(ids: number[]): Promise<SensorHistoryStop[]> {
-    if (ids.length === 0) return []
-
-    const supabase = await createClient()
-    const { data, error } = await supabase
-        .from("bus_stops")
-        .select("id,name,short_name,description,address")
-        .in("id", ids)
-    if (error) {
-        return ids.map((id) => ({ id, label: `Остановка ${id}`, detail: null }))
-    }
-
-    const lookup = new Map<number, SensorHistoryStop>()
-
-    for (const stop of (data ?? []) as BusStopRow[]) {
-        lookup.set(stop.id, {
-            id: stop.id,
-            label: stop.short_name?.trim() || stop.name?.trim() || `Остановка ${stop.id}`,
-            detail: stop.description?.trim() || stop.address?.trim() || null,
-        })
-    }
-
-    return ids.map((id) => lookup.get(id) ?? { id, label: `Остановка ${id}`, detail: null })
 }
 
 export async function GET(request: NextRequest) {
     const hours = parseHours(request.nextUrl.searchParams.get("hours"))
     const busStopId = parseBusStopId(request.nextUrl.searchParams.get("busStopId"))
-    const category = request.nextUrl.searchParams.get("category")?.trim() || null
-    let to = new Date()
-    let from = new Date(to.getTime() - hours * 60 * 60 * 1000)
-    let rangeHours: number = hours
-    try {
-        const bounds = sensorCalendarBounds(request.nextUrl.searchParams.get("from"), request.nextUrl.searchParams.get("to"))
-        if (bounds) { from = bounds.from; to = bounds.to; rangeHours = bounds.hours }
-    } catch (error) {
-        return NextResponse.json({ error: (error as Error).message }, { status: 400 })
-    }
+    const to = new Date()
+    const from = new Date(to.getTime() - hours * 60 * 60 * 1000)
+    const fromIso = from.toISOString()
+    const toIso = to.toISOString()
 
     try {
         const supabase = await createClient()
-        let firstPageQuery = supabase
-            .from("stop_sensor_history")
-            .select(HISTORY_COLUMNS, { count: "exact" })
-            .in("element", VERIFIED_SENSOR_ELEMENTS)
-            .gte("recorded_at", from.toISOString())
-            .lt("recorded_at", to.toISOString())
-            .order("recorded_at", { ascending: false })
-            .range(0, PAGE_SIZE - 1)
 
-        if (busStopId !== null) firstPageQuery = firstPageQuery.eq("bus_stop_id", busStopId)
-        if (category) firstPageQuery = firstPageQuery.eq("category", category)
-
-        const { data: firstPage, count, error: firstPageError } = await firstPageQuery
-        if (firstPageError) throw new Error(firstPageError.message)
-
-        const totalRows = count ?? 0
-        const sourceRows = Math.min(totalRows, MAX_SOURCE_ROWS)
-        const pages = Array.from({ length: Math.max(0, Math.ceil(sourceRows / PAGE_SIZE) - 1) }, (_, index) => {
-            const pageIndex = index + 1
-            const start = pageIndex * PAGE_SIZE
-            return { start, end: Math.min(sourceRows - 1, start + PAGE_SIZE - 1) }
-        })
-
-        const pageResults = await Promise.all(pages.map(async ({ start, end }) => {
-            let query = supabase
+        // ── Chart data: newest temperature/humidity rows, paged in parallel. ──
+        const chartBase = () => {
+            let q = supabase
                 .from("stop_sensor_history")
-                .select(HISTORY_COLUMNS)
-                .in("element", VERIFIED_SENSOR_ELEMENTS)
-                .gte("recorded_at", from.toISOString())
-                .lt("recorded_at", to.toISOString())
+                .select("bus_stop_id,element,address,category,name,value,alarm,recorded_at")
+                .in("element", CHART_ELEMENTS)
+                .gte("recorded_at", fromIso)
+                .lte("recorded_at", toIso)
                 .order("recorded_at", { ascending: false })
-                .range(start, end)
+            if (busStopId !== null) q = q.eq("bus_stop_id", busStopId)
+            return q
+        }
 
-            if (busStopId !== null) query = query.eq("bus_stop_id", busStopId)
-            if (category) query = query.eq("category", category)
+        const pageCount = Math.ceil(CHART_SOURCE_ROWS / CHART_PAGE)
+        const chartPages = await Promise.all(
+            Array.from({ length: pageCount }, (_, index) => {
+                const start = index * CHART_PAGE
+                return chartBase().range(start, start + CHART_PAGE - 1)
+            }),
+        )
+        const chartRows: DatabaseHistoryRow[] = []
+        for (const page of chartPages) {
+            if (page.error) throw new Error(page.error.message)
+            chartRows.push(...((page.data ?? []) as DatabaseHistoryRow[]))
+        }
 
-            const { data, error } = await query
-            if (error) throw new Error(error.message)
-            return (data ?? []) as DatabaseHistoryRow[]
+        // ── Table: newest readings (all charted sensors). ──
+        const recentRows: StopSensorHistoryRow[] = chartRows
+            .slice(0, RECENT_TABLE_ROWS)
+            .map((row, index) => ({
+                id: index,
+                busStopId: Number(row.bus_stop_id),
+                element: Number(row.element),
+                address: Number(row.address ?? 0),
+                category: row.category || "sensor",
+                name: row.name || `Датчик ${row.element}`,
+                value: row.value === null ? null : Number(row.value),
+                alarm: row.alarm || "normal",
+                recordedAt: row.recorded_at,
+            }))
+
+        // ── Glass-break events from controller_alerts. ──
+        let alertQuery = supabase
+            .from("controller_alerts")
+            .select("id,bus_stop_id,category,alarm,prev_alarm,message,created_at")
+            .or("category.eq.glass_break,element.eq.1")
+            .gte("created_at", fromIso)
+            .order("created_at", { ascending: false })
+            .limit(GLASS_EVENTS)
+        if (busStopId !== null) alertQuery = alertQuery.eq("bus_stop_id", busStopId)
+        const { data: alertData } = await alertQuery
+        const alertRows = (alertData ?? []) as AlertRow[]
+
+        // ── Stop labels for the dropdown (controller stops) + referenced stops. ──
+        const { data: controllerStops } = await supabase
+            .from("bus_stops")
+            .select("id,name,short_name,description,address")
+            .not("ip_address", "is", null)
+        const stopList: SensorHistoryStop[] = ((controllerStops ?? []) as BusStopRow[])
+            .map((stop) => ({
+                id: stop.id,
+                label: stop.short_name?.trim() || stop.name?.trim() || `Остановка ${stop.id}`,
+                detail: stop.description?.trim() || stop.address?.trim() || null,
+            }))
+            .sort((left, right) => left.label.localeCompare(right.label, "ru"))
+        const stopLabelById = new Map(stopList.map((stop) => [stop.id, stop]))
+
+        const events: GlassEvent[] = alertRows.map((row) => ({
+            id: String(row.id),
+            busStopId: row.bus_stop_id,
+            busStopLabel: row.bus_stop_id
+                ? stopLabelById.get(row.bus_stop_id)?.label ?? `Остановка ${row.bus_stop_id}`
+                : "Остановка не указана",
+            message: row.message || "Срабатывание датчика разбития стекла",
+            alarm: row.alarm || "alarm",
+            recordedAt: row.created_at,
         }))
 
-        const rows = [
-            ...((firstPage ?? []) as DatabaseHistoryRow[]),
-            ...pageResults.flat(),
-        ].slice(0, sourceRows).map(normalizeRow)
-        const stopIds = Array.from(new Set(rows.map((row) => row.busStopId))).sort((a, b) => a - b)
-        const bucketMinutes = getBucketMinutes(rangeHours)
+        const bucketMinutes = getBucketMinutes(hours)
+        const series = aggregateAcrossStops(chartRows, bucketMinutes)
+
+        const sensors: StopSensorOption[] = [
+            { key: "temperature", busStopId: 0, element: 13, address: 0, category: "temperature", name: "Температура" },
+            { key: "humidity", busStopId: 0, element: 13, address: 0, category: "humidity", name: "Влажность" },
+        ]
+
         const payload: StopSensorHistoryResponse = {
-            range: { from: from.toISOString(), to: to.toISOString() },
+            range: { from: fromIso, to: toIso },
             bucketMinutes,
-            totalRows,
-            sourceRows: rows.length,
-            truncated: totalRows > MAX_SOURCE_ROWS,
-            lastRecordedAt: rows[0]?.recordedAt ?? null,
-            stops: await loadStops(stopIds),
-            sensors: buildSensorOptions(rows),
-            series: aggregateRows(rows, bucketMinutes),
-            recent: rows.slice(0, 1000),
+            totalRows: chartRows.length,
+            sourceRows: chartRows.length,
+            truncated: chartRows.length >= CHART_SOURCE_ROWS,
+            lastRecordedAt: chartRows[0]?.recorded_at ?? null,
+            stops: stopList,
+            sensors,
+            series,
+            recent: recentRows,
+            events,
         }
 
         return NextResponse.json(payload, {
-            headers: { "Cache-Control": "private, max-age=30, stale-while-revalidate=60" },
+            headers: { "Cache-Control": "private, max-age=3, stale-while-revalidate=10" },
         })
     } catch (error) {
         console.error("Stop sensor history API error", error)

@@ -1,4 +1,3 @@
-import { sessionRequest } from '../request-cache'
 export const SENSOR_HISTORY_PERIODS = [1, 6, 24, 168] as const
 
 export type SensorHistoryHours = (typeof SENSOR_HISTORY_PERIODS)[number]
@@ -44,6 +43,15 @@ export interface SensorHistoryStop {
     detail: string | null
 }
 
+export interface GlassEvent {
+    id: string
+    busStopId: number | null
+    busStopLabel: string
+    message: string
+    alarm: string
+    recordedAt: string
+}
+
 export interface StopSensorHistoryResponse {
     range: { from: string; to: string }
     bucketMinutes: number
@@ -55,31 +63,25 @@ export interface StopSensorHistoryResponse {
     sensors: StopSensorOption[]
     series: StopSensorSeriesPoint[]
     recent: StopSensorHistoryRow[]
+    events: GlassEvent[]
 }
 
 interface FetchSensorHistoryOptions {
     hours: SensorHistoryHours
-    from?: string
-    to?: string
     busStopId?: number
     category?: string
 }
 
 export async function fetchStopSensorHistory({
     hours,
-    from,
-    to,
     busStopId,
     category,
 }: FetchSensorHistoryOptions): Promise<StopSensorHistoryResponse> {
     const params = new URLSearchParams({ hours: String(hours) })
 
-    if (from) params.set("from", from)
-    if (to) params.set("to", to)
     if (busStopId !== undefined) params.set("busStopId", String(busStopId))
     if (category) params.set("category", category)
 
-    return sessionRequest(`sensor-history:${params}`,30_000,async () => {
     const response = await fetch(`/api/stop-sensor-history?${params.toString()}`, {
         cache: "no-store",
     })
@@ -90,5 +92,4 @@ export async function fetchStopSensorHistory({
     }
 
     return response.json() as Promise<StopSensorHistoryResponse>
-    })
 }
