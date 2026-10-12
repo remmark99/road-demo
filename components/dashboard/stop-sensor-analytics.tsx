@@ -11,7 +11,7 @@ import {
     RefreshCw,
     Thermometer,
 } from "lucide-react"
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
+import { Area, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts"
 
 import { CLIMATE_ELEMENT, GLASS_BREAK_ELEMENT } from "@/lib/api/measurements"
 import {
@@ -65,14 +65,6 @@ const CHART_CATEGORIES: KnownCategory[] = [
     "temperature",
     "humidity",
     "digital input",
-]
-
-const SERIES_COLORS = [
-    "hsl(24, 95%, 53%)",
-    "hsl(199, 89%, 48%)",
-    "hsl(262, 83%, 58%)",
-    "hsl(142, 71%, 45%)",
-    "hsl(346, 77%, 50%)",
 ]
 
 function formatDateTime(value: string | null) {
@@ -144,10 +136,6 @@ function sensorKey(point: Pick<StopSensorSeriesPoint, "busStopId" | "element" | 
     return `${point.busStopId}:${point.element}:${point.address}:${point.category}`
 }
 
-function dataKey(point: Pick<StopSensorSeriesPoint, "busStopId" | "element" | "address" | "category">) {
-    return `s_${point.busStopId}_${point.element}_${point.address}_${point.category.replace(/\W+/g, "_")}`
-}
-
 function SensorChart({
     category,
     points,
@@ -159,32 +147,45 @@ function SensorChart({
 }) {
     const meta = CATEGORY_META[category]
     const Icon = meta.icon
-    const sensors = useMemo(() => {
-        const map = new Map<string, StopSensorSeriesPoint>()
-        points.filter((point) => point.category === category).forEach((point) => map.set(sensorKey(point), point))
-        return Array.from(map.values())
-    }, [category, points])
 
-    const chartData = useMemo(() => {
-        const rows = new Map<string, Record<string, string | number | null>>()
+    // Все датчики категории сводим в одну серию на каждый временной бакет: среднее по
+    // остановкам плюс полоса «мин–макс». Так график читается при любом числе остановок,
+    // вместо отдельной линии на каждый из ~80 контроллеров.
+    const { chartData, stopCount } = useMemo(() => {
+        const buckets = new Map<string, { bucket: string; time: string; values: number[] }>()
+        const stops = new Set<number>()
         points.filter((point) => point.category === category).forEach((point) => {
-            const current = rows.get(point.bucket) ?? {
-                bucket: point.bucket,
-                time: formatChartTime(point.bucket, hours),
-            }
-            current[dataKey(point)] = point.average
-            rows.set(point.bucket, current)
+            if (point.average === null || point.average === undefined) return
+            stops.add(point.busStopId)
+            const row = buckets.get(point.bucket)
+                ?? { bucket: point.bucket, time: formatChartTime(point.bucket, hours), values: [] }
+            row.values.push(point.average)
+            buckets.set(point.bucket, row)
         })
-        return Array.from(rows.values()).sort((left, right) => String(left.bucket).localeCompare(String(right.bucket)))
+        const digits = category === "digital input" ? 2 : 1
+        const rows = Array.from(buckets.values())
+            .sort((left, right) => left.bucket.localeCompare(right.bucket))
+            .map((row) => {
+                const min = Math.min(...row.values)
+                const max = Math.max(...row.values)
+                const avg = row.values.reduce((sum, value) => sum + value, 0) / row.values.length
+                return {
+                    bucket: row.bucket,
+                    time: row.time,
+                    avg: Number(avg.toFixed(digits)),
+                    low: Number(min.toFixed(digits)),
+                    band: Number((max - min).toFixed(digits)),
+                    max: Number(max.toFixed(digits)),
+                }
+            })
+        return { chartData: rows, stopCount: stops.size }
     }, [category, hours, points])
 
-    const config = useMemo(() => sensors.reduce<ChartConfig>((result, sensor, index) => {
-        result[dataKey(sensor)] = {
-            label: sensorDisplayName(sensor),
-            color: SERIES_COLORS[index % SERIES_COLORS.length] ?? meta.color,
-        }
-        return result
-    }, {}), [meta.color, sensors])
+    const config = useMemo<ChartConfig>(() => ({
+        avg: { label: stopCount > 1 ? "Среднее по остановкам" : "Показание", color: meta.color },
+    }), [meta.color, stopCount])
+
+    const showDots = chartData.length > 0 && chartData.length <= 2
 
     return (
         <Card>
@@ -194,7 +195,9 @@ function SensorChart({
                     {meta.label}
                 </CardTitle>
                 <CardDescription>
-                    Среднее значение за временной интервал{meta.unit ? `, ${meta.unit}` : ""}.
+                    {stopCount > 1
+                        ? `Среднее по ${stopCount} остановкам, затенён диапазон мин–макс${meta.unit ? `, ${meta.unit}` : ""}.`
+                        : `Показание датчика${meta.unit ? `, ${meta.unit}` : ""}.`}
                 </CardDescription>
             </CardHeader>
             <CardContent>
@@ -204,7 +207,7 @@ function SensorChart({
                     </div>
                 ) : (
                     <ChartContainer config={config} className="h-[250px] w-full">
-                        <LineChart data={chartData} margin={{ left: 4, right: 12, top: 12, bottom: 0 }}>
+                        <ComposedChart data={chartData} margin={{ left: 4, right: 12, top: 12, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
                             <XAxis dataKey="time" tickLine={false} axisLine={false} tickMargin={8} minTickGap={28} />
                             <YAxis
@@ -217,18 +220,19 @@ function SensorChart({
                             />
                             <ChartTooltip content={<ChartTooltipContent />} />
                             <ChartLegend content={<ChartLegendContent />} />
-                            {sensors.map((sensor, index) => (
-                                <Line
-                                    key={sensorKey(sensor)}
-                                    type={category === "digital input" ? "stepAfter" : "monotone"}
-                                    dataKey={dataKey(sensor)}
-                                    stroke={SERIES_COLORS[index % SERIES_COLORS.length] ?? meta.color}
-                                    strokeWidth={2.25}
-                                    dot={false}
-                                    connectNulls
-                                />
-                            ))}
-                        </LineChart>
+                            {/* Полоса мин–макс: прозрачная база (low) + видимый диапазон (band), сложенные стеком. */}
+                            <Area dataKey="low" stackId="band" stroke="none" fill="transparent" legendType="none" tooltipType="none" type="monotone" isAnimationActive={false} />
+                            <Area dataKey="band" stackId="band" stroke="none" fill={meta.color} fillOpacity={0.14} legendType="none" tooltipType="none" type="monotone" isAnimationActive={false} />
+                            <Line
+                                type={category === "digital input" ? "stepAfter" : "monotone"}
+                                dataKey="avg"
+                                stroke={meta.color}
+                                strokeWidth={2.25}
+                                dot={showDots ? { r: 3, fill: meta.color } : false}
+                                isAnimationActive={false}
+                                connectNulls
+                            />
+                        </ComposedChart>
                     </ChartContainer>
                 )}
             </CardContent>
