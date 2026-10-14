@@ -11,7 +11,7 @@ import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
 import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
-import { fetchBusStopsGeoJSON, toSensorsOnlyStops, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
+import { fetchBusStopsGeoJSON, STOP_STATUS_REFRESH_MS, toSensorsOnlyStops, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { ACTIVITY_STATUS_LABELS, type StopActivityStatus } from "@/lib/api/stop-activity"
 import { fetchBusStopHeatmapData, fetchBusStopOccupancyHeatmapData, type BusStopHeatmapResult, type BusStopOccupancyHeatmapResult } from "@/lib/api/bus-stop-heatmap"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
@@ -2020,6 +2020,22 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       fetchBusStopOccupancyHeatmapData(heatmapTimeWindow).then(setOccupancyData)
     }
   }, [hasModule, showHeatmap, heatmapMode, heatmapTimeWindow, heatmapAlertTypes])
+
+  // Статусы датчиков и камер остановок меняются постоянно — перечитываем раз в минуту,
+  // пока вкладка на экране. Геометрия при этом берётся из кэша, обновляется только статус.
+  useEffect(() => {
+    if (modulesLoading || !hasModule('stops')) return
+    let active = true
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return
+      fetchBusStopsGeoJSON().then(data => {
+        if (active && data.features.length) setBusStopsData(sensorsOnly ? toSensorsOnlyStops(data) : data)
+      })
+    }
+    const interval = setInterval(refresh, STOP_STATUS_REFRESH_MS)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { active = false; clearInterval(interval); document.removeEventListener('visibilitychange', refresh) }
+  }, [hasModule, sensorsOnly, modulesLoading])
 
   // Auto-refresh heatmap data every 5 minutes
   useEffect(() => {

@@ -2,7 +2,7 @@
 
 import { historicalCameras, historicalStops, type StopHistorySnapshot } from "@/lib/stop-history"
 import { useEffect, useMemo, useState } from "react"
-import { fetchBusStopsGeoJSON, toSensorsOnlyStops, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
+import { fetchBusStopsGeoJSON, STOP_STATUS_REFRESH_MS, toSensorsOnlyStops, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { fetchCameras } from "@/lib/api/cameras"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -338,7 +338,16 @@ export function BusStopsStats({
 
     useEffect(() => {
         if (modulesLoading) return
-        fetchBusStopsGeoJSON().then(data => setData(sensorsOnly ? toSensorsOnlyStops(data) : data))
+        let active = true
+        const load = () => fetchBusStopsGeoJSON().then(data => {
+            // Сбой обновления не должен обнулять уже показанные цифры
+            if (active && data.features.length) setData(sensorsOnly ? toSensorsOnlyStops(data) : data)
+        })
+        const refresh = () => { if (document.visibilityState === 'visible') load() }
+        load()
+        const interval = setInterval(refresh, STOP_STATUS_REFRESH_MS)
+        document.addEventListener('visibilitychange', refresh)
+        return () => { active = false; clearInterval(interval); document.removeEventListener('visibilitychange', refresh) }
     }, [sensorsOnly, modulesLoading])
 
     useEffect(() => {

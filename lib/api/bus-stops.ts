@@ -127,6 +127,9 @@ export function toSensorsOnlyStops(geoJSON: BusStopsGeoJSON): BusStopsGeoJSON {
     }
 }
 
+/** Как часто карта и панель «Остановки и камеры» перечитывают статусы оборудования. */
+export const STOP_STATUS_REFRESH_MS = 60_000
+
 /**
  * Fetch bus stops GeoJSON from the cached API route and merge in the live
  * activity status computed from `stop_sensor_states` / `bus_stops.controller_status`
