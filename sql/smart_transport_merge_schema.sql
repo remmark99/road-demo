@@ -35,6 +35,9 @@ CREATE OR REPLACE FUNCTION public.get_bus_stops_geojson()
  RETURNS jsonb
  LANGUAGE sql
  STABLE
+ -- /api/bus-stops вызывает функцию и без входа (anon); bus_stop_merge anon не читает.
+ SECURITY DEFINER
+ SET search_path = public
 AS $function$
   select jsonb_build_object(
     'type', 'FeatureCollection',
