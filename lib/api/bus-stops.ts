@@ -1,6 +1,7 @@
 import { sessionRequest } from '../request-cache'
 import {
     resolveActivityStatus,
+    type GlassSensorStatus,
     type StopActivityEntry,
     type StopActivityStatus,
     fetchStopActivity,
@@ -30,6 +31,8 @@ export interface BusStopSensorData {
     humidity?: number
     /** Что-то отклонилось от нормы; причина не уточняется. */
     incident?: boolean
+    /** Отфильтрованный статус датчика стекла (см. StopActivityEntry.glass_status). */
+    glass_status?: GlassSensorStatus | null
     /** Статус посчитан только по датчикам (учётка подрядчика, см. toSensorsOnlyStops). */
     sensors_only?: boolean
 }
@@ -90,6 +93,7 @@ export function toSensorData(entry: StopActivityEntry | undefined): BusStopSenso
         last_ping_at: entry.last_ping_at,
         last_sensor_at: entry.last_sensor_at,
         incident: entry.incident,
+        glass_status: entry.glass_status ?? null,
     }
 }
 

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server"
 import {
     SENSOR_HISTORY_PERIODS,
     type GlassEvent,
+    type GlassSensorIssue,
     type SensorHistoryHours,
     type SensorHistoryStop,
     type StopSensorHistoryResponse,
@@ -43,6 +44,13 @@ interface BusStopRow {
     short_name: string | null
     description: string | null
     address: string | null
+}
+
+interface GlassIssueRow {
+    bus_stop_id: number
+    alarm: string | null
+    value: number | null
+    updated_at: string | null
 }
 
 interface AlertRow {
@@ -194,13 +202,23 @@ export async function GET(request: NextRequest) {
         let alertQuery = supabase
             .from("controller_alerts")
             .select("id,bus_stop_id,category,alarm,prev_alarm,message,created_at")
-            .or("category.eq.glass_break,element.eq.1")
+            .in("category", ["glass_break", "incident"])
             .gte("created_at", fromIso)
             .order("created_at", { ascending: false })
             .limit(GLASS_EVENTS)
         if (busStopId !== null) alertQuery = alertQuery.eq("bus_stop_id", busStopId)
-        const { data: alertData } = await alertQuery
+
+        // ── Датчики стекла, которые поллер пометил «шумными» или залипшими. ──
+        let issueQuery = supabase
+            .from("stop_sensor_states")
+            .select("bus_stop_id,alarm,value,updated_at")
+            .eq("category", "glass_status")
+            .in("alarm", ["noisy", "stuck"])
+        if (busStopId !== null) issueQuery = issueQuery.eq("bus_stop_id", busStopId)
+
+        const [{ data: alertData }, { data: issueData }] = await Promise.all([alertQuery, issueQuery])
         const alertRows = (alertData ?? []) as AlertRow[]
+        const issueRows = (issueData ?? []) as GlassIssueRow[]
 
         // ── Stop labels for the dropdown (controller stops) + referenced stops. ──
         const { data: controllerStops } = await supabase
@@ -227,6 +245,16 @@ export async function GET(request: NextRequest) {
             recordedAt: row.created_at,
         }))
 
+        const glassIssues: GlassSensorIssue[] = issueRows
+            .map((row) => ({
+                busStopId: row.bus_stop_id,
+                busStopLabel: stopLabelById.get(row.bus_stop_id)?.label ?? `Остановка ${row.bus_stop_id}`,
+                status: row.alarm === "stuck" ? "stuck" as const : "noisy" as const,
+                pulses24h: row.value === null ? null : Number(row.value),
+                updatedAt: row.updated_at,
+            }))
+            .sort((left, right) => left.status.localeCompare(right.status) || left.busStopLabel.localeCompare(right.busStopLabel, "ru"))
+
         const bucketMinutes = getBucketMinutes(hours)
         const series = aggregateAcrossStops(chartRows, bucketMinutes)
 
@@ -247,6 +275,7 @@ export async function GET(request: NextRequest) {
             series,
             recent: recentRows,
             events,
+            glassIssues,
         }
 
         return NextResponse.json(payload, {

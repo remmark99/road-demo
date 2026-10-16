@@ -17,6 +17,7 @@ import {
     SENSOR_HISTORY_PERIODS,
     fetchStopSensorHistory,
     type GlassEvent,
+    type GlassSensorIssue,
     type SensorHistoryHours,
     type StopSensorHistoryResponse,
     type StopSensorSeriesPoint,
@@ -173,7 +174,51 @@ function SensorChart({
     )
 }
 
-function GlassEventsCard({ events }: { events: GlassEvent[] }) {
+function GlassIssuesList({ issues }: { issues: GlassSensorIssue[] }) {
+    const [open, setOpen] = useState(false)
+    if (issues.length === 0) return null
+    const stuck = issues.filter((issue) => issue.status === "stuck").length
+    const noisy = issues.length - stuck
+
+    return (
+        <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/[0.06]">
+            <button
+                type="button"
+                className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm"
+                onClick={() => setOpen((value) => !value)}
+                aria-expanded={open}
+            >
+                <span className="flex items-center gap-2 font-medium text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-4 w-4" />
+                    Требуют проверки: {issues.length}
+                </span>
+                <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    {stuck > 0 && `залипли ${stuck}`}{stuck > 0 && noisy > 0 && " · "}{noisy > 0 && `шумят ${noisy}`}
+                    <ChevronDown className={`h-4 w-4 transition-transform ${open ? "rotate-180" : ""}`} />
+                </span>
+            </button>
+            {open && (
+                <div className="space-y-1.5 border-t border-amber-500/20 px-3 py-2">
+                    {issues.map((issue) => (
+                        <div key={issue.busStopId} className="flex items-center justify-between gap-3 text-xs">
+                            <span className="truncate">{issue.busStopLabel}</span>
+                            <span className="shrink-0 text-muted-foreground">
+                                {issue.status === "stuck"
+                                    ? "вход замкнут > 30 мин"
+                                    : `шумит${issue.pulses24h !== null ? `: ${issue.pulses24h} за сутки` : ""}`}
+                            </span>
+                        </div>
+                    ))}
+                    <p className="pt-1 text-[11px] text-muted-foreground">
+                        Сигналы этих датчиков не считаются тревогой, пока их не проверят на месте.
+                    </p>
+                </div>
+            )}
+        </div>
+    )
+}
+
+function GlassEventsCard({ events, issues }: { events: GlassEvent[]; issues: GlassSensorIssue[] }) {
     const [expanded, setExpanded] = useState(false)
     const shown = expanded ? events.slice(0, 50) : events.slice(0, 5)
 
@@ -191,6 +236,7 @@ function GlassEventsCard({ events }: { events: GlassEvent[] }) {
                 </CardDescription>
             </CardHeader>
             <CardContent>
+                <GlassIssuesList issues={issues} />
                 {events.length === 0 ? (
                     <div className="flex h-[260px] flex-col items-center justify-center gap-2 rounded-lg border border-dashed text-center text-sm text-muted-foreground">
                         <ShieldAlert className="h-7 w-7 text-emerald-500/70" />
@@ -332,7 +378,7 @@ export function StopSensorAnalytics() {
                 {CHART_CATEGORIES.map((category) => (
                     <SensorChart key={category} category={category} points={series} hours={hours} singleStop={singleStop} />
                 ))}
-                <GlassEventsCard events={events} />
+                <GlassEventsCard events={events} issues={data?.glassIssues ?? []} />
             </div>
 
             <Card>

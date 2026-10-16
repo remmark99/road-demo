@@ -52,6 +52,17 @@ export interface GlassEvent {
     recordedAt: string
 }
 
+/** Датчик стекла, который поллер вывел из тревог до проверки на месте. */
+export interface GlassSensorIssue {
+    busStopId: number
+    busStopLabel: string
+    /** noisy — срабатывает слишком часто, stuck — вход замкнут дольше получаса. */
+    status: "noisy" | "stuck"
+    /** Импульсов за последние сутки. */
+    pulses24h: number | null
+    updatedAt: string | null
+}
+
 export interface StopSensorHistoryResponse {
     range: { from: string; to: string }
     bucketMinutes: number
@@ -64,6 +75,7 @@ export interface StopSensorHistoryResponse {
     series: StopSensorSeriesPoint[]
     recent: StopSensorHistoryRow[]
     events: GlassEvent[]
+    glassIssues?: GlassSensorIssue[]
 }
 
 interface FetchSensorHistoryOptions {

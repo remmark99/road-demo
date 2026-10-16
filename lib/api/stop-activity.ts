@@ -55,6 +55,23 @@ export interface StopActivityEntry {
      * «вандализм», — то есть из одного и того же срабатывания.
      */
     incident: boolean
+    /**
+     * Статус датчика стекла, который считает поллер (строка `glass_status` в
+     * `stop_sensor_states`): `alarm` — свежее срабатывание, `noisy` — датчик
+     * срабатывает слишком часто и тревогой не считается, `stuck` — вход замкнут
+     * дольше получаса. `null` — поллер статус ещё не прислал, тогда инцидент
+     * выводится по сырому входу, как раньше.
+     */
+    glass_status: GlassSensorStatus | null
+}
+
+export type GlassSensorStatus = 'normal' | 'alarm' | 'noisy' | 'stuck'
+
+/** Категория служебной строки со статусом датчика стекла. */
+export const GLASS_STATUS_CATEGORY = 'glass_status'
+
+function toGlassStatus(alarm: string | null | undefined): GlassSensorStatus {
+    return alarm === 'alarm' || alarm === 'noisy' || alarm === 'stuck' ? alarm : 'normal'
 }
 
 export interface StopActivityResponse {
@@ -163,6 +180,7 @@ export function buildStopActivity({
     const monitored = indexEquipmentStatus(equipmentRows)
     const latestSensorAt = new Map<number, string>()
     const incidents = new Set<number>()
+    const glassStatus = new Map<number, GlassSensorStatus>()
 
     for (const row of sensorRows) {
         const stopId = row.bus_stop_id
@@ -171,6 +189,16 @@ export function buildStopActivity({
         const previous = latestSensorAt.get(stopId)
         if (row.updated_at && (!previous || row.updated_at > previous)) {
             latestSensorAt.set(stopId, row.updated_at)
+        }
+
+        // Отфильтрованный поллером статус стекла важнее сырого входа: фоновые
+        // импульсы, «шумные» и залипшие датчики инцидентом не считаются.
+        if (row.category === GLASS_STATUS_CATEGORY) {
+            const status = toGlassStatus(row.alarm)
+            // Свежая тревога — только пока поллер видит остановку; «шумный» и
+            // «залип» держатся до проверки на месте.
+            glassStatus.set(stopId, status === 'alarm' && !isFresh(row.updated_at, windowMs, now) ? 'normal' : status)
+            continue
         }
 
         // Mirrors the alarm derivation in components/map/bus-stop-modal.tsx.
@@ -228,7 +256,10 @@ export function buildStopActivity({
             activity_status: resolveActivityStatus(sensorsOnline, camerasOnline),
             last_ping_at: lastPingAt,
             last_sensor_at: lastSensorAt,
-            incident: incidents.has(stop.id),
+            incident: glassStatus.has(stop.id)
+                ? glassStatus.get(stop.id) === 'alarm'
+                : incidents.has(stop.id),
+            glass_status: glassStatus.get(stop.id) ?? null,
         }
     }
 

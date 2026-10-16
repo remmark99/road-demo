@@ -145,9 +145,16 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
     // Любое отклонение от нормы — инцидент; причину датчик не знает, поэтому
     // событие её и не называет. "glass_break" — категория старых записей,
     // новые приходят как "incident".
-    const incidentAlarm = glass?.glassBreak === true
-        || realReadings.some((r) => isDeviation(r.glassBreakAlarm))
-        || realAlerts.some((a) => (a.category === "incident" || a.category === "glass_break") && isDeviation(a.alarm))
+    // Если поллер прислал отфильтрованный статус стекла, верим ему: фоновые
+    // импульсы, «шумный» и залипший датчик тревогой не считаются. Иначе — как
+    // раньше, по сырому входу и последним событиям.
+    const glassStatus = busStop.sensor_data?.glass_status ?? null
+    const glassSensorIssue = glassStatus === "noisy" || glassStatus === "stuck" ? glassStatus : null
+    const incidentAlarm = glassStatus
+        ? glassStatus === "alarm"
+        : glass?.glassBreak === true
+            || realReadings.some((r) => isDeviation(r.glassBreakAlarm))
+            || realAlerts.some((a) => (a.category === "incident" || a.category === "glass_break") && isDeviation(a.alarm))
 
     // Показание вне порогов, заданных в настройках анализа: тот же статус, по
     // которому оператору ушло уведомление о температуре или влажности.
@@ -247,6 +254,17 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                 </div>
                             )}
 
+                            {sensorsOnline && glassSensorIssue && (
+                                <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/25 text-amber-700 dark:text-amber-300 text-sm flex gap-2">
+                                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                                    <span>
+                                        {glassSensorIssue === "stuck"
+                                            ? "Вход датчика стекла замкнут дольше 30 минут: возможна неисправность или повреждение. Нужна проверка на месте."
+                                            : "Датчик стекла срабатывает слишком часто (больше 10 раз за сутки). Такие сигналы не считаются тревогой — нужна проверка датчика."}
+                                    </span>
+                                </div>
+                            )}
+
                             {/* Sensor Grid */}
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
@@ -264,10 +282,10 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
-                                    <Hammer className={`h-5 w-5 mb-2 ${sensorsOnline ? (incidentAlarm ? 'text-red-500' : 'text-emerald-500') : 'text-muted-foreground'}`} />
+                                    <Hammer className={`h-5 w-5 mb-2 ${sensorsOnline ? (incidentAlarm ? 'text-red-500' : glassSensorIssue ? 'text-amber-500' : 'text-emerald-500') : 'text-muted-foreground'}`} />
                                     <div className="text-xs text-muted-foreground">Датчик стекла</div>
                                     <div className="font-medium mt-0.5">
-                                        {sensorsOnline ? (incidentAlarm ? 'Тревога' : 'Норма') : '—'}
+                                        {sensorsOnline ? (incidentAlarm ? 'Тревога' : glassSensorIssue ? 'Проверить' : 'Норма') : '—'}
                                     </div>
                                 </div>
                             </div>
