@@ -4,6 +4,7 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { createClient } from "@/lib/supabase/client"
 import { isStopSensorsOnly } from "@/lib/access-scope"
 import { filterModulesByLicense, type LicenseState } from "@/lib/license-modules"
+import { defaultActiveModules } from "@/lib/default-active-modules"
 
 const ACTIVE_MODULES_KEY = "road-demo-active-modules"
 
@@ -132,6 +133,11 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
                         setFullName(data.full_name || null)
                         setPhone(data.phone || null)
 
+                        const firstVisitModules = defaultActiveModules(
+                            dbModules,
+                            process.env.NEXT_PUBLIC_DEFAULT_ACTIVE_MODULES
+                        )
+
                         // Load saved active modules from localStorage
                         try {
                             const saved = localStorage.getItem(ACTIVE_MODULES_KEY)
@@ -154,8 +160,8 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
                                     setActiveModulesState(dbModules)
                                 }
                             } else {
-                                // First time: all modules active
-                                setActiveModulesState(dbModules)
+                                // First time: modules from NEXT_PUBLIC_DEFAULT_ACTIVE_MODULES (all if unset)
+                                setActiveModulesState(firstVisitModules)
                             }
                         } catch {
                             setActiveModulesState(dbModules)
