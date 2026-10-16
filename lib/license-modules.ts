@@ -47,3 +47,20 @@ export function filterModulesByLicense(
     const granted = new Set(licenseModules)
     return userModules.filter(section => granted.has(section))
 }
+
+/**
+ * Временный демо-доступ: модули из `LICENSE_DEMO_MODULES` (через запятую) добавляются
+ * к модулям подписанной лицензии, пока переменная задана на сервере. Нужен, чтобы
+ * показать заказчику непроданные модули без перевыпуска license.key; убирается
+ * удалением переменной. Работает только поверх действующей лицензии.
+ */
+export function withDemoModules(
+    licenseModules: readonly string[],
+    demoModules: string | undefined,
+): { modules: string[]; demo: string[] } {
+    const licensed = new Set(licenseModules)
+    const demo = Array.from(new Set(
+        (demoModules || '').split(',').map((module) => module.trim()).filter(Boolean),
+    )).filter((module) => !licensed.has(module))
+    return { modules: [...licenseModules, ...demo], demo }
+}
