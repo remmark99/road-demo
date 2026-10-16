@@ -31,8 +31,11 @@ import {
   ALARM_CONFIG,
   CATEGORY_LABELS,
   FILTERABLE_CATEGORIES,
+  CONTROLLER_LINK_CATEGORIES,
   type ControllerAlert,
 } from "@/lib/api/controller-alerts"
+import { controllerKindFilter, feedKindTypes, type FeedKind } from "@/lib/notifications/feed-kind"
+import { FeedKindToggle } from "@/components/notifications/feed-kind-toggle"
 import { CLIMATE_ELEMENT, GLASS_BREAK_ELEMENT } from "@/lib/api/measurements"
 import type { Alert, Camera } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
@@ -757,6 +760,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
 
   const [selectedTypes, setSelectedTypes] = useState<string[]>(querySelectedTypes)
   const [repairShortcutSelected, setRepairShortcutSelected] = useState(false)
+  const [feedKind, setFeedKind] = useState<FeedKind>('all')
   const [selectedCameras, setSelectedCameras] = useState<number[]>(querySelectedCameras)
   const [cameraSearch, setCameraSearch] = useState('')
   const effectiveCameras = useMemo(() => filteredCameraIndexes(places, cameraSearch, selectedCameras), [places, cameraSearch, selectedCameras])
@@ -832,6 +836,15 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
         : selectedTypes,
     [repairShortcutSelected, repairTypes, selectedTypes]
   )
+  const requestTypes = useMemo(
+    () =>
+      feedKindTypes(
+        effectiveSelectedTypes.length > 0 ? effectiveSelectedTypes : allowedTypes,
+        feedKind,
+        ALERT_CATEGORIES.bus_stop_equipment.types
+      ),
+    [allowedTypes, effectiveSelectedTypes, feedKind]
+  )
 
   useEffect(() => { setPage(0) }, [period.from, period.to, period.start, period.end])
 
@@ -842,13 +855,10 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
       setAlerts([]); setLyingPersonEpisodes([]); setTotal(0); setLoading(false); return
     }
     const request =
-      allowedTypes.length === 0
+      requestTypes.length === 0
         ? Promise.resolve({ alerts: [], total: 0, hasMore: false })
         : fetchAlerts({
-            types:
-              effectiveSelectedTypes.length > 0
-                ? effectiveSelectedTypes
-                : allowedTypes,
+            types: requestTypes,
             ...bounds,
             cameraIndexes: effectiveCameras,
             moduleName: sourceModule,
@@ -881,7 +891,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
       cancelled = true
     }
   }, [
-    effectiveSelectedTypes,
+    requestTypes,
     effectiveCameras,
     period.from,
     period.to,
@@ -890,7 +900,6 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
     sourceModule,
     page,
     pageSize,
-    allowedTypes,
     episodeRefreshTick,
   ])
 
@@ -920,17 +929,24 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
     setRepairShortcutSelected((prev) => !prev)
   }
 
+  const changeFeedKind = (kind: FeedKind) => {
+    setLoading(true)
+    setPage(0)
+    setFeedKind(kind)
+  }
+
   const clearFilters = () => {
     setLoading(true)
     setPage(0)
     setSelectedTypes([])
     setRepairShortcutSelected(false)
+    setFeedKind('all')
     setSelectedCameras([])
     setCameraSearch('')
   }
 
   const hasFilters =
-    selectedTypes.length > 0 || repairShortcutSelected || selectedCameras.length > 0 || !!cameraSearch
+    selectedTypes.length > 0 || repairShortcutSelected || feedKind !== 'all' || selectedCameras.length > 0 || !!cameraSearch
   const onlineCameras = cameras.filter((c) => c.status === "online")
   const demoAlerts = useMemo<Alert[]>(() => {
     const resolveCameraIndex = (module: DemoAlertSeed["module"]) => {
@@ -969,9 +985,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
   const filteredDemoAlerts = useMemo(
     () =>
       demoAlerts.filter((alert) => {
-        const typeMatches =
-          effectiveSelectedTypes.length === 0 ||
-          effectiveSelectedTypes.includes(alert.alert_type)
+        const typeMatches = requestTypes.includes(alert.alert_type)
         const cameraMatches =
           effectiveCameras === undefined ||
           (alert.camera_index !== null && effectiveCameras.includes(alert.camera_index))
@@ -982,7 +996,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
         } catch { /* Invalid period has no results. */ }
         return typeMatches && cameraMatches && periodMatches && (!sourceModule || alert.module_name === sourceModule)
       }),
-    [demoAlerts, sourceModule, effectiveSelectedTypes, effectiveCameras, period.from, period.to, period.start, period.end]
+    [demoAlerts, sourceModule, requestTypes, effectiveCameras, period.from, period.to, period.start, period.end]
   )
   const visibleAlerts = useMemo(
     () => [...alerts, ...(page === 0 ? filteredDemoAlerts : [])],
@@ -1015,6 +1029,13 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
           </div>
         </div>
         <CardContent className="space-y-4 pt-0">
+          {hasStops && (
+            <>
+              <FeedKindToggle value={feedKind} onChange={changeFeedKind} />
+              <Separator />
+            </>
+          )}
+
           {hasRoads && (
             <>
               {/* Спецтехника */}
@@ -1317,7 +1338,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <PeriodFilter value={period} onChange={onPeriodChange} />
-        <EventsExport channel="cameras" period={period} filters={{module:sourceModule,types:(effectiveSelectedTypes.length ? effectiveSelectedTypes : allowedTypes).join(','),cameras:selectedCameras.join(','),search:cameraSearch}} />
+        <EventsExport channel="cameras" period={period} filters={{module:sourceModule,types:requestTypes.join(','),cameras:selectedCameras.join(','),search:cameraSearch}} />
       </div>
 
       <ResultsHeader
@@ -1714,6 +1735,11 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
   const [selectedElements, setSelectedElements] = useState<number[]>([])
   const [selectedAlarms, setSelectedAlarms] = useState<string[]>([])
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
+  const [feedKind, setFeedKind] = useState<FeedKind>('all')
+  const kindFilter = useMemo(
+    () => controllerKindFilter(selectedCategories, feedKind, CONTROLLER_LINK_CATEGORIES),
+    [selectedCategories, feedKind]
+  )
   const [alerts, setAlerts] = useState<ControllerAlert[]>([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -1730,11 +1756,15 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
     try { bounds = notificationPeriodBounds(period) } catch {
       setAlerts([]); setTotal(0); setLoading(false); return
     }
+    if (kindFilter.empty) {
+      setAlerts([]); setTotal(0); setLoading(false); return
+    }
     fetchControllerAlerts({
       ...bounds,
       elements: selectedElements.length > 0 ? selectedElements : undefined,
       alarms: selectedAlarms.length > 0 ? selectedAlarms : undefined,
-      categories: selectedCategories.length > 0 ? selectedCategories : undefined,
+      categories: kindFilter.categories,
+      excludeCategories: kindFilter.excludeCategories,
       limit: pageSize,
             countExact: false,
       offset: page * pageSize,
@@ -1745,7 +1775,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
       setLoading(false)
     })
     return () => { cancelled = true }
-  }, [selectedElements, selectedAlarms, selectedCategories, page, pageSize, period.from, period.to, period.start, period.end])
+  }, [selectedElements, selectedAlarms, kindFilter, page, pageSize, period.from, period.to, period.start, period.end])
 
   const totalPages = Math.ceil(total / pageSize)
 
@@ -1775,18 +1805,26 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
     )
   }
 
+  const changeFeedKind = (kind: FeedKind) => {
+    setLoading(true)
+    setPage(0)
+    setFeedKind(kind)
+  }
+
   const clearFilters = () => {
     setLoading(true)
     setPage(0)
     setSelectedElements([])
     setSelectedAlarms([])
     setSelectedCategories([])
+    setFeedKind('all')
   }
 
   const hasFilters =
     selectedElements.length > 0 ||
     selectedAlarms.length > 0 ||
-    selectedCategories.length > 0
+    selectedCategories.length > 0 ||
+    feedKind !== 'all'
 
   return (
     <>
@@ -1810,6 +1848,10 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
           </div>
         </div>
         <CardContent className="space-y-4 pt-0">
+          <FeedKindToggle value={feedKind} onChange={changeFeedKind} />
+
+          <Separator />
+
           {/* Element filter */}
           <div>
             <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">

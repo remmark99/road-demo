@@ -23,6 +23,8 @@ export interface FetchControllerAlertsOptions {
     elements?: number[]
     alarms?: string[]
     categories?: string[]
+    /** Categories to leave out (used by the «События» feed mode). */
+    excludeCategories?: string[]
     /** Restrict to the stop whose controller raised the alarm. */
     busStopId?: number
     limit?: number
@@ -135,7 +137,7 @@ export function fetchControllerAlerts(options: FetchControllerAlertsOptions = {}
     return sessionRequest(`controller-alerts:${JSON.stringify(options)}`, 15_000, () => loadfetchControllerAlerts(options))
 }
 async function loadfetchControllerAlerts(options: FetchControllerAlertsOptions): Promise<ControllerAlertsResult> {
-    const { elements, alarms, categories, busStopId, fromInclusive, toExclusive, limit = 25, offset = 0 } = options
+    const { elements, alarms, categories, excludeCategories, busStopId, fromInclusive, toExclusive, limit = 25, offset = 0 } = options
 
     const build = (withBusStopId: boolean) => {
         let query = supabase
@@ -157,6 +159,11 @@ async function loadfetchControllerAlerts(options: FetchControllerAlertsOptions):
 
         if (categories && categories.length > 0) {
             query = query.in('category', expandCategoryFilter(categories))
+        }
+
+        if (excludeCategories && excludeCategories.length > 0) {
+            // NOT IN alone would also drop rows without a category.
+            query = query.or(`category.is.null,category.not.in.(${expandCategoryFilter(excludeCategories).join(',')})`)
         }
 
         if (withBusStopId && busStopId !== undefined) {
