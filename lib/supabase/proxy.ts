@@ -1,3 +1,4 @@
+import { getSupabaseUrl, getSupabaseCookieOptions } from '@/lib/supabase/endpoint'
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { isStopSensorsOnly, STOP_SENSORS_API_PREFIXES } from '@/lib/access-scope'
@@ -8,9 +9,10 @@ export async function updateSession(request: NextRequest) {
     })
 
     const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        getSupabaseUrl(),
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
+            cookieOptions: getSupabaseCookieOptions(),
             cookies: {
                 getAll() {
                     return request.cookies.getAll()

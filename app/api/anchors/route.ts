@@ -1,3 +1,4 @@
+import { getSupabaseUrl, getSupabaseCookieOptions } from '@/lib/supabase/endpoint'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
@@ -9,9 +10,10 @@ export const revalidate = 0
 export async function GET(request: Request) {
     const cookieStore = await cookies()
     const supabase = createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        getSupabaseUrl(),
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
+            cookieOptions: getSupabaseCookieOptions(),
             cookies: {
                 getAll() {
                     return cookieStore.getAll()

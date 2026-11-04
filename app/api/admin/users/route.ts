@@ -1,3 +1,4 @@
+import { getSupabaseUrl } from '@/lib/supabase/endpoint'
 import { NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
@@ -10,7 +11,7 @@ const getAdminSupabase = () => {
         throw new Error('Отсутствует SUPABASE_SERVICE_ROLE_KEY в .env.local')
     }
     return createSupabaseClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        getSupabaseUrl(),
         serviceRoleKey,
         {
             auth: {
@@ -26,7 +27,7 @@ const verifyAdmin = async () => {
     try {
         const cookieStore = await cookies()
         const supabase = createServerClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            getSupabaseUrl(),
             process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
             {
                 cookies: {

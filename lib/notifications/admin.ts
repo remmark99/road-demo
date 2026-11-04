@@ -1,9 +1,10 @@
+import { getSupabaseUrl } from '@/lib/supabase/endpoint'
 import "server-only"
 
 import { createClient } from "@supabase/supabase-js"
 
 export function createNotificationAdminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const url = getSupabaseUrl()
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!url || !serviceRoleKey) {

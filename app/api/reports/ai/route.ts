@@ -1,3 +1,4 @@
+import { getSupabaseUrl } from '@/lib/supabase/endpoint'
 import { NextResponse } from "next/server"
 import { createClient as createSupabaseClient } from "@supabase/supabase-js"
 import { getAuthenticatedUser, jsonError } from "@/lib/notifications/http"
@@ -156,7 +157,7 @@ function isWeeklyStopLoadReportPrompt(prompt: string) {
 }
 
 function getSupabaseDirectClient() {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const url = getSupabaseUrl()
     const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
     if (!url || !key) {
