@@ -1,0 +1,1 @@
+{"extends":"./tsconfig.json","compilerOptions":{"target":"ES2022","incremental":false},"include":["next-env.d.ts","app/notifications/page.tsx","components/notifications/glass-evidence.tsx","lib/api/controller-alerts.ts"],"exclude":["node_modules"]}

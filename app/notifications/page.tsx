@@ -1,5 +1,6 @@
 "use client"
 
+import { GlassEvidencePanel } from '@/components/notifications/glass-evidence'
 import { EventsExport } from '@/components/notifications/events-export'
 import { getAbandonedEpisode } from '@/lib/notifications/abandoned-episode'
 import { PeriodFilter } from '@/components/notifications/period-filter'
@@ -2081,6 +2082,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
                   </div>
 
                   {/* Expanded view when alert has image / clip */}
+                  {isExpanded && <GlassEvidencePanel alert={alert} />}
                   {isExpanded && hasMedia && alert.clip_path && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

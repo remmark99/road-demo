@@ -14,6 +14,21 @@ export interface ControllerAlert {
     message: string
     clip_path?: string | null
     bus_stop_id?: number | null
+    metadata?: { glass_episode?: {
+        status: 'open' | 'closed'
+        started_at: string
+        last_seen_at: string
+        last_checked_at?: string
+        ended_at?: string
+        first_evidence: GlassEvidence[]
+        latest_evidence: GlassEvidence[]
+    } }
+}
+
+export interface GlassEvidence {
+    camera_index: number
+    before?: { timestamp: number; url: string }
+    after: { timestamp: number; url: string }
 }
 
 export interface FetchControllerAlertsOptions {
