@@ -234,6 +234,17 @@ AS $$
             'park_trash_overflow'
          ]::TEXT[])
         THEN 'bin_full'
+        -- Срабатывание датчика на остановке — один тип события «инцидент».
+        -- Датчик фиксирует отклонение, но не его причину, поэтому старые
+        -- категории сворачиваются сюда же (sql/incident_event_type_migration.sql).
+        WHEN event_source = 'controller_alerts'
+         AND access_module = 'stops'
+         AND raw_event_type = ANY(ARRAY[
+            'incident',
+            'glass_break',
+            'digital input'
+         ]::TEXT[])
+        THEN 'incident'
         ELSE COALESCE(raw_event_type, 'event')
     END
 $$;
