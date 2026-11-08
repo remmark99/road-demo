@@ -1640,7 +1640,8 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
   // Fly to a stop picked in the sidebar (списки камер / датчиков)
   useEffect(() => {
-    if (!map.current || !mapLoaded || !focusTarget || lastFocusRequest.current === focusTarget.requestId) return
+    // Без данных остановок запрос не тратим: по ссылке он приходит раньше них.
+    if (!map.current || !mapLoaded || !busStopsData || !focusTarget || lastFocusRequest.current === focusTarget.requestId) return
     lastFocusRequest.current = focusTarget.requestId
 
     // Остановка может быть скрыта фильтром — тогда зумиться было бы не к чему.
@@ -1658,7 +1659,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
 
     if (feature) {
       setSelectedCamera(null)
-      setSelectedBusStop({ ...feature.properties, initialTab: focusTarget.spiderify ? "cameras" : "sensors" })
+      setSelectedBusStop({ ...feature.properties, initialTab: focusTarget.spiderify ? "cameras" : "sensors", initialCameraIndex: focusTarget.cameraIndex })
     }
   }, [focusTarget, mapLoaded, busStopsData, setBusStopFilters])
 

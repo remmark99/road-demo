@@ -91,7 +91,7 @@ const SUBTYPE_COLORS = [
 // ─── Main Component ──────────────────────────────────
 
 export function SecurityAnalytics() {
-    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "week" })
+    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
     const [selectedStops, setSelectedStops] = useState<BusStopId[]>(
         BUS_STOPS.map((s) => s.id)
     )
@@ -241,9 +241,6 @@ export function SecurityAnalytics() {
                             <ShieldAlert className="h-5 w-5 text-amber-500" />
                             События по дням
                         </CardTitle>
-                        <CardDescription>
-                            Распределение инцидентов по дням недели
-                        </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <ChartContainer config={dailyStackedConfig} className="h-[320px] w-full">
@@ -268,9 +265,6 @@ export function SecurityAnalytics() {
                             <AlertTriangle className="h-5 w-5 text-red-500" />
                             Почасовое распределение
                         </CardTitle>
-                        <CardDescription>
-                            Когда чаще всего происходят инциденты
-                        </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <ChartContainer config={hourlyLineConfig} className="h-[320px] w-full">
@@ -295,9 +289,6 @@ export function SecurityAnalytics() {
                             <Package className="h-5 w-5 text-violet-500" />
                             Типы событий
                         </CardTitle>
-                        <CardDescription>
-                            Детальная разбивка по подтипам
-                        </CardDescription>
                     </CardHeader>
                     <CardContent className="flex flex-col md:flex-row items-center gap-4">
                         <ChartContainer
@@ -353,9 +344,6 @@ export function SecurityAnalytics() {
                             <ShieldAlert className="h-5 w-5 text-blue-500" />
                             Последние инциденты
                         </CardTitle>
-                        <CardDescription>
-                            Журнал событий безопасности
-                        </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <ScrollArea className="h-[320px]">

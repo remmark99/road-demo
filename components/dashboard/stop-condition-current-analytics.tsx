@@ -22,7 +22,7 @@ import {
 } from "lucide-react"
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
-import { Badge } from "@/components/ui/badge"
+import { cityDayStart, cityRange } from "@/lib/analytics/city-time"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -159,64 +159,6 @@ function getEventCameraIndexes(event: TrashOverflowEvent) {
     return typeof event.cameraIndex === "number" ? [event.cameraIndex] : []
 }
 
-function startOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(0, 0, 0, 0)
-    return result
-}
-
-function endOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(23, 59, 59, 999)
-    return result
-}
-
-function getRangeBounds(result: TimeRangeResult): RangeBounds {
-    const now = new Date()
-
-    if (result.preset === "custom" && result.customRange?.from) {
-        return {
-            from: startOfLocalDay(result.customRange.from),
-            to: result.customRange.to ? endOfLocalDay(result.customRange.to) : endOfLocalDay(result.customRange.from),
-        }
-    }
-
-    if (result.preset === "yesterday") {
-        const yesterday = new Date(now)
-        yesterday.setDate(now.getDate() - 1)
-
-        return {
-            from: startOfLocalDay(yesterday),
-            to: endOfLocalDay(yesterday),
-        }
-    }
-
-    if (result.preset === "week") {
-        const weekAgo = new Date(now)
-        weekAgo.setDate(now.getDate() - 7)
-
-        return {
-            from: weekAgo,
-            to: now,
-        }
-    }
-
-    if (result.preset === "month") {
-        const monthAgo = new Date(now)
-        monthAgo.setDate(now.getDate() - 30)
-
-        return {
-            from: monthAgo,
-            to: now,
-        }
-    }
-
-    return {
-        from: startOfLocalDay(now),
-        to: now,
-    }
-}
-
 function getTimestampMs(iso: string) {
     const timestamp = new Date(iso).getTime()
     return Number.isFinite(timestamp) ? timestamp : null
@@ -347,8 +289,8 @@ async function fetchTrashOverflowEventsForRange(range: RangeBounds) {
 
     const latestDate = new Date(latestAlert.timestamp)
     const fallbackRange = {
-        from: startOfLocalDay(latestDate),
-        to: endOfLocalDay(latestDate),
+        from: cityDayStart(latestDate),
+        to: new Date(cityDayStart(latestDate).getTime() + 86_400_000 - 1),
     }
     const fallbackAlerts = await fetchStopTrashOverflowAlerts({
         from: fallbackRange.from,
@@ -574,15 +516,13 @@ function buildStopDurationChartRows(summaries: StopTrashSummary[]): StopDuration
 function KpiCard({
     title,
     value,
-    caption,
     detail,
     icon: Icon,
     tone = "normal",
 }: {
     title: string
     value: string
-    caption: string
-    detail: string
+    detail?: string
     icon: typeof Trash2
     tone?: KpiTone
 }) {
@@ -614,10 +554,11 @@ function KpiCard({
                     <Icon className="h-5 w-5" />
                 </div>
             </CardHeader>
-            <CardContent className="space-y-1">
-                <p className="text-sm text-muted-foreground">{caption}</p>
-                <p className="text-xs font-medium text-foreground">{detail}</p>
-            </CardContent>
+            {detail && (
+                <CardContent>
+                    <p className="text-xs font-medium text-foreground">{detail}</p>
+                </CardContent>
+            )}
         </Card>
     )
 }
@@ -646,7 +587,7 @@ export function StopConditionCurrentAnalytics() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    const range = useMemo(() => getRangeBounds(timeRange), [timeRange])
+    const range = useMemo(() => cityRange(timeRange), [timeRange])
 
     useEffect(() => {
         let cancelled = false
@@ -694,7 +635,6 @@ export function StopConditionCurrentAnalytics() {
         .map((event) => event.timestamp)
         .sort((a, b) => b.localeCompare(a))[0] ?? null
     const totalDurationMs = episodes.reduce((sum, episode) => sum + episode.durationMs, 0)
-    const totalConfirmations = data?.events.length ?? 0
     const longestEpisode = episodes[0] ?? null
     const repeatedEpisodes = episodes.filter((episode) => episode.confirmations > 1).length
     const trashNotificationsHref = buildNotificationsHref({
@@ -713,14 +653,7 @@ export function StopConditionCurrentAnalytics() {
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">Состояние остановок</h2>
-                        <Badge variant="outline" className="gap-1">
-                            <Trash2 className="h-3 w-3" />
-                            переполненные урны
-                        </Badge>
                     </div>
-                    <p className="max-w-3xl text-sm text-muted-foreground">
-                        Текущая аналитика группирует подтверждения переполненных урн в эпизоды по одной остановке. Повторные фиксации без длительного разрыва считаются одним периодом, за который урна оставалась переполненной.
-                    </p>
                 </div>
                 <div className="text-sm text-muted-foreground lg:text-right">
                     <div>Период: {formatDateTime(data?.displayedRange.from.toISOString() ?? range.from.toISOString())} - {formatDateTime(data?.displayedRange.to.toISOString() ?? range.to.toISOString())}</div>
@@ -790,32 +723,25 @@ export function StopConditionCurrentAnalytics() {
                         <KpiCard
                             title="Остановок с переполнением"
                             value={integerFormat.format(stopSummaries.length)}
-                            caption="за выбранный период"
-                            detail={`${integerFormat.format(totalConfirmations)} подтверждений от видеоаналитики`}
                             icon={Trash2}
                             tone="normal"
                         />
                         <KpiCard
                             title="Суммарная длительность"
                             value={formatDuration(totalDurationMs)}
-                            caption="по всем эпизодам"
-                            detail="считается как время от первого до последнего подтверждения в эпизоде"
                             icon={Clock3}
                             tone={totalDurationMs > 0 ? "attention" : "success"}
                         />
                         <KpiCard
                             title="Самый долгий эпизод"
                             value={formatDuration(longestEpisode?.durationMs ?? 0)}
-                            caption={longestEpisode ? formatInterval(longestEpisode.startAt, longestEpisode.endAt) : "нет эпизодов"}
-                            detail={longestEpisode ? `${integerFormat.format(longestEpisode.confirmations)} подтверждений` : "подтверждений нет"}
+                            detail={longestEpisode ? formatInterval(longestEpisode.startAt, longestEpisode.endAt) : undefined}
                             icon={TimerReset}
                             tone={longestEpisode && longestEpisode.durationMs > 0 ? "high" : "success"}
                         />
                         <KpiCard
                             title="Эпизодов"
                             value={integerFormat.format(episodes.length)}
-                            caption={`${integerFormat.format(repeatedEpisodes)} повторных / ${integerFormat.format(episodes.length - repeatedEpisodes)} разовых`}
-                            detail="разрыв больше 2 часов начинает новый эпизод"
                             icon={AlertCircle}
                             tone={repeatedEpisodes > 0 ? "attention" : "normal"}
                         />
@@ -828,9 +754,6 @@ export function StopConditionCurrentAnalytics() {
                                     <Clock3 className="h-5 w-5 text-amber-500" />
                                     Переполнение по часам суток
                                 </CardTitle>
-                                <CardDescription>
-                                    Число остановок с переполненной урной в каждый час суток за выбранный период.
-                                </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <ChartContainer config={hourlyConfig} className="h-[320px] w-full">
@@ -851,9 +774,6 @@ export function StopConditionCurrentAnalytics() {
                                     <Trash2 className="h-5 w-5 text-red-500" />
                                     Точки уборки
                                 </CardTitle>
-                                <CardDescription>
-                                    Остановки с наибольшей суммарной длительностью переполнения
-                                </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <ChartContainer config={stopConfig} className="h-[320px] w-full">

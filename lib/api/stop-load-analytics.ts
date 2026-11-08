@@ -28,10 +28,6 @@ export interface StopLoadAnalyticsData {
     fallbackRange: StopLoadRange | null
     locationHours: StopLoadLocationHourRow[]
     locations: StopLoadLocationSummary[]
-    truncated: boolean
-    limit: number
-    sourceRows: number
-    totalRows: number | null
 }
 
 interface StopLoadAnalyticsResponse {
@@ -45,10 +41,6 @@ interface StopLoadAnalyticsResponse {
     } | null
     locationHours: StopLoadLocationHourRow[]
     locations: StopLoadLocationSummary[]
-    truncated: boolean
-    limit: number
-    sourceRows: number
-    totalRows: number | null
 }
 
 function toDateRange(range: StopLoadAnalyticsResponse["displayedRange"]): StopLoadRange {

@@ -1,7 +1,8 @@
 "use client"
 
-import { useState, type ComponentType } from "react"
+import { Suspense, useState, type ComponentType } from "react"
 import dynamic from "next/dynamic"
+import { useSearchParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
 import {
   BarChart3,
@@ -284,8 +285,10 @@ function getFirstAvailableStopMode(dashboard: DashboardDefinition | undefined) {
   return getAvailableStopModes(dashboard)[0] ?? null
 }
 
-export default function DashboardPage() {
-  const [activeView, setActiveView] = useState<DashboardView>("stop_condition")
+function DashboardContent() {
+  const searchParams = useSearchParams()
+  // Вкладка хранится в адресе, чтобы кнопка «назад» возвращала на неё же.
+  const [activeView, setActiveView] = useState<DashboardView>(() => (searchParams.get("view") as DashboardView | null) ?? "stop_condition")
   const [stopMode, setStopMode] = useState<StopAnalyticsMode>("current")
   const [expandedSections, setExpandedSections] = useState(SIDEBAR_SECTION_DEFAULTS)
   const { hasModule, loading: modulesLoading } = useModuleAccess()
@@ -333,6 +336,7 @@ export default function DashboardPage() {
     }
 
     setActiveView(dashboard.id)
+    window.history.replaceState(null, "", `?view=${dashboard.id}`)
   }
 
   const renderDashboardButton = (dashboard: DashboardDefinition) => {
@@ -541,5 +545,13 @@ export default function DashboardPage() {
         </div>
       </div>
     </main>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-background" />}>
+      <DashboardContent />
+    </Suspense>
   )
 }

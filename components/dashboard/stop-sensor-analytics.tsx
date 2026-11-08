@@ -14,17 +14,18 @@ import {
 import { Area, CartesianGrid, ComposedChart, Line, XAxis, YAxis } from "recharts"
 
 import {
-    SENSOR_HISTORY_PERIODS,
     fetchStopSensorHistory,
     type GlassEvent,
     type GlassSensorIssue,
-    type SensorHistoryHours,
     type StopSensorHistoryResponse,
     type StopSensorSeriesPoint,
 } from "@/lib/api/stop-sensor-history"
+import { cityRange } from "@/lib/analytics/city-time"
+import { sensorCityDay } from "@/lib/sensor-history-period"
+import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
     ChartContainer,
     ChartLegend,
@@ -33,24 +34,16 @@ import {
     ChartTooltipContent,
     type ChartConfig,
 } from "@/components/ui/chart"
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
-const REFRESH_MS = 5000
-
-const PERIOD_LABELS: Record<SensorHistoryHours, string> = {
-    1: "1 час",
-    6: "6 часов",
-    24: "24 часа",
-    168: "7 дней",
-}
+// Снимок показаний пишется раз в минуту, чаще опрашивать незачем.
+const REFRESH_MS = 30_000
+const CHART_DAY_MS = 86_400_000
 
 const CATEGORY_META = {
     temperature: { label: "Температура", unit: "°C", color: "hsl(24, 95%, 53%)", icon: Thermometer },
@@ -82,11 +75,14 @@ function formatTimeAgo(value: string | null, nowIso: string | null) {
     return formatDateTime(value)
 }
 
-function formatChartTime(value: string, hours: SensorHistoryHours) {
-    return new Intl.DateTimeFormat("ru-RU", hours > 24
-        ? { timeZone: "Asia/Yekaterinburg", day: "2-digit", month: "2-digit", hour: "2-digit" }
-        : { timeZone: "Asia/Yekaterinburg", hour: "2-digit", minute: "2-digit" }
-    ).format(new Date(value))
+function formatChartTime(value: string, spanMs: number, bucketMinutes: number) {
+    const timeZone = "Asia/Yekaterinburg"
+    const options: Intl.DateTimeFormatOptions = bucketMinutes >= 1440
+        ? { timeZone, day: "2-digit", month: "2-digit" }
+        : spanMs > CHART_DAY_MS
+            ? { timeZone, day: "2-digit", month: "2-digit", hour: "2-digit" }
+            : { timeZone, hour: "2-digit", minute: "2-digit" }
+    return new Intl.DateTimeFormat("ru-RU", options).format(new Date(value))
 }
 
 function formatValue(category: string, value: number | null) {
@@ -106,12 +102,14 @@ function stopCountLabel(count: number) {
 function SensorChart({
     category,
     points,
-    hours,
+    spanMs,
+    bucketMinutes,
     singleStop,
 }: {
     category: KnownCategory
     points: StopSensorSeriesPoint[]
-    hours: SensorHistoryHours
+    spanMs: number
+    bucketMinutes: number
     singleStop: boolean
 }) {
     const meta = CATEGORY_META[category]
@@ -124,12 +122,12 @@ function SensorChart({
             const min = point.minimum ?? avg
             const max = point.maximum ?? avg
             return {
-                time: formatChartTime(point.bucket, hours),
+                time: formatChartTime(point.bucket, spanMs, bucketMinutes),
                 avg: Number(avg.toFixed(1)),
                 low: Number(min.toFixed(1)),
                 band: Number((max - min).toFixed(1)),
             }
-        }), [category, hours, points])
+        }), [bucketMinutes, category, points, spanMs])
 
     const config = useMemo<ChartConfig>(() => ({
         avg: { label: singleStop ? "Показание" : "Среднее по остановкам", color: meta.color },
@@ -144,11 +142,6 @@ function SensorChart({
                     <Icon className="h-5 w-5" style={{ color: meta.color }} />
                     {meta.label}
                 </CardTitle>
-                <CardDescription>
-                    {singleStop
-                        ? `Показание датчика${meta.unit ? `, ${meta.unit}` : ""}.`
-                        : `Среднее по остановкам, затенён диапазон мин–макс${meta.unit ? `, ${meta.unit}` : ""}.`}
-                </CardDescription>
             </CardHeader>
             <CardContent>
                 {chartData.length === 0 ? (
@@ -209,9 +202,6 @@ function GlassIssuesList({ issues }: { issues: GlassSensorIssue[] }) {
                             </span>
                         </div>
                     ))}
-                    <p className="pt-1 text-[11px] text-muted-foreground">
-                        Сигналы этих датчиков не считаются тревогой, пока их не проверят на месте.
-                    </p>
                 </div>
             )}
         </div>
@@ -229,11 +219,6 @@ function GlassEventsCard({ events, issues }: { events: GlassEvent[]; issues: Gla
                     <ShieldAlert className="h-5 w-5 text-rose-500" />
                     Разбитие стекла
                 </CardTitle>
-                <CardDescription>
-                    {events.length > 0
-                        ? `Срабатываний за период: ${events.length}. Показаны последние.`
-                        : "Последние срабатывания датчиков разбития стекла."}
-                </CardDescription>
             </CardHeader>
             <CardContent>
                 <GlassIssuesList issues={issues} />
@@ -267,22 +252,27 @@ function GlassEventsCard({ events, issues }: { events: GlassEvent[]; issues: Gla
 }
 
 export function StopSensorAnalytics() {
-    const [hours, setHours] = useState<SensorHistoryHours>(1)
-    const [selectedStop, setSelectedStop] = useState("all")
+    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
+    // null — все остановки, как и в остальных вкладках аналитики.
+    const [selectedStops, setSelectedStops] = useState<number[] | null>(null)
     const [data, setData] = useState<StopSensorHistoryResponse | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
     const [showAllTable, setShowAllTable] = useState(false)
     const requestRef = useRef(0)
 
-    const stopId = selectedStop === "all" ? undefined : Number(selectedStop)
+    const { fromDay, toDay } = useMemo(() => {
+        const range = cityRange(timeRange)
+        return { fromDay: sensorCityDay(range.from), toDay: sensorCityDay(range.to) }
+    }, [timeRange])
+    const isLiveRange = toDay >= sensorCityDay(new Date())
 
     // No synchronous setState here: the skeleton shows while data is null, and the
     // loading flag is only cleared after the fetch resolves.
     const loadData = useCallback(async () => {
         const request = ++requestRef.current
         try {
-            const next = await fetchStopSensorHistory({ hours, busStopId: stopId })
+            const next = await fetchStopSensorHistory({ from: fromDay, to: toDay, busStopIds: selectedStops ?? undefined })
             if (request === requestRef.current) {
                 setData(next)
                 setError(null)
@@ -294,26 +284,43 @@ export function StopSensorAnalytics() {
         } finally {
             if (request === requestRef.current) setLoading(false)
         }
-    }, [hours, stopId])
+    }, [fromDay, selectedStops, toDay])
 
-    // Reload when the period or stop changes, then refresh live on an interval.
+    // Reload when the period or stops change; only a period reaching today keeps refreshing.
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect -- mount/param fetch
         void loadData()
+        if (!isLiveRange) return
         const timer = setInterval(() => { void loadData() }, REFRESH_MS)
         return () => clearInterval(timer)
-    }, [loadData])
+    }, [isLiveRange, loadData])
 
-    const singleStop = stopId !== undefined
+    const singleStop = selectedStops?.length === 1
     const series = data?.series ?? []
     const events = data?.events ?? []
     const stops = data?.stops ?? []
     const tableRows = (data?.recent ?? [])
     const shownTable = showAllTable ? tableRows : tableRows.slice(0, 5)
 
+    const spanMs = data ? Date.parse(data.range.to) - Date.parse(data.range.from) : 0
     const isStale = data?.lastRecordedAt
-        ? Date.parse(data.range.to) - Date.parse(data.lastRecordedAt) > 3 * 60 * 1000
+        ? Date.parse(data.generatedAt) - Date.parse(data.lastRecordedAt) > 3 * 60 * 1000
         : true
+
+    const allStopsSelected = selectedStops === null
+    const selectedStopsLabel = stops.length === 0
+        ? "Нет остановок"
+        : allStopsSelected
+            ? "Все остановки"
+            : selectedStops.length === 0
+                ? "Не выбрано"
+                : `${selectedStops.length} из ${stops.length}`
+
+    const toggleStop = (stopId: number) => {
+        const base = selectedStops ?? stops.map((stop) => stop.id)
+        const next = base.includes(stopId) ? base.filter((id) => id !== stopId) : [...base, stopId]
+        setSelectedStops(next.length === stops.length ? null : next)
+    }
 
     if (loading && !data) {
         return (
@@ -331,35 +338,71 @@ export function StopSensorAnalytics() {
                 <div>
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">История датчиков</h2>
-                        <Badge variant={isStale ? "destructive" : "secondary"} className="gap-1">
-                            {!isStale && <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />}
-                            {isStale ? "Нет свежих данных" : "Данные поступают"}
-                        </Badge>
+                        {isLiveRange ? (
+                            <Badge variant={isStale ? "destructive" : "secondary"} className="gap-1">
+                                {!isStale && <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-emerald-500" />}
+                                {isStale ? "Нет свежих данных" : "Данные поступают"}
+                            </Badge>
+                        ) : (
+                            <Badge variant="secondary">Архив за период</Badge>
+                        )}
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        Обновляется автоматически каждые {REFRESH_MS / 1000} с. Время — сургутское (UTC+5).
-                    </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
-                    <Select value={String(hours)} onValueChange={(value) => setHours(Number(value) as SensorHistoryHours)}>
-                        <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            {SENSOR_HISTORY_PERIODS.map((period) => <SelectItem key={period} value={String(period)}>{PERIOD_LABELS[period]}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                    <Select value={selectedStop} onValueChange={setSelectedStop}>
-                        <SelectTrigger className="w-[220px]"><SelectValue placeholder="Все остановки" /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">Все остановки</SelectItem>
-                            {stops.map((stop) => <SelectItem key={stop.id} value={String(stop.id)}>{stop.label}</SelectItem>)}
-                        </SelectContent>
-                    </Select>
-                    <Button variant="outline" size="icon" onClick={() => void loadData()} disabled={loading} aria-label="Обновить данные">
-                        <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-                    </Button>
+                <div className="text-sm text-muted-foreground xl:text-right">
+                    <div>Период: {formatDateTime(data?.range.from ?? null)} - {formatDateTime(data?.range.to ?? null)}</div>
+                    <div>Последние данные: {formatTimeAgo(data?.lastRecordedAt ?? null, data?.generatedAt ?? null)}</div>
                 </div>
             </div>
+
+            <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button variant="outline" className="gap-2" disabled={stops.length === 0}>
+                            <MapPin className="h-4 w-4" />
+                            {selectedStopsLabel}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-80" align="start">
+                        <div className="space-y-3">
+                            <div className="flex items-center space-x-2">
+                                <Checkbox
+                                    id="all-sensor-stops"
+                                    checked={allStopsSelected}
+                                    onCheckedChange={() => setSelectedStops(allStopsSelected ? [] : null)}
+                                />
+                                <Label htmlFor="all-sensor-stops" className="font-medium">
+                                    Все остановки
+                                </Label>
+                            </div>
+                            <ScrollArea className="max-h-72 border-t pt-2">
+                                <div className="space-y-2 pr-3">
+                                    {stops.map((stop) => (
+                                        <div key={stop.id} className="flex items-center space-x-2">
+                                            <Checkbox
+                                                id={`sensor-stop-${stop.id}`}
+                                                checked={allStopsSelected || selectedStops.includes(stop.id)}
+                                                onCheckedChange={() => toggleStop(stop.id)}
+                                            />
+                                            <Label htmlFor={`sensor-stop-${stop.id}`} className="text-sm">
+                                                <span className="flex flex-col">
+                                                    <span>{stop.label}</span>
+                                                    {stop.detail && (
+                                                        <span className="text-xs font-normal text-muted-foreground">{stop.detail}</span>
+                                                    )}
+                                                </span>
+                                            </Label>
+                                        </div>
+                                    ))}
+                                </div>
+                            </ScrollArea>
+                        </div>
+                    </PopoverContent>
+                </Popover>
+                <Button variant="outline" size="icon" onClick={() => void loadData()} disabled={loading} aria-label="Обновить данные">
+                    <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                </Button>
+            </TimeRangeFilter>
 
             {error && (
                 <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
@@ -368,15 +411,15 @@ export function StopSensorAnalytics() {
             )}
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4 text-primary" />Остановки с датчиками</div><div className="mt-3 text-3xl font-semibold tabular-nums">{stops.length}</div><p className="mt-1 text-xs text-muted-foreground">Контроллеры с заведённым адресом</p></CardContent></Card>
-                <Card className={events.length ? "border-rose-500/30 bg-rose-500/[0.04]" : ""}><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><ShieldAlert className={`h-4 w-4 ${events.length ? "text-rose-500" : "text-emerald-500"}`} />Разбитие стекла</div><div className="mt-3 text-3xl font-semibold tabular-nums">{events.length}</div><p className="mt-1 text-xs text-muted-foreground">Срабатываний за период</p></CardContent></Card>
-                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="h-4 w-4 text-violet-500" />Последняя запись</div><div className="mt-3 text-xl font-semibold tabular-nums">{formatTimeAgo(data?.lastRecordedAt ?? null, data?.range.to ?? null)}</div><p className="mt-1 text-xs text-muted-foreground">Снимок показаний раз в минуту</p></CardContent></Card>
-                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className={`h-4 w-4 ${isStale ? "text-amber-500" : "text-emerald-500"}`} />Статус данных</div><div className="mt-3 text-xl font-semibold">{isStale ? "Нет свежих" : "В реальном времени"}</div><p className="mt-1 text-xs text-muted-foreground">{singleStop ? "По выбранной остановке" : stopCountLabel(stops.length)}</p></CardContent></Card>
+                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4 text-primary" />Остановки с датчиками</div><div className="mt-3 text-3xl font-semibold tabular-nums">{stops.length}</div></CardContent></Card>
+                <Card className={events.length ? "border-rose-500/30 bg-rose-500/[0.04]" : ""}><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><ShieldAlert className={`h-4 w-4 ${events.length ? "text-rose-500" : "text-emerald-500"}`} />Разбитие стекла</div><div className="mt-3 text-3xl font-semibold tabular-nums">{events.length}{data?.eventsTruncated ? "+" : ""}</div></CardContent></Card>
+                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="h-4 w-4 text-violet-500" />Последняя запись</div><div className="mt-3 text-xl font-semibold tabular-nums">{formatTimeAgo(data?.lastRecordedAt ?? null, data?.generatedAt ?? null)}</div></CardContent></Card>
+                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className={`h-4 w-4 ${isLiveRange && isStale ? "text-amber-500" : "text-emerald-500"}`} />Статус данных</div><div className="mt-3 text-xl font-semibold">{!isLiveRange ? "Архив" : isStale ? "Нет свежих" : "В реальном времени"}</div></CardContent></Card>
             </div>
 
             <div className="grid gap-5 xl:grid-cols-3">
                 {CHART_CATEGORIES.map((category) => (
-                    <SensorChart key={category} category={category} points={series} hours={hours} singleStop={singleStop} />
+                    <SensorChart key={category} category={category} points={series} spanMs={spanMs} bucketMinutes={data?.bucketMinutes ?? 5} singleStop={singleStop} />
                 ))}
                 <GlassEventsCard events={events} issues={data?.glassIssues ?? []} />
             </div>
@@ -385,7 +428,6 @@ export function StopSensorAnalytics() {
                 <CardHeader className="gap-3 pb-3 md:flex-row md:items-end md:justify-between">
                     <div>
                         <CardTitle className="text-base">Последние показания</CardTitle>
-                        <CardDescription>Свежие показания температуры и влажности по остановкам.</CardDescription>
                     </div>
                     {tableRows.length > 5 && (
                         <Button variant="outline" size="sm" onClick={() => setShowAllTable((value) => !value)}>

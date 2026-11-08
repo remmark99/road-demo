@@ -123,6 +123,8 @@ export interface MapFocusTarget {
   lat: number
   /** Фокус пришёл из списка камер — раскрыть камеры остановки. */
   spiderify?: boolean
+  /** Камера, которую показать в карточке остановки. */
+  cameraIndex?: number
   /** Растёт с каждым кликом, чтобы повторный выбор той же цели тоже сработал. */
   requestId: number
 }

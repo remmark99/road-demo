@@ -18,11 +18,10 @@ import {
     BusFront,
     Camera,
     ExternalLink,
-    Video,
 } from "lucide-react"
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
-import { Badge } from "@/components/ui/badge"
+import { cityRange } from "@/lib/analytics/city-time"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -45,7 +44,6 @@ import {
     fetchStopCurrentAnalyticsData,
     fetchStopCameras,
     type StopCameraRow,
-    type RangeBounds,
     type StopCurrentAnalyticsData,
 } from "@/lib/api/stop-current-analytics"
 import {
@@ -109,64 +107,6 @@ function getCameraIndexesForLocation(locationId: string) {
         { length: complex.cameraTo - complex.cameraFrom + 1 },
         (_, index) => complex.cameraFrom + index
     )
-}
-
-function startOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(0, 0, 0, 0)
-    return result
-}
-
-function endOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(23, 59, 59, 999)
-    return result
-}
-
-function getRangeBounds(result: TimeRangeResult): RangeBounds {
-    const now = new Date()
-
-    if (result.preset === "custom" && result.customRange?.from) {
-        return {
-            from: startOfLocalDay(result.customRange.from),
-            to: result.customRange.to ? endOfLocalDay(result.customRange.to) : endOfLocalDay(result.customRange.from),
-        }
-    }
-
-    if (result.preset === "yesterday") {
-        const yesterday = new Date(now)
-        yesterday.setDate(now.getDate() - 1)
-
-        return {
-            from: startOfLocalDay(yesterday),
-            to: endOfLocalDay(yesterday),
-        }
-    }
-
-    if (result.preset === "week") {
-        const weekAgo = new Date(now)
-        weekAgo.setDate(now.getDate() - 7)
-
-        return {
-            from: weekAgo,
-            to: now,
-        }
-    }
-
-    if (result.preset === "month") {
-        const monthAgo = new Date(now)
-        monthAgo.setDate(now.getDate() - 30)
-
-        return {
-            from: monthAgo,
-            to: now,
-        }
-    }
-
-    return {
-        from: startOfLocalDay(now),
-        to: now,
-    }
 }
 
 function formatDateTime(iso: string | null) {
@@ -283,7 +223,7 @@ export function StopKpiCurrentAnalytics() {
         const timer = window.setInterval(() => { void load() }, 60_000)
         return () => { cancelled = true; window.clearInterval(timer) }
     }, [])
-    const range = useMemo(() => getRangeBounds(timeRange), [timeRange])
+    const range = useMemo(() => cityRange(timeRange), [timeRange])
 
     useEffect(() => {
         let cancelled = false
@@ -339,10 +279,6 @@ export function StopKpiCurrentAnalytics() {
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">Показатели остановок</h2>
-                        <Badge variant="outline" className="gap-1">
-                            <Video className="h-3 w-3" />
-                            онлайн-данные
-                        </Badge>
                     </div>
 
                 </div>

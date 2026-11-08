@@ -22,7 +22,15 @@ test('coverage groups by stored district_id, keeps districts without stops, coun
  const assignments=[{id:1,district_id:1},{id:2,district_id:1},{id:3,district_id:2},{id:4,district_id:null}]
  const result=stopDistrictCoverage([1,2,3,4,5],assignments,districts,{stops:{1:{has_equipment:true},3:{has_equipment:true},4:{has_equipment:true}}})
  assert.equal(result.unassigned,2)
- assert.deepEqual(result.rows.map(r=>[r.districtName,r.total,r.equipped,r.coveragePct]),[['2-й микрорайон',2,1,50],['10-й микрорайон',1,1,100],['микрорайон 11а',0,0,0]])
+ assert.deepEqual(result.rows.map(r=>[r.districtName,r.total,r.equipped,r.coveragePct]),[['10-й микрорайон',1,1,100],['2-й микрорайон',2,1,50],['микрорайон 11а',0,0,0]])
+})
+test('online video stops count each stop once, skip offline, sensors and unlinked cameras',()=>{
+ const {onlineVideoStops}=load('lib/stop-coverage.ts')
+ const cam=(bus_stop_id,status='online')=>({equipment_type:'camera',status,bus_stop_id})
+ const districts={1:'Центр',2:'Центр',3:'Север'}
+ const result=onlineVideoStops([cam(1),cam(1),cam(2),cam(3,'offline'),cam(null),cam(9),{equipment_type:'controller',status:'online',bus_stop_id:3}],id=>districts[id])
+ assert.equal(result.total,3)
+ assert.deepEqual([...result.byDistrict],[['Центр',2]])
 })
 test('short district labels fit under a bar',()=>{
  assert.deepEqual(['14-й микрорайон','микрорайон 11Б','6-й квартал','Центральный микрорайон','микрорайон Квартал А','микрорайон Железнодорожников','микрорайон ПИКС'].map(districtShortName),['14','11Б','6 кв.','Центр.','Кв. А','Ж/д','ПИКС'])

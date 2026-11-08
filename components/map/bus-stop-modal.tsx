@@ -29,6 +29,7 @@ export interface SelectedBusStop {
     address: string | null
     sensor_data?: BusStopSensorData
     initialTab?: "cameras" | "sensors"
+    initialCameraIndex?: number
 }
 
 interface BusStopModalProps {
@@ -68,7 +69,9 @@ function formatEventTime(isoString: string | null | undefined) {
 
 export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusStopModalProps) {
     const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
-    const activeCamera = cameras.find(camera => camera.id === selectedCameraId) ?? cameras[0]
+    const activeCamera = cameras.find(camera => camera.id === selectedCameraId)
+        ?? cameras.find(camera => camera.cameraIndex === busStop?.initialCameraIndex)
+        ?? cameras[0]
     const [realReadings, setRealReadings] = useState<SensorReading[]>([])
     const [realAlerts, setRealAlerts] = useState<ControllerAlert[]>([])
     const [loading, setLoading] = useState(false)

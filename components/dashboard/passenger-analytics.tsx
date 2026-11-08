@@ -15,7 +15,7 @@ import {
     PolarAngleAxis,
     Cell,
 } from "recharts"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
     ChartContainer,
     ChartTooltip,
@@ -254,9 +254,6 @@ export function PassengerAnalytics() {
                             <Gauge className="h-5 w-5 text-amber-500" />
                             Загруженность
                         </CardTitle>
-                        <CardDescription>
-                            Текущая заполненность остановок
-                        </CardDescription>
                     </CardHeader>
                     <CardContent className="flex flex-col items-center">
                         <ChartContainer
@@ -317,9 +314,6 @@ export function PassengerAnalytics() {
                             <BarChart3 className="h-5 w-5 text-blue-500" />
                             Плотность очереди
                         </CardTitle>
-                        <CardDescription>
-                            Индекс плотности по часам (порог — 70)
-                        </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <ChartContainer config={densityChartConfig} className="h-[280px] w-full">
@@ -355,9 +349,6 @@ export function PassengerAnalytics() {
                             <ArrowUpFromLine className="h-5 w-5 text-violet-500" />
                             Посадка в автобус
                         </CardTitle>
-                        <CardDescription>
-                            Количество посадок по остановкам и часам
-                        </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <ChartContainer config={boardingChartConfig} className="h-[280px] w-full">
@@ -388,9 +379,6 @@ export function PassengerAnalytics() {
                             <ArrowDownToLine className="h-5 w-5 text-purple-500" />
                             Высадка из автобуса
                         </CardTitle>
-                        <CardDescription>
-                            Среднее количество высадок по остановкам
-                        </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <ChartContainer config={alightingChartConfig} className="h-[280px] w-full">

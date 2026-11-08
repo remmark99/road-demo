@@ -1,21 +1,17 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
+import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { EquipmentExport } from "@/components/notifications/equipment-export"
-import { addDays, format, isSameDay, startOfDay, subDays } from "date-fns"
-import { ru } from "date-fns/locale"
 import {
-  CalendarIcon,
   Camera as CameraIcon,
   Loader2,
   Router,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
 import {
   fetchEquipmentOutages,
@@ -25,6 +21,10 @@ import {
   type EquipmentType,
 } from "@/lib/api/equipment"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
+import { cityDateTime, cityRange } from "@/lib/analytics/city-time"
+import { timeRangeFromParams, timeRangeToParams } from "@/lib/analytics/period-params"
+import { equipmentMapHref } from "@/lib/equipment-map-link"
 import { fetchStopDirectory, type BusStopProperties } from "@/lib/api/bus-stops"
 import { equipmentLocalTime } from "@/lib/exports/equipment-hours"
 import { getStopComplexByLocationId } from "@/lib/stop-analytics-config"
@@ -41,14 +41,6 @@ function deviceKey(type: EquipmentType, id: number): DeviceKey {
 
 function deviceLabel(type: EquipmentType, id: number) {
   return type === "camera" ? `Камера ${id}` : "Датчики"
-}
-
-function plural(n: number, forms: [string, string, string]) {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 === 1 && mod100 !== 11) return forms[0]
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1]
-  return forms[2]
 }
 
 function formatDurationMs(ms: number) {
@@ -94,17 +86,40 @@ function DeviceIcon({ type, className }: { type: EquipmentType; className: strin
   return type === "camera" ? <CameraIcon className={className} /> : <Router className={className} />
 }
 
+/** Строка-ссылка на карту; у устройства без известной остановки это обычная строка. */
+function MapLink({ href, children }: { href: string | null; children: ReactNode }) {
+  if (!href) return <>{children}</>
+  return (
+    <Link
+      href={href}
+      title="Открыть на карте"
+      className="block rounded-xl transition-shadow hover:ring-2 hover:ring-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      {children}
+    </Link>
+  )
+}
+
 export function StopEquipmentAnalytics() {
-  const [deviceType, setDeviceType] = useState<EquipmentType>("camera")
+  const searchParams = useSearchParams()
+  const [deviceType, setDeviceType] = useState<EquipmentType>(() => searchParams.get("device") === "controller" ? "controller" : "camera")
   const [stops, setStops] = useState<BusStopProperties[]>([])
-  const [day, setDay] = useState<Date>(() => startOfDay(new Date()))
+  const [timeRange, setTimeRange] = useState<TimeRangeResult>(() => timeRangeFromParams(searchParams))
+  const [shownRange, setShownRange] = useState<{ from: Date; to: Date } | null>(null)
   const [showShort, setShowShort] = useState(false)
-  const [calendarOpen, setCalendarOpen] = useState(false)
   const [states, setStates] = useState<EquipmentState[]>([])
   const [outages, setOutages] = useState<EquipmentOutage[]>([])
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(() => Date.now())
+
+  // Тип устройства и период живут в адресе: с карты кнопка «назад» вернёт в то же место.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    params.set("device", deviceType)
+    timeRangeToParams(timeRange, params)
+    window.history.replaceState(null, "", `?${params.toString()}`)
+  }, [deviceType, timeRange])
 
   useEffect(() => {
     let cancelled = false
@@ -116,12 +131,15 @@ export function StopEquipmentAnalytics() {
     let cancelled = false
 
     const load = async () => {
+      // Считается на каждое обновление: период «Сегодня» заканчивается текущим моментом.
+      const range = cityRange(timeRange)
       const [stateResult, outageResult] = await Promise.all([
         fetchEquipmentState(),
-        fetchEquipmentOutages(new Date(`${format(day, 'yyyy-MM-dd')}T00:00:00+05:00`), new Date(`${format(addDays(day, 1), 'yyyy-MM-dd')}T00:00:00+05:00`)),
+        fetchEquipmentOutages(range.from, range.to),
       ])
       if (cancelled) return
 
+      setShownRange(range)
       setStates(stateResult.data)
       setOutages(outageResult.data)
       setError(stateResult.error ?? outageResult.error)
@@ -136,18 +154,13 @@ export function StopEquipmentAnalytics() {
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [day])
+  }, [timeRange])
 
-  const selectDay = (date: Date) => {
-    const next = startOfDay(date)
-    if (next.getTime() === day.getTime()) return
+  const handleTimeRangeChange = (next: TimeRangeResult) => {
     setLoading(true)
-    setDay(next)
+    setTimeRange(next)
   }
 
-  const today = new Date(now)
-  const isToday = isSameDay(day, today)
-  const isYesterday = isSameDay(day, subDays(today, 1))
   const stateByKey = useMemo(
     () => new Map(states.map((s) => [deviceKey(s.equipment_type, s.equipment_id), s])),
     [states]
@@ -169,7 +182,6 @@ export function StopEquipmentAnalytics() {
   const offlineNow = states
     .filter((s) => s.equipment_type === deviceType && s.status === "offline")
     .sort((a, b) => Date.parse(a.status_since ?? "") - Date.parse(b.status_since ?? ""))
-  const unknownCount = states.filter((s) => s.equipment_type === deviceType && s.status === "unknown").length
 
   return (
     <div className="p-4 md:p-6">
@@ -177,56 +189,16 @@ export function StopEquipmentAnalytics() {
       <Tabs value={deviceType} onValueChange={value => setDeviceType(value as EquipmentType)} className="mb-4">
         <TabsList aria-label="Тип оборудования"><TabsTrigger value="camera">Камеры</TabsTrigger><TabsTrigger value="controller">Датчики</TabsTrigger></TabsList>
       <div role="tabpanel" aria-label={deviceType === "camera" ? "Камеры" : "Датчики"}>
-      <Card className="mb-6">
-        <CardContent className="flex flex-wrap items-center gap-3 p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant={isToday ? "default" : "outline"}
-              size="sm"
-              onClick={() => selectDay(new Date())}
-            >
-              Сегодня
-            </Button>
-            <Button
-              variant={isYesterday ? "default" : "outline"}
-              size="sm"
-              onClick={() => selectDay(subDays(new Date(), 1))}
-            >
-              Вчера
-            </Button>
-            <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2 font-normal">
-                  <CalendarIcon className="h-4 w-4" />
-                  {format(day, "d MMMM yyyy", { locale: ru })}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <Calendar
-                  mode="single"
-                  selected={day}
-                  defaultMonth={day}
-                  onSelect={(date) => {
-                    if (!date) return
-                    selectDay(date)
-                    setCalendarOpen(false)
-                  }}
-                  locale={ru}
-                  endMonth={new Date()}
-                  disabled={(date) => date > new Date()}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-
-          <div className="flex items-center gap-2 md:ml-auto">
+      <div className="mb-6">
+        <TimeRangeFilter value={timeRange} onChange={handleTimeRangeChange}>
+          <div className="flex items-center gap-2">
             <Switch id="equipment-short-outages" checked={showShort} onCheckedChange={setShowShort} />
             <Label htmlFor="equipment-short-outages" className="text-sm text-muted-foreground">
               Показывать кратковременные обрывы (до 10 мин.)
             </Label>
           </div>
-        </CardContent>
-      </Card>
+        </TimeRangeFilter>
+      </div>
 
       {error && (
         <Card className="mb-6 border-destructive/50">
@@ -252,7 +224,8 @@ export function StopEquipmentAnalytics() {
           ) : (
             <div className="mb-6 space-y-2">
               {offlineNow.map((state) => (
-                <Card key={deviceKey(state.equipment_type, state.equipment_id)}>
+                <MapLink key={deviceKey(state.equipment_type, state.equipment_id)} href={equipmentMapHref(state, state, stops)}>
+                <Card>
                   <CardContent className="grid grid-cols-1 items-center gap-2 p-4 text-sm md:grid-cols-12 md:gap-4">
                     <div className="flex items-center gap-2 font-medium md:col-span-3">
                       <DeviceIcon type={state.equipment_type} className="h-4 w-4 text-red-400" />
@@ -271,12 +244,18 @@ export function StopEquipmentAnalytics() {
                     </div>
                   </CardContent>
                 </Card>
+                </MapLink>
               ))}
             </div>
           )}
 
           <h2 className="mb-3 text-base font-semibold">
-            Отключения за {format(day, "d MMMM yyyy", { locale: ru })}
+            Отключения за период
+            {shownRange && (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                {cityDateTime(shownRange.from.toISOString())} — {cityDateTime(shownRange.to.toISOString())}
+              </span>
+            )}
           </h2>
           {visibleOutages.length === 0 ? (
             <Card>
@@ -304,7 +283,8 @@ export function StopEquipmentAnalytics() {
                 const state = stateByKey.get(deviceKey(outage.equipment_type, outage.equipment_id))
                 const open = outage.ended_at === null
                 return (
-                  <Card key={outage.id}>
+                  <MapLink key={outage.id} href={equipmentMapHref(outage, state, stops)}>
+                  <Card>
                     <CardContent className="grid grid-cols-1 items-center gap-2 p-4 text-sm md:grid-cols-12 md:gap-4">
                       <div className="flex items-center gap-2 font-medium md:col-span-3">
                         <DeviceIcon
@@ -334,17 +314,12 @@ export function StopEquipmentAnalytics() {
                       </div>
                     </CardContent>
                   </Card>
+                  </MapLink>
                 )
               })}
             </div>
           )}
 
-          {unknownCount > 0 && (
-            <p className="mt-4 text-xs text-muted-foreground">
-              Для {unknownCount} {plural(unknownCount, ["устройства", "устройств", "устройств"])}{" "}
-              ещё нет данных о связи — они не учитываются в отключениях.
-            </p>
-          )}
         </>
       )}
       </div>

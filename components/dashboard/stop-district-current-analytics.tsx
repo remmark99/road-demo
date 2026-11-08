@@ -23,7 +23,7 @@ import {
 } from "lucide-react"
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
-import { Badge } from "@/components/ui/badge"
+import { cityRange } from "@/lib/analytics/city-time"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -50,7 +50,6 @@ import {
     buildStopDistrictSummaries,
     fetchStopCurrentAnalyticsData,
     getEventDistrictName,
-    type RangeBounds,
     type StopDistrictSummary,
     type StopCurrentAnalyticsData,
 } from "@/lib/api/stop-current-analytics"
@@ -59,7 +58,10 @@ import {
     STOP_SAFETY_ALERT_TYPES,
     type StopSafetyAlertType,
 } from "@/lib/stop-analytics-config"
+import { fetchEquipmentState } from "@/lib/api/equipment"
+import { onlineVideoStops } from "@/lib/stop-coverage"
 import { cn } from "@/lib/utils"
+import type { EquipmentState } from "@/lib/api/equipment"
 
 type KpiTone = "normal" | "attention" | "high"
 type AlertFilter = StopSafetyAlertType | "all"
@@ -90,64 +92,6 @@ function buildNotificationsHref(types: readonly string[]) {
 
     const query = params.toString()
     return query ? `/notifications?${query}` : "/notifications"
-}
-
-function startOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(0, 0, 0, 0)
-    return result
-}
-
-function endOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(23, 59, 59, 999)
-    return result
-}
-
-function getRangeBounds(result: TimeRangeResult): RangeBounds {
-    const now = new Date()
-
-    if (result.preset === "custom" && result.customRange?.from) {
-        return {
-            from: startOfLocalDay(result.customRange.from),
-            to: result.customRange.to ? endOfLocalDay(result.customRange.to) : endOfLocalDay(result.customRange.from),
-        }
-    }
-
-    if (result.preset === "yesterday") {
-        const yesterday = new Date(now)
-        yesterday.setDate(now.getDate() - 1)
-
-        return {
-            from: startOfLocalDay(yesterday),
-            to: endOfLocalDay(yesterday),
-        }
-    }
-
-    if (result.preset === "week") {
-        const weekAgo = new Date(now)
-        weekAgo.setDate(now.getDate() - 7)
-
-        return {
-            from: weekAgo,
-            to: now,
-        }
-    }
-
-    if (result.preset === "month") {
-        const monthAgo = new Date(now)
-        monthAgo.setDate(now.getDate() - 30)
-
-        return {
-            from: monthAgo,
-            to: now,
-        }
-    }
-
-    return {
-        from: startOfLocalDay(now),
-        to: now,
-    }
 }
 
 function formatDateTime(iso: string | null) {
@@ -185,15 +129,11 @@ function getTrashAlertDistrictName(alert: StopTrashOverflowAlertRow, data: StopC
 function KpiCard({
     title,
     value,
-    caption,
-    detail,
     icon: Icon,
     tone = "normal",
 }: {
     title: string
     value: string
-    caption: string
-    detail: string
     icon: typeof MapIcon
     tone?: KpiTone
 }) {
@@ -223,10 +163,6 @@ function KpiCard({
                     <Icon className="h-5 w-5" />
                 </div>
             </CardHeader>
-            <CardContent className="space-y-1">
-                <p className="text-sm text-muted-foreground">{caption}</p>
-                <p className="text-xs font-medium text-foreground">{detail}</p>
-            </CardContent>
         </Card>
     )
 }
@@ -254,10 +190,11 @@ export function StopDistrictCurrentAnalytics() {
     const [alertFilter, setAlertFilter] = useState<AlertFilter>("all")
     const [data, setData] = useState<StopCurrentAnalyticsData | null>(null)
     const [trashAlerts, setTrashAlerts] = useState<StopTrashOverflowAlertRow[]>([])
+    const [equipmentStates, setEquipmentStates] = useState<EquipmentState[] | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    const range = useMemo(() => getRangeBounds(timeRange), [timeRange])
+    const range = useMemo(() => cityRange(timeRange), [timeRange])
 
     useEffect(() => {
         let cancelled = false
@@ -269,11 +206,13 @@ export function StopDistrictCurrentAnalytics() {
                 to: range.to,
                 limit: TRASH_EVENT_LIMIT,
             }),
+            fetchEquipmentState(),
         ])
-            .then(([result, trashResult]) => {
+            .then(([result, trashResult, equipment]) => {
                 if (cancelled) return
                 setData(result)
                 setTrashAlerts(trashResult)
+                setEquipmentStates(equipment.error ? null : equipment.data)
             })
             .catch((fetchError: unknown) => {
                 if (cancelled) return
@@ -310,13 +249,10 @@ export function StopDistrictCurrentAnalytics() {
             )),
         [districtSummaries, alertFilter],
     )
-    const activeDistricts = districtSummaries.filter((district) => district.liveDirections > 0 || district.safetyEvents > 0)
-    const connectedDistrictStops = districtSummaries.reduce((sum, district) => sum + district.stops, 0)
-    const estimatedDistrictMin = districtSummaries.reduce((sum, district) => sum + district.estimatedTotalMin, 0)
-    const estimatedDistrictMax = districtSummaries.reduce((sum, district) => sum + district.estimatedTotalMax, 0)
-    const estimatedDistrictLabel = estimatedDistrictMin === estimatedDistrictMax
-        ? integerFormat.format(estimatedDistrictMin)
-        : `${integerFormat.format(estimatedDistrictMin)}-${integerFormat.format(estimatedDistrictMax)}`
+    const videoStops = useMemo(
+        () => data && equipmentStates ? onlineVideoStops(equipmentStates, (stopId) => data.stopsById.get(stopId)?.districtName) : null,
+        [data, equipmentStates],
+    )
     const liveDirections = districtSummaries.reduce((sum, district) => sum + district.liveDirections, 0)
     const selectedSafetyEvents = districtEventRows.reduce((sum, district) => sum + district.selectedSafetyEvents, 0)
     const alertFilterLabel = alertFilter === "all" ? "Все события" : STOP_SAFETY_ALERT_LABELS[alertFilter]
@@ -365,14 +301,7 @@ export function StopDistrictCurrentAnalytics() {
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">Микрорайоны</h2>
-                        <Badge variant="outline" className="gap-1">
-                            <MapIcon className="h-3 w-3" />
-                            микрорайонная сводка
-                        </Badge>
                     </div>
-                    <p className="max-w-3xl text-sm text-muted-foreground">
-                        Сравнение микрорайонов по оснащенным остановкам, онлайн-загруженности и событиям безопасности.
-                    </p>
                 </div>
                 <div className="text-sm text-muted-foreground lg:text-right">
                     <div>Период: {formatDateTime(data?.displayedRange.from.toISOString() ?? range.from.toISOString())} - {formatDateTime(data?.displayedRange.to.toISOString() ?? range.to.toISOString())}</div>
@@ -403,31 +332,23 @@ export function StopDistrictCurrentAnalytics() {
                     <KpiCard
                         title="Микрорайонов"
                         value={integerFormat.format(districtSummaries.length)}
-                        caption="по сопоставлению остановок"
-                        detail={`${integerFormat.format(activeDistricts.length)} с онлайн-данными или событиями`}
                         icon={MapIcon}
                     />
                     <KpiCard
-                        title="Подключено в микрорайонах"
-                        value={integerFormat.format(connectedDistrictStops)}
-                        caption="остановок с видеонаблюдением"
-                        detail={`${estimatedDistrictLabel} всего примерно`}
+                        title="Остановок с видеонаблюдением"
+                        value={videoStops ? integerFormat.format(videoStops.total) : "—"}
                         icon={MapPin}
                         tone="attention"
                     />
                     <KpiCard
-                        title="Онлайн-направления"
+                        title="Остановок на связи"
                         value={integerFormat.format(liveDirections)}
-                        caption="есть данные загруженности"
-                        detail="по оснащенным остановкам"
                         icon={Users2}
                         tone={liveDirections > 0 ? "attention" : "normal"}
                     />
                     <KpiCard
-                        title="События за период"
+                        title="Событий за период"
                         value={integerFormat.format(selectedSafetyEvents)}
-                        caption={alertFilterLabel}
-                        detail="группировка по микрорайонам"
                         icon={ShieldAlert}
                         tone={getKpiTone(selectedSafetyEvents)}
                     />
@@ -458,9 +379,6 @@ export function StopDistrictCurrentAnalytics() {
                                                 <ShieldAlert className="h-5 w-5 text-red-500" />
                                                 События по микрорайонам
                                             </CardTitle>
-                                            <CardDescription>
-                                                Гистограмма по выбранному типу события
-                                            </CardDescription>
                                         </div>
                                         <Button asChild variant="outline" size="sm" className="shrink-0">
                                             <Link href={districtNotificationsHref}>
@@ -526,9 +444,6 @@ export function StopDistrictCurrentAnalytics() {
                                             <Trash2 className="h-5 w-5 text-amber-500" />
                                             Загрязнения
                                         </CardTitle>
-                                        <CardDescription>
-                                            В каких микрорайонах больше всего неубранных урн
-                                        </CardDescription>
                                     </div>
                                     <Button asChild variant="outline" size="sm" className="shrink-0">
                                         <Link href={trashNotificationsHref}>
@@ -567,20 +482,17 @@ export function StopDistrictCurrentAnalytics() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Микрорайонная сводка</CardTitle>
-                            <CardDescription>
-                                Остановки, онлайн-покрытие, средняя загрузка и реальные события безопасности по микрорайонам
-                            </CardDescription>
+                            <CardTitle className="text-base">Сводка по микрорайонам</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Микрорайон</TableHead>
-                                        <TableHead className="text-right">Подключено</TableHead>
+                                        <TableHead className="text-right">С видео</TableHead>
                                         <TableHead className="text-right">Всего</TableHead>
                                         <TableHead className="text-right">Покрытие</TableHead>
-                                        <TableHead className="text-right">Онлайн-данные</TableHead>
+                                        <TableHead className="text-right">На связи</TableHead>
                                         <TableHead className="text-right">Загрузка</TableHead>
                                         <TableHead className="text-right">Лежачий человек</TableHead>
                                         <TableHead className="text-right">Курение</TableHead>
@@ -590,12 +502,15 @@ export function StopDistrictCurrentAnalytics() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {districtEventRows.map((district) => (
+                                    {districtEventRows.map((district) => {
+                                        const onlineStops = videoStops?.byDistrict.get(district.districtName) ?? 0
+                                        const total = district.estimatedTotalMin
+                                        return (
                                         <TableRow key={district.districtName}>
                                             <TableCell className="font-medium">{district.districtName}</TableCell>
-                                            <TableCell className="text-right tabular-nums">{integerFormat.format(district.stops)}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{videoStops ? integerFormat.format(onlineStops) : "—"}</TableCell>
                                             <TableCell className="text-right tabular-nums">{district.estimatedTotalLabel}</TableCell>
-                                            <TableCell className="text-right tabular-nums">{district.coverageLabel}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{videoStops && total > 0 ? `${Math.round(100 * onlineStops / total)}%` : "—"}</TableCell>
                                             <TableCell className="text-right tabular-nums">{integerFormat.format(district.liveDirections)}</TableCell>
                                             <TableCell className="text-right tabular-nums">{numberFormat.format(district.averagePeople)}</TableCell>
                                             <TableCell className="text-right tabular-nums">
@@ -614,11 +529,12 @@ export function StopDistrictCurrentAnalytics() {
                                                         ? district.connectedStopNames.join(", ")
                                                         : district.topStops.length > 0
                                                             ? district.topStops.join(", ")
-                                                            : "Нет онлайн-наблюдений"}
+                                                            : "—"}
                                                 </div>
                                             </TableCell>
                                         </TableRow>
-                                    ))}
+                                        )
+                                    })}
                                 </TableBody>
                             </Table>
                         </CardContent>
