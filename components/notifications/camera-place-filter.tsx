@@ -18,7 +18,7 @@ export function CameraPlaceFilter({ places, query, selected, onQueryChange, onSe
   const directoryPlaces = searchCameraPlaces(places, directoryQuery)
   const suggestionsId = useId()
   const suggestions = searchCameraPlaces(places, query)
-    .filter(place => !place.cameraIndexes.every(index => selected.includes(index))).slice(0, 8)
+    .filter(place => !place.cameraIndexes.every(index => selected.includes(index)))
   const addPlace = (place: CameraPlace) => {
     onSelectionChange([...new Set([...selected, ...place.cameraIndexes])])
     onQueryChange('')
