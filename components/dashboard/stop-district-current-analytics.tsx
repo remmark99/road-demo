@@ -58,7 +58,10 @@ import {
     STOP_SAFETY_ALERT_TYPES,
     type StopSafetyAlertType,
 } from "@/lib/stop-analytics-config"
+import { fetchEquipmentState } from "@/lib/api/equipment"
+import { onlineVideoStops } from "@/lib/stop-coverage"
 import { cn } from "@/lib/utils"
+import type { EquipmentState } from "@/lib/api/equipment"
 
 type KpiTone = "normal" | "attention" | "high"
 type AlertFilter = StopSafetyAlertType | "all"
@@ -187,6 +190,7 @@ export function StopDistrictCurrentAnalytics() {
     const [alertFilter, setAlertFilter] = useState<AlertFilter>("all")
     const [data, setData] = useState<StopCurrentAnalyticsData | null>(null)
     const [trashAlerts, setTrashAlerts] = useState<StopTrashOverflowAlertRow[]>([])
+    const [equipmentStates, setEquipmentStates] = useState<EquipmentState[] | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
@@ -202,11 +206,13 @@ export function StopDistrictCurrentAnalytics() {
                 to: range.to,
                 limit: TRASH_EVENT_LIMIT,
             }),
+            fetchEquipmentState(),
         ])
-            .then(([result, trashResult]) => {
+            .then(([result, trashResult, equipment]) => {
                 if (cancelled) return
                 setData(result)
                 setTrashAlerts(trashResult)
+                setEquipmentStates(equipment.error ? null : equipment.data)
             })
             .catch((fetchError: unknown) => {
                 if (cancelled) return
@@ -243,7 +249,10 @@ export function StopDistrictCurrentAnalytics() {
             )),
         [districtSummaries, alertFilter],
     )
-    const connectedDistrictStops = districtSummaries.reduce((sum, district) => sum + district.stops, 0)
+    const videoStops = useMemo(
+        () => data && equipmentStates ? onlineVideoStops(equipmentStates, (stopId) => data.stopsById.get(stopId)?.districtName) : null,
+        [data, equipmentStates],
+    )
     const liveDirections = districtSummaries.reduce((sum, district) => sum + district.liveDirections, 0)
     const selectedSafetyEvents = districtEventRows.reduce((sum, district) => sum + district.selectedSafetyEvents, 0)
     const alertFilterLabel = alertFilter === "all" ? "Все события" : STOP_SAFETY_ALERT_LABELS[alertFilter]
@@ -327,7 +336,7 @@ export function StopDistrictCurrentAnalytics() {
                     />
                     <KpiCard
                         title="Остановок с видеонаблюдением"
-                        value={integerFormat.format(connectedDistrictStops)}
+                        value={videoStops ? integerFormat.format(videoStops.total) : "—"}
                         icon={MapPin}
                         tone="attention"
                     />
@@ -493,12 +502,15 @@ export function StopDistrictCurrentAnalytics() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {districtEventRows.map((district) => (
+                                    {districtEventRows.map((district) => {
+                                        const onlineStops = videoStops?.byDistrict.get(district.districtName) ?? 0
+                                        const total = district.estimatedTotalMin
+                                        return (
                                         <TableRow key={district.districtName}>
                                             <TableCell className="font-medium">{district.districtName}</TableCell>
-                                            <TableCell className="text-right tabular-nums">{integerFormat.format(district.stops)}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{videoStops ? integerFormat.format(onlineStops) : "—"}</TableCell>
                                             <TableCell className="text-right tabular-nums">{district.estimatedTotalLabel}</TableCell>
-                                            <TableCell className="text-right tabular-nums">{district.coverageLabel}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{videoStops && total > 0 ? `${Math.round(100 * onlineStops / total)}%` : "—"}</TableCell>
                                             <TableCell className="text-right tabular-nums">{integerFormat.format(district.liveDirections)}</TableCell>
                                             <TableCell className="text-right tabular-nums">{numberFormat.format(district.averagePeople)}</TableCell>
                                             <TableCell className="text-right tabular-nums">
@@ -521,7 +533,8 @@ export function StopDistrictCurrentAnalytics() {
                                                 </div>
                                             </TableCell>
                                         </TableRow>
-                                    ))}
+                                        )
+                                    })}
                                 </TableBody>
                             </Table>
                         </CardContent>
