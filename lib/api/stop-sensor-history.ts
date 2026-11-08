@@ -1,7 +1,3 @@
-export const SENSOR_HISTORY_PERIODS = [1, 6, 24, 168] as const
-
-export type SensorHistoryHours = (typeof SENSOR_HISTORY_PERIODS)[number]
-
 export interface StopSensorHistoryRow {
     id: number
     busStopId: number
@@ -65,6 +61,7 @@ export interface GlassSensorIssue {
 
 export interface StopSensorHistoryResponse {
     range: { from: string; to: string }
+    generatedAt: string
     bucketMinutes: number
     totalRows: number
     sourceRows: number
@@ -75,24 +72,27 @@ export interface StopSensorHistoryResponse {
     series: StopSensorSeriesPoint[]
     recent: StopSensorHistoryRow[]
     events: GlassEvent[]
+    /** В периоде больше срабатываний, чем вернулось в events. */
+    eventsTruncated: boolean
     glassIssues?: GlassSensorIssue[]
 }
 
 interface FetchSensorHistoryOptions {
-    hours: SensorHistoryHours
-    busStopId?: number
-    category?: string
+    /** Календарные дни по Сургуту, YYYY-MM-DD, включительно. */
+    from: string
+    to: string
+    /** Без значения — все остановки. */
+    busStopIds?: number[]
 }
 
 export async function fetchStopSensorHistory({
-    hours,
-    busStopId,
-    category,
+    from,
+    to,
+    busStopIds,
 }: FetchSensorHistoryOptions): Promise<StopSensorHistoryResponse> {
-    const params = new URLSearchParams({ hours: String(hours) })
+    const params = new URLSearchParams({ from, to })
 
-    if (busStopId !== undefined) params.set("busStopId", String(busStopId))
-    if (category) params.set("category", category)
+    if (busStopIds) params.set("busStopIds", busStopIds.join(","))
 
     const response = await fetch(`/api/stop-sensor-history?${params.toString()}`, {
         cache: "no-store",
