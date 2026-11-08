@@ -58,13 +58,39 @@ test('user endpoint derives owner from verified session and hides backend errors
   assert.equal(failure.status, 503)
   assert.ok(!JSON.stringify(failure).includes('secret-key'))
 })
+test('without a registry a user sees the signed license of this server, with no DB access and no demo modules', async () => {
+  const previous = { url: process.env.LICENSE_DB_URL, key: process.env.LICENSE_DB_SERVICE_ROLE_KEY, demo: process.env.LICENSE_DEMO_MODULES }
+  delete process.env.LICENSE_DB_URL; delete process.env.LICENSE_DB_SERVICE_ROLE_KEY
+  process.env.LICENSE_DEMO_MODULES = 'roads,parks'
+  const signed = { license_id: 'SGT-1', customer: 'Администрация г. Сургут', hardware_id: null, issued_at: '2026-08-07T00:00:00Z', expires_at: '2099-08-07T23:59:59Z', modules: ['stops'], max_cameras: 30 }
+  let active = signed
+  try {
+    const server = load('lib/licenses/server.ts', { 'server-only': {}, '../license': { getActiveLicense: () => active }, '@/lib/notifications/admin': {}, '@supabase/supabase-js': { createClient: () => { throw Error('Unexpected DB access') } } })
+    const result = await server.readCustomerLicenses(userId)
+    assert.equal(result.linked, true)
+    assert.deepEqual(result.licenses.map(license => [license.id, license.customer, license.status, license.modules, license.source]), [['SGT-1', 'Администрация г. Сургут', 'active', ['stops'], 'signed']])
+    const detail = await server.readLicenseDetail('SGT-1', userId)
+    assert.deepEqual([detail.license.id, detail.inventorySource, detail.cameraCount], ['SGT-1', 'unavailable', 0])
+    assert.equal(await server.readLicenseDetail('other', userId), null)
+    await assert.rejects(server.readCustomerLicenses(), /not configured/)
+    active = null
+    assert.deepEqual(await server.readCustomerLicenses(userId), { licenses: [], moduleLabels: {}, linked: true })
+  } finally {
+    for (const [name, value] of Object.entries({ LICENSE_DB_URL: previous.url, LICENSE_DB_SERVICE_ROLE_KEY: previous.key, LICENSE_DEMO_MODULES: previous.demo })) { if (value === undefined) delete process.env[name]; else process.env[name] = value }
+  }
+})
 test('unbound user never queries License DB', async () => {
   const old = process.env.LICENSE_USER_CUSTOMERS
+  const registry = { url: process.env.LICENSE_DB_URL, key: process.env.LICENSE_DB_SERVICE_ROLE_KEY }
   process.env.LICENSE_USER_CUSTOMERS = '{}'
+  Object.assign(process.env, { LICENSE_DB_URL: 'http://db', LICENSE_DB_SERVICE_ROLE_KEY: 'test' })
   try {
     const server = load('lib/licenses/server.ts', { 'server-only': {}, '@supabase/supabase-js': { createClient: () => { throw Error('Unexpected DB access') } }, '@/lib/notifications/admin': {} })
     assert.deepEqual(await server.readCustomerLicenses(userId), { licenses: [], moduleLabels: {}, linked: false })
-  } finally { if (old === undefined) delete process.env.LICENSE_USER_CUSTOMERS; else process.env.LICENSE_USER_CUSTOMERS = old }
+  } finally {
+    if (old === undefined) delete process.env.LICENSE_USER_CUSTOMERS; else process.env.LICENSE_USER_CUSTOMERS = old
+    for (const [name, value] of Object.entries({ LICENSE_DB_URL: registry.url, LICENSE_DB_SERVICE_ROLE_KEY: registry.key })) { if (value === undefined) delete process.env[name]; else process.env[name] = value }
+  }
 })
 test('customer filter and paginated read exclude signing credentials', async () => {
   const previous = { bindings: process.env.LICENSE_USER_CUSTOMERS, url: process.env.LICENSE_DB_URL, key: process.env.LICENSE_DB_SERVICE_ROLE_KEY }

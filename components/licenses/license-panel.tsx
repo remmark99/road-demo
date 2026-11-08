@@ -30,9 +30,9 @@ function PriceComposition({ license, moduleLabels, connected }: { license: Custo
       const until = support.get(module)
       return <div key={module} className="rounded-md border p-3">
         <p className="font-medium">Неисключительное право пользования модулем «{russianModuleLabel(module, moduleLabels)}»</p>
-        <p className="mt-1 text-muted-foreground">
-          Техническая поддержка модуля «{russianModuleLabel(module, moduleLabels)}» — {until ? `до ${formatLicenseDate(`${until}T00:00:00`)?.date || until}` : 'не оформлена'}
-        </p>
+        {license.source !== 'signed' && <p className="mt-1 text-muted-foreground">
+                  Техническая поддержка модуля «{russianModuleLabel(module, moduleLabels)}» — {until ? `до ${formatLicenseDate(`${until}T00:00:00`)?.date || until}` : 'не оформлена'}
+                </p>}
       </div>
     }) : <p className="text-muted-foreground">Модули не указаны</p>}
     <div className="rounded-md border p-3">
