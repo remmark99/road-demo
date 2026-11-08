@@ -31,5 +31,5 @@ export function stopDistrictCoverage(stopIds: number[], assignments: StopDistric
         if (activity?.stops[id]?.has_equipment) row.equipped++
     }
     for (const row of rows.values()) row.coveragePct = row.total ? 100 * row.equipped / row.total : 0
-    return { unassigned, rows: [...rows.values()].sort((a, b) => a.districtName.localeCompare(b.districtName, 'ru', { numeric: true })) }
+    return { unassigned, rows: [...rows.values()].sort((a, b) => b.coveragePct - a.coveragePct || a.districtName.localeCompare(b.districtName, 'ru', { numeric: true })) }
 }

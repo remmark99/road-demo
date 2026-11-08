@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { Suspense, useEffect, useState, useCallback } from "react"
+import { useSearchParams } from "next/navigation"
 import { SurgutMap } from "@/components/map/surgut-map"
 import { TimelineSlider } from "@/components/map/timeline-slider"
 import { useStopHistory } from "@/lib/hooks/use-stop-history"
@@ -8,9 +9,12 @@ import { Legend } from "@/components/map/legend"
 import { BusStopsStats } from "@/components/map/bus-stops-stats"
 import { Navigation } from "@/components/navigation"
 import { useModuleAccess } from "@/components/providers/module-context"
+import { fetchStopDirectory } from "@/lib/api/bus-stops"
+import { parseStopMapLink } from "@/lib/equipment-map-link"
 import type { MapFocusTarget, RoadStatus, StopEquipmentClass } from "@/lib/types"
 
-export default function MapPage() {
+function MapPageContent() {
+  const searchParams = useSearchParams()
   const { hasModule, sensorsOnly, loading: modulesLoading } = useModuleAccess()
   const [historyTime, setHistoryTime] = useState<Date | null>(null)
   const { snapshot, loading: historyLoading, error: historyError } = useStopHistory(historyTime, !modulesLoading && hasModule("stops"))
@@ -20,6 +24,27 @@ export default function MapPage() {
   const [focusTarget, setFocusTarget] = useState<MapFocusTarget | null>(null)
   // Выбранная строка разбивки в правой панели («Всего» / «С камерами» / «С датчиками» / «Без оборудования»).
   const [stopClass, setStopClass] = useState<StopEquipmentClass>("all")
+
+  // Переход с других страниц: /?stop=12&tab=cameras&camera=151 открывает карточку остановки.
+  useEffect(() => {
+    const link = parseStopMapLink(searchParams)
+    if (!link) return
+    let cancelled = false
+    fetchStopDirectory().then(directory => {
+      const stop = directory.features.find(feature => feature.properties.id === link.stopId)
+      if (cancelled || !stop) return
+      const [lng, lat] = stop.geometry.coordinates
+      setFocusTarget({
+        stopId: link.stopId,
+        lng,
+        lat,
+        spiderify: link.tab === "cameras",
+        cameraIndex: link.cameraIndex,
+        requestId: Date.now(),
+      })
+    }).catch(() => {})
+    return () => { cancelled = true }
+  }, [searchParams])
 
   const handleTimeChange = useCallback((time: Date, statuses: Record<string, RoadStatus>, live: boolean) => {
     setSelectedTime(time)
@@ -68,5 +93,13 @@ export default function MapPage() {
 
       </div>
     </main>
+  )
+}
+
+export default function MapPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-background" />}>
+      <MapPageContent />
+    </Suspense>
   )
 }

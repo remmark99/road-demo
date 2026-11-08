@@ -22,7 +22,7 @@ test('coverage groups by stored district_id, keeps districts without stops, coun
  const assignments=[{id:1,district_id:1},{id:2,district_id:1},{id:3,district_id:2},{id:4,district_id:null}]
  const result=stopDistrictCoverage([1,2,3,4,5],assignments,districts,{stops:{1:{has_equipment:true},3:{has_equipment:true},4:{has_equipment:true}}})
  assert.equal(result.unassigned,2)
- assert.deepEqual(result.rows.map(r=>[r.districtName,r.total,r.equipped,r.coveragePct]),[['2-й микрорайон',2,1,50],['10-й микрорайон',1,1,100],['микрорайон 11а',0,0,0]])
+ assert.deepEqual(result.rows.map(r=>[r.districtName,r.total,r.equipped,r.coveragePct]),[['10-й микрорайон',1,1,100],['2-й микрорайон',2,1,50],['микрорайон 11а',0,0,0]])
 })
 test('short district labels fit under a bar',()=>{
  assert.deepEqual(['14-й микрорайон','микрорайон 11Б','6-й квартал','Центральный микрорайон','микрорайон Квартал А','микрорайон Железнодорожников','микрорайон ПИКС'].map(districtShortName),['14','11Б','6 кв.','Центр.','Кв. А','Ж/д','ПИКС'])

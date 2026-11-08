@@ -1,6 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
+import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { EquipmentExport } from "@/components/notifications/equipment-export"
 import {
   Camera as CameraIcon,
@@ -21,6 +23,8 @@ import {
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { cityDateTime, cityRange } from "@/lib/analytics/city-time"
+import { timeRangeFromParams, timeRangeToParams } from "@/lib/analytics/period-params"
+import { equipmentMapHref } from "@/lib/equipment-map-link"
 import { fetchStopDirectory, type BusStopProperties } from "@/lib/api/bus-stops"
 import { equipmentLocalTime } from "@/lib/exports/equipment-hours"
 import { getStopComplexByLocationId } from "@/lib/stop-analytics-config"
@@ -90,10 +94,25 @@ function DeviceIcon({ type, className }: { type: EquipmentType; className: strin
   return type === "camera" ? <CameraIcon className={className} /> : <Router className={className} />
 }
 
+/** Строка-ссылка на карту; у устройства без известной остановки это обычная строка. */
+function MapLink({ href, children }: { href: string | null; children: ReactNode }) {
+  if (!href) return <>{children}</>
+  return (
+    <Link
+      href={href}
+      title="Открыть на карте"
+      className="block rounded-xl transition-shadow hover:ring-2 hover:ring-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+    >
+      {children}
+    </Link>
+  )
+}
+
 export function StopEquipmentAnalytics() {
-  const [deviceType, setDeviceType] = useState<EquipmentType>("camera")
+  const searchParams = useSearchParams()
+  const [deviceType, setDeviceType] = useState<EquipmentType>(() => searchParams.get("device") === "controller" ? "controller" : "camera")
   const [stops, setStops] = useState<BusStopProperties[]>([])
-  const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
+  const [timeRange, setTimeRange] = useState<TimeRangeResult>(() => timeRangeFromParams(searchParams))
   const [shownRange, setShownRange] = useState<{ from: Date; to: Date } | null>(null)
   const [showShort, setShowShort] = useState(false)
   const [states, setStates] = useState<EquipmentState[]>([])
@@ -101,6 +120,14 @@ export function StopEquipmentAnalytics() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(() => Date.now())
+
+  // Тип устройства и период живут в адресе: с карты кнопка «назад» вернёт в то же место.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    params.set("device", deviceType)
+    timeRangeToParams(timeRange, params)
+    window.history.replaceState(null, "", `?${params.toString()}`)
+  }, [deviceType, timeRange])
 
   useEffect(() => {
     let cancelled = false
@@ -194,7 +221,8 @@ export function StopEquipmentAnalytics() {
         </div>
       ) : (
         <>
-          <h2 className="mb-3 text-base font-semibold">Сейчас не в сети</h2>
+          <h2 className="mb-1 text-base font-semibold">Сейчас не в сети</h2>
+          <p className="mb-3 text-sm text-muted-foreground">Нажмите на строку, чтобы открыть устройство на карте.</p>
           {offlineNow.length === 0 ? (
             <Card className="mb-6">
               <CardContent className="p-4 text-sm text-muted-foreground">
@@ -206,7 +234,8 @@ export function StopEquipmentAnalytics() {
           ) : (
             <div className="mb-6 space-y-2">
               {offlineNow.map((state) => (
-                <Card key={deviceKey(state.equipment_type, state.equipment_id)}>
+                <MapLink key={deviceKey(state.equipment_type, state.equipment_id)} href={equipmentMapHref(state, state, stops)}>
+                <Card>
                   <CardContent className="grid grid-cols-1 items-center gap-2 p-4 text-sm md:grid-cols-12 md:gap-4">
                     <div className="flex items-center gap-2 font-medium md:col-span-3">
                       <DeviceIcon type={state.equipment_type} className="h-4 w-4 text-red-400" />
@@ -225,6 +254,7 @@ export function StopEquipmentAnalytics() {
                     </div>
                   </CardContent>
                 </Card>
+                </MapLink>
               ))}
             </div>
           )}
@@ -263,7 +293,8 @@ export function StopEquipmentAnalytics() {
                 const state = stateByKey.get(deviceKey(outage.equipment_type, outage.equipment_id))
                 const open = outage.ended_at === null
                 return (
-                  <Card key={outage.id}>
+                  <MapLink key={outage.id} href={equipmentMapHref(outage, state, stops)}>
+                  <Card>
                     <CardContent className="grid grid-cols-1 items-center gap-2 p-4 text-sm md:grid-cols-12 md:gap-4">
                       <div className="flex items-center gap-2 font-medium md:col-span-3">
                         <DeviceIcon
@@ -293,6 +324,7 @@ export function StopEquipmentAnalytics() {
                       </div>
                     </CardContent>
                   </Card>
+                  </MapLink>
                 )
               })}
             </div>
