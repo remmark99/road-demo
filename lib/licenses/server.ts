@@ -1,11 +1,33 @@
 import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { createNotificationAdminClient } from '@/lib/notifications/admin'
+import { getActiveLicense } from '../license'
 import { inventoryModules, parseResourceScopes, russianCameraName, russianModuleLabel, type LicenseDetail, type LicenseStop } from './resources'
 import { parseCustomerBindings, licenseStatus, type CustomerLicense, type LicenseResponse } from './types'
 
+function registryConfigured() {
+  return Boolean(process.env.LICENSE_DB_URL && process.env.LICENSE_DB_SERVICE_ROLE_KEY)
+}
+
+// На сервере заказчика реестра и его ключей нет намеренно. Лицензия этого сервера —
+// подписанный license.key, без демо-модулей: LICENSE_DEMO_MODULES лицензией не является.
+function readSignedLicense(): LicenseResponse {
+  const license = getActiveLicense()
+  if (!license) return { licenses: [], moduleLabels: {}, linked: true }
+  return {
+    licenses: [{
+      id: license.license_id, license_id: license.license_id, customer_id: '', customer: license.customer, contract_no: null,
+      status: licenseStatus('active', license.expires_at), issued_at: license.issued_at, expires_at: license.expires_at,
+      modules: license.modules, max_cameras: license.max_cameras, users: [], support: [], source: 'signed',
+    }],
+    moduleLabels: {},
+    linked: true,
+  }
+}
+
 // The DB stores customers, not platform auth users. Bind only by explicitly configured UUIDs.
 export async function readCustomerLicenses(userId?: string): Promise<LicenseResponse> {
+  if (userId && !registryConfigured()) return readSignedLicense()
   const bindings = parseCustomerBindings(process.env.LICENSE_USER_CUSTOMERS)
   const customerId = userId ? bindings[userId] : undefined
   if (userId && !customerId) return { licenses: [], moduleLabels: {}, linked: false }
@@ -91,6 +113,11 @@ function signedMatches(signed: unknown, license: CustomerLicense): boolean {
 // Resource display does not alter the signed license or grant access to streams.
 // Verify customer ownership before reading inventory with the service-role client.
 export async function readLicenseDetail(id: string, userId?: string): Promise<LicenseDetail | null> {
+  if (userId && !registryConfigured()) {
+    const { licenses, moduleLabels } = readSignedLicense()
+    const license = licenses.find(row => row.id === id)
+    return license ? { license, moduleLabels, assigned: false, city: null, stops: [], cameras: [], inventorySource: 'unavailable', cameraCount: 0 } : null
+  }
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null
   const { licenses, moduleLabels } = await readCustomerLicenses(userId)
   const license = licenses.find(row => row.id === id)

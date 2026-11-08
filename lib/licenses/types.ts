@@ -12,6 +12,8 @@ export type CustomerLicense = {
   users: { id: string; email: string }[]
   /** Срок технической поддержки по модулям, отдельно от срока лицензии. */
   support: LicenseSupport[]
+  /** Прочитана из подписанного license.key: реестра на этом сервере нет, и условий поддержки в файле тоже нет. */
+  source?: 'signed'
   /** Только для админа: права в реестре разошлись с подписанным license.key. */
   needs_signing?: boolean
 }
