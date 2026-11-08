@@ -739,6 +739,99 @@ function ResultsHeader({
   )
 }
 
+interface OutageCamera {
+  cameraIndex: number
+  label: string
+  detail: string
+  startedAt: string | null
+  endedAt: string | null
+  open: boolean | null
+}
+
+function findCameraPlace(places: CameraPlace[], cameraIndex: number | null, stopsModule: boolean) {
+  if (cameraIndex === null) return undefined
+  return places.find((place) => place.cameraIndexes.includes(cameraIndex)
+    || (stopsModule && place.cameraIndexes.some((index) => index >= 10000 && index - 10000 === cameraIndex)))
+}
+
+/** Камеры одного уведомления об отключении: какие, где и вернулись ли. */
+function describeOutageCameras(alert: Alert, outages: Map<number, EquipmentOutage>, places: CameraPlace[]): OutageCamera[] {
+  const rows = getCameraOutageIds(alert).map((id) => outages.get(id)).filter((row): row is EquipmentOutage => !!row)
+  const listed = Array.isArray(alert.metadata?.device_ids)
+    ? (alert.metadata.device_ids as unknown[]).filter((id): id is number => typeof id === "number")
+    : []
+  const ids = Array.from(new Set([...listed, ...rows.map((row) => row.equipment_id)]))
+  return ids.map((cameraIndex) => {
+    const row = rows.find((item) => item.equipment_id === cameraIndex)
+    const place = findCameraPlace(places, cameraIndex, alert.module_name === "stops")
+    return {
+      cameraIndex,
+      label: place?.label ?? `Камера ${cameraIndex}`,
+      detail: place?.detail ?? "",
+      startedAt: row?.started_at ?? null,
+      endedAt: row?.ended_at ?? null,
+      open: row ? !row.ended_at : null,
+    }
+  }).sort((a, b) => Number(b.open === true) - Number(a.open === true)
+    || a.label.localeCompare(b.label, "ru", { numeric: true }) || a.cameraIndex - b.cameraIndex)
+}
+
+function countLabel(n: number, forms: [string, string, string]) {
+  const form = n % 10 === 1 && n % 100 !== 11 ? forms[0]
+    : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? forms[1] : forms[2]
+  return `${n} ${form}`
+}
+
+/** Вместо «Несколько остановок» — сами остановки. */
+function outageStopDisplay(cameras: OutageCamera[]) {
+  const names = Array.from(new Set(cameras.map((camera) => camera.label)))
+  const label = names.length <= 2 ? names.join(", ") : `${names[0]}, ${names[1]} и ещё ${names.length - 2}`
+  return { label, detail: `${countLabel(cameras.length, ["камера", "камеры", "камер"])} · ${countLabel(names.length, ["остановка", "остановки", "остановок"])}` }
+}
+
+function OutageCamerasPanel({ message, cameras }: { message: string; cameras: OutageCamera[] }) {
+  return (
+    <div className="mt-4 border-t pt-4 text-sm">
+      <p className="mb-3 text-muted-foreground">{message}</p>
+      <div className="divide-y rounded-lg border">
+        {cameras.map((camera) => (
+          <div key={camera.cameraIndex} className="grid grid-cols-1 gap-1 p-3 md:grid-cols-12 md:items-center md:gap-4">
+            <div className="min-w-0 md:col-span-5">
+              <div className="truncate font-medium">{camera.label}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {[camera.detail, `камера ${camera.cameraIndex}`].filter(Boolean).join(" · ")}
+              </div>
+            </div>
+            <div className="md:col-span-2">
+              {camera.open === null ? (
+                <Badge variant="outline" className="text-muted-foreground">Нет данных</Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className={camera.open
+                    ? "border-red-500/40 bg-red-500/10 text-red-500 dark:text-red-400"
+                    : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"}
+                >
+                  {camera.open ? "Не в сети" : "Снова в сети"}
+                </Badge>
+              )}
+            </div>
+            <div className="text-muted-foreground md:col-span-5">
+              {camera.startedAt && (
+                <>
+                  {formatTime(camera.startedAt)} — {camera.open ? "продолжается" : formatTime(camera.endedAt as string)}
+                  {" · "}
+                  {formatEventDuration(camera.startedAt, camera.endedAt ?? new Date().toISOString())}
+                </>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Camera Alerts Tab
 // ═══════════════════════════════════════════════════════════════════════
@@ -1417,9 +1510,11 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             const demoAlert = isDemoAlert(alert)
             const isExpanded = expandedId === alert.id
             const isHighlighted = alert.id === initialAlertId
-            const place = places.find(place => place.cameraIndexes.includes(alert.camera_index ?? -1)
-              || (alert.module_name === 'stops' && place.cameraIndexes.some(index => index >= 10000 && index - 10000 === alert.camera_index)))
-            const stopDisplay = place ? { label: place.label, detail: place.detail } : getAlertStopDisplay(alert)
+            const place = findCameraPlace(places, alert.camera_index, alert.module_name === 'stops')
+            const outageCameras = alert.alert_type === CAMERA_OFFLINE ? describeOutageCameras(alert, cameraOutages, places) : []
+            const outageList = outageCameras.length > 1 ? outageCameras : null
+            const stopDisplay = outageList ? outageStopDisplay(outageList)
+              : place ? { label: place.label, detail: place.detail } : getAlertStopDisplay(alert)
             const message = getRussianAlertMessage(alert, config.label)
             const episodeId = getLyingPersonEpisodeId(alert)
             const episode = episodeId
@@ -1433,7 +1528,8 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             const shownMessage = outageEpisode ? withoutOutageDuration(message) : message
             const timedEvent = binEpisode || episode || outageEpisode
             // Раскрывать есть смысл, только когда есть что показать: фото или видео.
-            const expandable = !demoAlert && !!(binEpisode || episode || alert.clip_path)
+            // Массовое отключение раскрывается в список камер и остановок.
+            const expandable = !demoAlert && !!(binEpisode || episode || alert.clip_path || outageList)
             const duration = timedEvent ? formatEventDuration(timedEvent.started_at,
               timedEvent.status === 'open' ? new Date().toISOString() : timedEvent.ended_at || timedEvent.last_seen_at) : ['bin_full', 'lying_person', 'abandoned_object'].includes(alert.alert_type) ? 'не определена' : null
 
@@ -1562,7 +1658,9 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                     </div>
                   </div>
 
-                  {isExpanded && expandable && (
+                  {isExpanded && outageList && <OutageCamerasPanel message={shownMessage} cameras={outageList} />}
+
+                  {isExpanded && expandable && !outageList && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {binEpisode ? (
