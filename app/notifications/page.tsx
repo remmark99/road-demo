@@ -1425,6 +1425,8 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             const outageIsOpen = outageEpisode?.status === "open"
             const shownMessage = outageEpisode ? withoutOutageDuration(message) : message
             const timedEvent = binEpisode || episode || outageEpisode
+            // Раскрывать есть смысл, только когда есть что показать: фото или видео.
+            const expandable = !demoAlert && !!(binEpisode || episode || alert.clip_path)
             const duration = timedEvent ? formatEventDuration(timedEvent.started_at,
               timedEvent.status === 'open' ? new Date().toISOString() : timedEvent.ended_at || timedEvent.last_seen_at) : ['bin_full', 'lying_person', 'abandoned_object'].includes(alert.alert_type) ? 'не определена' : null
 
@@ -1433,25 +1435,30 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                 id={`alert-${alert.id}`}
                 key={alert.id}
                 className={`transition-all duration-300 hover:border-primary/50 ${
-                  demoAlert ? "cursor-default" : "cursor-pointer"
+                  expandable ? "cursor-pointer" : "cursor-default"
                 } ${isExpanded ? "border-primary" : ""} ${
                   isHighlighted
                     ? "ring-2 ring-primary ring-offset-2 ring-offset-background shadow-[0_0_15px_rgba(59,130,246,0.35)] dark:shadow-[0_0_15px_rgba(255,255,255,0.15)] border-primary"
                     : ""
                 }`}
                 onClick={() =>
-                  demoAlert ? undefined : setExpandedId(isExpanded ? null : alert.id)
+                  expandable ? setExpandedId(isExpanded ? null : alert.id) : undefined
                 }
               >
                 <CardContent className="p-4">
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
                     <div className="md:col-span-2 flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
-                      <span className="text-muted-foreground md:text-foreground">
-                        {binEpisode ? `Начало: ${formatBinTime(binEpisode.started_at)}`
-                          : outageEpisode ? `Начало: ${formatBinTime(outageEpisode.started_at)}`
-                          : formatTimeAgo(alert.timestamp)}
-                      </span>
+                      <div className="min-w-0">
+                        <div className="text-muted-foreground md:text-foreground">
+                          {binEpisode ? `Начало: ${formatBinTime(binEpisode.started_at)}`
+                            : outageEpisode ? `Начало: ${formatBinTime(outageEpisode.started_at)}`
+                            : formatTimeAgo(alert.timestamp)}
+                        </div>
+                        {!binEpisode && !outageEpisode && (
+                          <div className="text-xs text-muted-foreground">{formatTime(alert.timestamp)}</div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="md:col-span-2 min-w-0">
@@ -1536,7 +1543,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                     </div>
 
                     <div className="md:col-span-1 flex justify-end">
-                      {demoAlert ? (
+                      {!expandable ? (
                         <div className="h-4 w-4" />
                       ) : (
                         <ChevronRight
@@ -1548,7 +1555,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                     </div>
                   </div>
 
-                  {isExpanded && !demoAlert && (
+                  {isExpanded && expandable && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {binEpisode ? (
@@ -1657,13 +1664,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                                   </video>
                                 )
                               })()
-                            ) : (
-                              <div className="w-full h-full flex items-center justify-center">
-                                <p className="text-muted-foreground text-sm">
-                                  Видео недоступно
-                                </p>
-                              </div>
-                            )}
+                            ) : null}
                           </MediaFrame>
                         )}
 
