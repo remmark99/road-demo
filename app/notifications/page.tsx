@@ -9,6 +9,8 @@ import { buildCameraPlaces, filteredCameraIndexes, notificationPeriodBounds, for
 import { fetchStopDirectory, type BusStopProperties } from '@/lib/api/bus-stops'
 import { formatCameraConfidence, closedEpisodeImage } from '@/lib/notifications/camera-evidence'
 import { getBinEpisode } from "@/lib/bin-episodes"
+import { fetchEquipmentOutagesByIds, type EquipmentOutage } from "@/lib/api/equipment"
+import { CAMERA_OFFLINE, CAMERA_ONLINE, getCameraOutageEpisode, getCameraOutageIds, mergeCameraLinkTypes, withoutOutageDuration } from "@/lib/notifications/camera-outage"
 import { MediaLightbox, useMediaLightbox, type LightboxImage } from "@/components/notifications/media-lightbox"
 import { cn } from "@/lib/utils"
 
@@ -769,6 +771,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
   const [lyingPersonEpisodes, setLyingPersonEpisodes] = useState<
     LyingPersonEpisode[]
   >([])
+  const [cameraOutages, setCameraOutages] = useState<Map<number, EquipmentOutage>>(() => new Map())
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(0)
@@ -837,7 +840,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
         : selectedTypes,
     [repairShortcutSelected, repairTypes, selectedTypes]
   )
-  const requestTypes = useMemo(
+  const feedTypes = useMemo(
     () =>
       feedKindTypes(
         effectiveSelectedTypes.length > 0 ? effectiveSelectedTypes : allowedTypes,
@@ -846,6 +849,8 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
       ),
     [allowedTypes, effectiveSelectedTypes, feedKind]
   )
+  // «Снова в сети» не выводится отдельной строкой: оно закрывает событие «не в сети».
+  const requestTypes = useMemo(() => mergeCameraLinkTypes(feedTypes), [feedTypes])
 
   useEffect(() => { setPage(0) }, [period.from, period.to, period.start, period.end])
 
@@ -878,12 +883,16 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             .filter((id): id is string => id !== null)
         )
       )
-      const episodes = await fetchLyingPersonEpisodes(episodeIds)
+      const [episodes, outages] = await Promise.all([
+        fetchLyingPersonEpisodes(episodeIds),
+        fetchEquipmentOutagesByIds(result.alerts.flatMap(getCameraOutageIds)),
+      ])
 
       if (cancelled) return
 
       setAlerts(result.alerts)
       setLyingPersonEpisodes(episodes)
+      setCameraOutages(new Map(outages.map((outage) => [outage.id, outage])))
       setTotal(result.total)
       setLoading(false)
     })
@@ -1314,18 +1323,20 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                   Оборудование остановок
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {ALERT_CATEGORIES.bus_stop_equipment.types.map((type) => {
+                  {ALERT_CATEGORIES.bus_stop_equipment.types.filter((type) => type !== CAMERA_ONLINE).map((type) => {
                     const config = ALERT_TYPE_CONFIG[type]
                     if (!config) return null
                     const Icon = alertIcons[type] || CameraIcon
-                    const isSelected = selectedTypes.includes(type)
+                    // Одна кнопка на отключение: «снова в сети» входит в него.
+                    const types = type === CAMERA_OFFLINE ? [CAMERA_OFFLINE, CAMERA_ONLINE] : [type]
+                    const isSelected = types.some((item) => selectedTypes.includes(item))
                     return (
                       <Button
                         key={type}
                         variant={isSelected ? "default" : "outline"}
                         size="sm"
                         className="gap-2"
-                        onClick={() => toggleType(type)}
+                        onClick={() => toggleTypes(types)}
                       >
                         <Icon className="h-3.5 w-3.5" />
                         {config.label}
@@ -1347,7 +1358,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <PeriodFilter value={period} onChange={onPeriodChange} />
-        <EventsExport channel="cameras" period={period} filters={{module:sourceModule,types:requestTypes.join(','),cameras:selectedCameras.join(','),search:cameraSearch}} />
+        <EventsExport channel="cameras" period={period} filters={{module:sourceModule,types:feedTypes.join(','),cameras:selectedCameras.join(','),search:cameraSearch}} />
       </div>
 
       <ResultsHeader
@@ -1410,7 +1421,10 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             const episodeIsOpen = episode?.status === "open"
             const abandonedEpisode = getAbandonedEpisode(alert)
             const binEpisode = getBinEpisode(alert) || abandonedEpisode
-            const timedEvent = binEpisode || episode
+            const outageEpisode = getCameraOutageEpisode(alert, cameraOutages)
+            const outageIsOpen = outageEpisode?.status === "open"
+            const shownMessage = outageEpisode ? withoutOutageDuration(message) : message
+            const timedEvent = binEpisode || episode || outageEpisode
             const duration = timedEvent ? formatEventDuration(timedEvent.started_at,
               timedEvent.status === 'open' ? new Date().toISOString() : timedEvent.ended_at || timedEvent.last_seen_at) : ['bin_full', 'lying_person', 'abandoned_object'].includes(alert.alert_type) ? 'не определена' : null
 
@@ -1434,7 +1448,9 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                     <div className="md:col-span-2 flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
                       <span className="text-muted-foreground md:text-foreground">
-                        {binEpisode ? `Начало: ${formatBinTime(binEpisode.started_at)}` : formatTimeAgo(alert.timestamp)}
+                        {binEpisode ? `Начало: ${formatBinTime(binEpisode.started_at)}`
+                          : outageEpisode ? `Начало: ${formatBinTime(outageEpisode.started_at)}`
+                          : formatTimeAgo(alert.timestamp)}
                       </span>
                     </div>
 
@@ -1461,7 +1477,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                     </div>
 
                     <div className="md:col-span-4 min-w-0 text-sm">
-                      <div className="truncate">{message}</div>
+                      <div className="truncate">{shownMessage}</div>
                       {binEpisode && (
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <Badge variant="outline">
@@ -1490,6 +1506,23 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                             {formatTime(episode.started_at)} — {episodeIsOpen ? "продолжается" : formatTime(episode.ended_at || episode.last_seen_at)}
                           </span>
 
+                        </div>
+                      )}
+                      {outageEpisode && (
+                        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <Badge
+                            variant="outline"
+                            className={
+                              outageIsOpen
+                                ? "border-red-500/40 bg-red-500/10 text-red-500 dark:text-red-400"
+                                : "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
+                            }
+                          >
+                            {outageIsOpen ? "Продолжается" : "Снова в сети"}
+                          </Badge>
+                          <span className="truncate">
+                            {formatTime(outageEpisode.started_at)} — {outageIsOpen ? "продолжается" : formatTime(outageEpisode.last_seen_at)}
+                          </span>
                         </div>
                       )}
                       {duration && <p className="mt-2 font-medium">Длительность: {duration}{timedEvent?.status === 'open' ? ' · продолжается' : ''}</p>}

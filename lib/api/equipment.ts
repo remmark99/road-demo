@@ -93,3 +93,15 @@ async function loadEquipmentOutages(
         return { data: [], error: 'Не удалось загрузить историю отключений' }
     }
 }
+
+/** Отключения по id — для уведомлений «Камера не в сети», которые ссылаются на них в metadata.outage_ids. */
+export async function fetchEquipmentOutagesByIds(ids: readonly number[]): Promise<EquipmentOutage[]> {
+    const unique = Array.from(new Set(ids.filter((id) => Number.isSafeInteger(id))))
+    if (unique.length === 0) return []
+    const { data, error } = await supabase.from('equipment_outages').select('*').in('id', unique)
+    if (error) {
+        console.error('Error fetching equipment outages:', error)
+        return []
+    }
+    return (data || []) as EquipmentOutage[]
+}
