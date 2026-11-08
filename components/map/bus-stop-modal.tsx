@@ -38,18 +38,32 @@ interface BusStopModalProps {
     onClose: () => void
 }
 
-function formatTime(isoString: string | null | undefined) {
+const STOP_TIME_ZONE = "Asia/Yekaterinburg"
+
+function dateParts(d: Date) {
+    const parts = new Intl.DateTimeFormat("ru-RU", {
+        timeZone: STOP_TIME_ZONE,
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hourCycle: "h23",
+    }).formatToParts(d)
+    const get = (type: Intl.DateTimeFormatPartTypes) => parts.find(p => p.type === type)?.value ?? ""
+    return { day: get("day"), month: get("month"), year: get("year"), time: `${get("hour")}:${get("minute")}:${get("second")}` }
+}
+
+/** Date and time of a journal event in the stops' local time: "07.11 20:12:24", with the year when it is not the current one. */
+function formatEventTime(isoString: string | null | undefined) {
     if (!isoString) return "—"
-    try {
-        const d = new Date(isoString)
-        return d.toLocaleTimeString("ru-RU", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-        })
-    } catch {
-        return "—"
-    }
+    const d = new Date(isoString)
+    if (Number.isNaN(d.getTime())) return "—"
+    const event = dateParts(d)
+    const now = dateParts(new Date())
+    const date = event.year === now.year ? `${event.day}.${event.month}` : `${event.day}.${event.month}.${event.year}`
+    return `${date} ${event.time}`
 }
 
 export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusStopModalProps) {
@@ -315,7 +329,7 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                         realAlerts.map((alert) => (
                                             <div
                                                 key={alert.id}
-                                                className="flex justify-between items-center text-sm p-2 rounded bg-secondary/50 border border-secondary"
+                                                className="flex justify-between items-center gap-3 text-sm p-2 rounded bg-secondary/50 border border-secondary"
                                             >
                                                 <span
                                                     className={
@@ -328,8 +342,8 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                                 >
                                                     {alert.message || `Событие элемента ${alert.element}`}
                                                 </span>
-                                                <span className="text-xs text-muted-foreground tabular-nums">
-                                                    {formatTime(alert.created_at)}
+                                                <span className="shrink-0 whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+                                                    {formatEventTime(alert.created_at)}
                                                 </span>
                                             </div>
                                         ))
