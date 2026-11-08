@@ -43,14 +43,6 @@ function deviceLabel(type: EquipmentType, id: number) {
   return type === "camera" ? `Камера ${id}` : "Датчики"
 }
 
-function plural(n: number, forms: [string, string, string]) {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 === 1 && mod100 !== 11) return forms[0]
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1]
-  return forms[2]
-}
-
 function formatDurationMs(ms: number) {
   const totalMinutes = Math.max(0, Math.floor(ms / 60_000))
   if (totalMinutes < 1) return "меньше минуты"
@@ -190,7 +182,6 @@ export function StopEquipmentAnalytics() {
   const offlineNow = states
     .filter((s) => s.equipment_type === deviceType && s.status === "offline")
     .sort((a, b) => Date.parse(a.status_since ?? "") - Date.parse(b.status_since ?? ""))
-  const unknownCount = states.filter((s) => s.equipment_type === deviceType && s.status === "unknown").length
 
   return (
     <div className="p-4 md:p-6">
@@ -221,8 +212,7 @@ export function StopEquipmentAnalytics() {
         </div>
       ) : (
         <>
-          <h2 className="mb-1 text-base font-semibold">Сейчас не в сети</h2>
-          <p className="mb-3 text-sm text-muted-foreground">Нажмите на строку, чтобы открыть устройство на карте.</p>
+          <h2 className="mb-3 text-base font-semibold">Сейчас не в сети</h2>
           {offlineNow.length === 0 ? (
             <Card className="mb-6">
               <CardContent className="p-4 text-sm text-muted-foreground">
@@ -330,12 +320,6 @@ export function StopEquipmentAnalytics() {
             </div>
           )}
 
-          {unknownCount > 0 && (
-            <p className="mt-4 text-xs text-muted-foreground">
-              Для {unknownCount} {plural(unknownCount, ["устройства", "устройств", "устройств"])}{" "}
-              ещё нет данных о связи — они не учитываются в отключениях.
-            </p>
-          )}
         </>
       )}
       </div>

@@ -18,12 +18,10 @@ import {
     BusFront,
     Camera,
     ExternalLink,
-    Video,
 } from "lucide-react"
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { cityRange } from "@/lib/analytics/city-time"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -281,10 +279,6 @@ export function StopKpiCurrentAnalytics() {
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">Показатели остановок</h2>
-                        <Badge variant="outline" className="gap-1">
-                            <Video className="h-3 w-3" />
-                            онлайн-данные
-                        </Badge>
                     </div>
 
                 </div>

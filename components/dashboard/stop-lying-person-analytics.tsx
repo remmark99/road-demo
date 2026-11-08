@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { cityRange, cityDateTime } from "@/lib/analytics/city-time"
+import { timeRangeFromParams, timeRangeToParams } from "@/lib/analytics/period-params"
 import {
     Bar,
     BarChart,
@@ -59,8 +61,7 @@ import { buildSafetyPeriods, bucketEnd, safetyNotificationsHref } from "@/lib/an
 import { cn } from "@/lib/utils"
 
 type AlertTone = "normal" | "attention" | "high"
-type PeriodBucket = "auto" | "hour" | "day" | "week"
-type ResolvedPeriodBucket = Exclude<PeriodBucket, "auto">
+type PeriodBucket = "hour" | "day" | "week"
 
 interface RangeBounds {
     from: Date
@@ -118,7 +119,6 @@ const hourOfDayAlertsConfig = {
 } satisfies ChartConfig
 
 const PERIOD_BUCKET_LABELS: Record<PeriodBucket, string> = {
-    auto: "Авто",
     hour: "По часам",
     day: "По дням",
     week: "По неделям",
@@ -190,7 +190,7 @@ function getAllAlertLocationIds(alerts: StopSafetyAlert[]) {
     )).sort(compareLocationId)
 }
 
-function getAutoPeriodBucket(range: RangeBounds): ResolvedPeriodBucket {
+function getDefaultPeriodBucket(range: RangeBounds): PeriodBucket {
     const durationMs = range.to.getTime() - range.from.getTime()
     const dayMs = 24 * 60 * 60 * 1000
 
@@ -200,8 +200,8 @@ function getAutoPeriodBucket(range: RangeBounds): ResolvedPeriodBucket {
     return "week"
 }
 
-function resolvePeriodBucket(bucket: PeriodBucket, range: RangeBounds): ResolvedPeriodBucket {
-    const resolved = bucket === "auto" ? getAutoPeriodBucket(range) : bucket
+function resolvePeriodBucket(bucket: PeriodBucket | null, range: RangeBounds): PeriodBucket {
+    const resolved = bucket ?? getDefaultPeriodBucket(range)
     // Avoid rendering thousands of SVG columns for long custom periods.
     const days = (range.to.getTime() - range.from.getTime()) / 86_400_000
     if (resolved === 'hour' && days > 31) return days > 366 ? 'week' : 'day'
@@ -357,15 +357,11 @@ function getAlertTone(value: number): AlertTone {
 function KpiCard({
     title,
     value,
-    caption,
-    detail,
     icon: Icon,
     tone = "normal",
 }: {
     title: string
     value: string
-    caption: string
-    detail: string
     icon: typeof ShieldAlert
     tone?: AlertTone
 }) {
@@ -396,10 +392,6 @@ function KpiCard({
                     <Icon className="h-5 w-5" />
                 </div>
             </CardHeader>
-            <CardContent className="space-y-1">
-                <p className="text-sm text-muted-foreground">{caption}</p>
-                <p className="text-xs font-medium text-foreground">{detail}</p>
-            </CardContent>
         </Card>
     )
 }
@@ -423,8 +415,10 @@ function LoadingGrid() {
 }
 
 export function StopLyingPersonAnalytics() {
-    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
-    const [periodBucket, setPeriodBucket] = useState<PeriodBucket>("auto")
+    const searchParams = useSearchParams()
+    const [timeRange, setTimeRange] = useState<TimeRangeResult>(() => timeRangeFromParams(searchParams))
+    // null — шаг ещё не выбран вручную, берётся подходящий к периоду.
+    const [periodBucket, setPeriodBucket] = useState<PeriodBucket | null>(null)
     const [alerts, setAlerts] = useState<StopSafetyAlert[]>([])
     const [stopLookup, setStopLookup] = useState<BusynessStopLookup>({})
     const [loading, setLoading] = useState(true)
@@ -432,6 +426,13 @@ export function StopLyingPersonAnalytics() {
 
     const range = useMemo(() => cityRange(timeRange), [timeRange])
     const resolvedPeriodBucket = useMemo(() => resolvePeriodBucket(periodBucket, range), [periodBucket, range])
+
+    // Период в адресе: из уведомлений кнопка «назад» вернёт к тому же периоду.
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search)
+        timeRangeToParams(timeRange, params)
+        window.history.replaceState(null, "", `?${params.toString()}`)
+    }, [timeRange])
 
     useEffect(() => {
         let cancelled = false
@@ -485,6 +486,7 @@ export function StopLyingPersonAnalytics() {
 
     const handleTimeRangeChange = (nextRange: TimeRangeResult) => {
         setTimeRange(nextRange)
+        setPeriodBucket(null)
         setLoading(true)
         setError(null)
     }
@@ -495,14 +497,7 @@ export function StopLyingPersonAnalytics() {
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">События безопасности</h2>
-                        <Badge variant="outline" className="gap-1">
-                            <ShieldAlert className="h-3 w-3" />
-                            события
-                        </Badge>
                     </div>
-                    <p className="max-w-3xl text-sm text-muted-foreground">
-                        Реальные события видеоаналитики по остановочным павильонам. Экран показывает количество событий, камеры, остановки и время фиксации без отображения кадров.
-                    </p>
                 </div>
 
                 <div className="text-sm text-muted-foreground lg:text-right">
@@ -520,24 +515,18 @@ export function StopLyingPersonAnalytics() {
                     <KpiCard
                         title="Событий за период"
                         value={integerFormat.format(summary.totalEvents)}
-                        caption="лежачие люди, курение, предметы, собаки"
-                        detail="только события остановок"
                         icon={ShieldAlert}
                         tone={getAlertTone(summary.totalEvents)}
                     />
                     <KpiCard
                         title="Остановок с событиями"
                         value={integerFormat.format(summary.activeStops)}
-                        caption="по остановочным направлениям"
-                        detail={summary.activeStops > 0 ? "названия из справочника" : "за период нет событий"}
                         icon={MapPin}
                         tone={summary.activeStops > 0 ? "attention" : "normal"}
                     />
                     <KpiCard
                         title="Камер"
                         value={integerFormat.format(summary.cameras)}
-                        caption="уникальные камеры"
-                        detail={`Последнее: ${formatFreshness(summary.latestAt)}`}
                         icon={Camera}
                         tone={summary.cameras > 0 ? "attention" : "normal"}
                     />
@@ -563,13 +552,7 @@ export function StopLyingPersonAnalytics() {
                         <div className="rounded-full bg-muted p-4">
                             <ShieldAlert className="h-8 w-8 text-muted-foreground" />
                         </div>
-                        <div>
-                            <h3 className="text-lg font-medium">Нет событий за выбранный период</h3>
-                            <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                                За выбранный период нет событий по лежачим людям, курению или бездомным собакам.
-                                Если появятся оставленные предметы, они будут учтены в этой же витрине.
-                            </p>
-                        </div>
+                        <h3 className="text-lg font-medium">Нет событий за выбранный период</h3>
                     </CardContent>
                 </Card>
             )}
@@ -585,17 +568,14 @@ export function StopLyingPersonAnalytics() {
                                             <BarChart3 className="h-5 w-5 text-red-500" />
                                             Распределение по периоду
                                         </CardTitle>
-                                        <CardDescription>
-                                            Пустые интервалы — без зарегистрированных событий. Нажмите столбец, чтобы открыть уведомления за этот интервал в новой вкладке.
-                                        </CardDescription>
                                     </div>
                                     <div className="flex flex-wrap gap-2">
-                                        {(["auto", "hour", "day", "week"] as const).map((bucket) => (
+                                        {(["hour", "day", "week"] as const).map((bucket) => (
                                             <Button
                                                 key={bucket}
                                                 type="button"
                                                 size="sm"
-                                                variant={periodBucket === bucket ? "default" : "outline"}
+                                                variant={resolvedPeriodBucket === bucket ? "default" : "outline"}
                                                 onClick={() => setPeriodBucket(bucket)}
                                             >
                                                 {PERIOD_BUCKET_LABELS[bucket]}
@@ -630,9 +610,6 @@ export function StopLyingPersonAnalytics() {
                                     </BarChart>
                                 </ChartContainer>
                                 <Button asChild variant="outline" size="sm" className="mt-3"><Link href={allNotificationsHref} target="_blank" rel="noopener noreferrer">Уведомления за период<ExternalLink className="h-3 w-3" /></Link></Button>
-                                <p className="mt-3 text-xs text-muted-foreground">
-                                    Текущий режим: {PERIOD_BUCKET_LABELS[resolvedPeriodBucket]}. Время Сургута.
-                                </p>
                             </CardContent>
                         </Card>
 
@@ -642,9 +619,6 @@ export function StopLyingPersonAnalytics() {
                                     <Clock3 className="h-5 w-5 text-amber-500" />
                                     Профиль по часам суток
                                 </CardTitle>
-                                <CardDescription>
-                                    Сумма событий за выбранный период по часам 00-23
-                                </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <ChartContainer config={hourOfDayAlertsConfig} className="h-[320px] w-full">
@@ -672,13 +646,15 @@ export function StopLyingPersonAnalytics() {
                                 <MapPin className="h-5 w-5 text-violet-500" />
                                 Остановки с событиями
                             </CardTitle>
-                            <CardDescription>
-                                Топ остановочных направлений по количеству фиксаций
-                            </CardDescription>
                         </CardHeader>
                         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             {locationSummaries.slice(0, 8).map((location) => (
-                                <div key={location.locationId} className="rounded-lg border bg-muted/20 p-3">
+                                <Link
+                                    key={location.locationId}
+                                    href={safetyNotificationsHref(range, STOP_SAFETY_ALERT_TYPES, location.cameraIndexes)}
+                                    title="Открыть уведомления этой остановки"
+                                    className="block rounded-lg border bg-muted/20 p-3 transition-colors hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                                >
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
                                             <div className="truncate font-medium">{location.label}</div>
@@ -694,7 +670,7 @@ export function StopLyingPersonAnalytics() {
                                             <span>Камеры: {location.cameraIndexes.join(", ")}</span>
                                         )}
                                     </div>
-                                </div>
+                                </Link>
                             ))}
                         </CardContent>
                     </Card>
@@ -705,9 +681,6 @@ export function StopLyingPersonAnalytics() {
                                 <ShieldAlert className="h-5 w-5 text-red-500" />
                                 Типы событий
                             </CardTitle>
-                            <CardDescription>
-                                Распределение реальных событий остановок по подтвержденным типам
-                            </CardDescription>
                         </CardHeader>
                         <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                             {typeSummaries.map((item) => {
@@ -739,9 +712,6 @@ export function StopLyingPersonAnalytics() {
                                         <ShieldAlert className="h-5 w-5 text-red-500" />
                                         Последние события
                                     </CardTitle>
-                                    <CardDescription>
-                                        Реальные записи событий без отображения изображений и кадров
-                                    </CardDescription>
                                 </div>
                                 <Button asChild variant="outline" size="sm" className="shrink-0">
                                     <Link href={allNotificationsHref} target="_blank" rel="noopener noreferrer">

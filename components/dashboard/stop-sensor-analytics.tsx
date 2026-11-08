@@ -25,7 +25,7 @@ import { sensorCityDay } from "@/lib/sensor-history-period"
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
     ChartContainer,
     ChartLegend,
@@ -105,14 +105,12 @@ function SensorChart({
     spanMs,
     bucketMinutes,
     singleStop,
-    sampled,
 }: {
     category: KnownCategory
     points: StopSensorSeriesPoint[]
     spanMs: number
     bucketMinutes: number
     singleStop: boolean
-    sampled: boolean
 }) {
     const meta = CATEGORY_META[category]
     const Icon = meta.icon
@@ -144,12 +142,6 @@ function SensorChart({
                     <Icon className="h-5 w-5" style={{ color: meta.color }} />
                     {meta.label}
                 </CardTitle>
-                <CardDescription>
-                    {singleStop
-                        ? `Показание датчика${meta.unit ? `, ${meta.unit}` : ""}.`
-                        : `Среднее по остановкам, затенён диапазон мин–макс${meta.unit ? `, ${meta.unit}` : ""}.`}
-                    {sampled && " По выборке последних показаний внутри каждого интервала."}
-                </CardDescription>
             </CardHeader>
             <CardContent>
                 {chartData.length === 0 ? (
@@ -210,16 +202,13 @@ function GlassIssuesList({ issues }: { issues: GlassSensorIssue[] }) {
                             </span>
                         </div>
                     ))}
-                    <p className="pt-1 text-[11px] text-muted-foreground">
-                        Сигналы этих датчиков не считаются тревогой, пока их не проверят на месте.
-                    </p>
                 </div>
             )}
         </div>
     )
 }
 
-function GlassEventsCard({ events, issues, truncated }: { events: GlassEvent[]; issues: GlassSensorIssue[]; truncated: boolean }) {
+function GlassEventsCard({ events, issues }: { events: GlassEvent[]; issues: GlassSensorIssue[] }) {
     const [expanded, setExpanded] = useState(false)
     const shown = expanded ? events.slice(0, 50) : events.slice(0, 5)
 
@@ -230,11 +219,6 @@ function GlassEventsCard({ events, issues, truncated }: { events: GlassEvent[]; 
                     <ShieldAlert className="h-5 w-5 text-rose-500" />
                     Разбитие стекла
                 </CardTitle>
-                <CardDescription>
-                    {events.length > 0
-                        ? `Срабатываний за период: ${events.length}${truncated ? "+" : ""}. Показаны последние.`
-                        : "Последние срабатывания датчиков разбития стекла."}
-                </CardDescription>
             </CardHeader>
             <CardContent>
                 <GlassIssuesList issues={issues} />
@@ -363,9 +347,6 @@ export function StopSensorAnalytics() {
                             <Badge variant="secondary">Архив за период</Badge>
                         )}
                     </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                        {isLiveRange ? `Обновляется автоматически каждые ${REFRESH_MS / 1000} с. ` : ""}Время — сургутское (UTC+5).
-                    </p>
                 </div>
 
                 <div className="text-sm text-muted-foreground xl:text-right">
@@ -430,24 +411,23 @@ export function StopSensorAnalytics() {
             )}
 
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4 text-primary" />Остановки с датчиками</div><div className="mt-3 text-3xl font-semibold tabular-nums">{stops.length}</div><p className="mt-1 text-xs text-muted-foreground">Контроллеры с заведённым адресом</p></CardContent></Card>
-                <Card className={events.length ? "border-rose-500/30 bg-rose-500/[0.04]" : ""}><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><ShieldAlert className={`h-4 w-4 ${events.length ? "text-rose-500" : "text-emerald-500"}`} />Разбитие стекла</div><div className="mt-3 text-3xl font-semibold tabular-nums">{events.length}{data?.eventsTruncated ? "+" : ""}</div><p className="mt-1 text-xs text-muted-foreground">Срабатываний за период</p></CardContent></Card>
-                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="h-4 w-4 text-violet-500" />Последняя запись</div><div className="mt-3 text-xl font-semibold tabular-nums">{formatTimeAgo(data?.lastRecordedAt ?? null, data?.generatedAt ?? null)}</div><p className="mt-1 text-xs text-muted-foreground">Снимок показаний раз в минуту</p></CardContent></Card>
-                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className={`h-4 w-4 ${isLiveRange && isStale ? "text-amber-500" : "text-emerald-500"}`} />Статус данных</div><div className="mt-3 text-xl font-semibold">{!isLiveRange ? "Архив" : isStale ? "Нет свежих" : "В реальном времени"}</div><p className="mt-1 text-xs text-muted-foreground">{singleStop ? "По выбранной остановке" : stopCountLabel(selectedStops?.length ?? stops.length)}</p></CardContent></Card>
+                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><MapPin className="h-4 w-4 text-primary" />Остановки с датчиками</div><div className="mt-3 text-3xl font-semibold tabular-nums">{stops.length}</div></CardContent></Card>
+                <Card className={events.length ? "border-rose-500/30 bg-rose-500/[0.04]" : ""}><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><ShieldAlert className={`h-4 w-4 ${events.length ? "text-rose-500" : "text-emerald-500"}`} />Разбитие стекла</div><div className="mt-3 text-3xl font-semibold tabular-nums">{events.length}{data?.eventsTruncated ? "+" : ""}</div></CardContent></Card>
+                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><Clock3 className="h-4 w-4 text-violet-500" />Последняя запись</div><div className="mt-3 text-xl font-semibold tabular-nums">{formatTimeAgo(data?.lastRecordedAt ?? null, data?.generatedAt ?? null)}</div></CardContent></Card>
+                <Card><CardContent className="pt-5"><div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className={`h-4 w-4 ${isLiveRange && isStale ? "text-amber-500" : "text-emerald-500"}`} />Статус данных</div><div className="mt-3 text-xl font-semibold">{!isLiveRange ? "Архив" : isStale ? "Нет свежих" : "В реальном времени"}</div></CardContent></Card>
             </div>
 
             <div className="grid gap-5 xl:grid-cols-3">
                 {CHART_CATEGORIES.map((category) => (
-                    <SensorChart key={category} category={category} points={series} spanMs={spanMs} bucketMinutes={data?.bucketMinutes ?? 5} singleStop={singleStop} sampled={data?.truncated ?? false} />
+                    <SensorChart key={category} category={category} points={series} spanMs={spanMs} bucketMinutes={data?.bucketMinutes ?? 5} singleStop={singleStop} />
                 ))}
-                <GlassEventsCard events={events} issues={data?.glassIssues ?? []} truncated={data?.eventsTruncated ?? false} />
+                <GlassEventsCard events={events} issues={data?.glassIssues ?? []} />
             </div>
 
             <Card>
                 <CardHeader className="gap-3 pb-3 md:flex-row md:items-end md:justify-between">
                     <div>
                         <CardTitle className="text-base">Последние показания</CardTitle>
-                        <CardDescription>Свежие показания температуры и влажности по остановкам.</CardDescription>
                     </div>
                     {tableRows.length > 5 && (
                         <Button variant="outline" size="sm" onClick={() => setShowAllTable((value) => !value)}>

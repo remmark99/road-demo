@@ -24,7 +24,6 @@ import {
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { cityRange } from "@/lib/analytics/city-time"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -127,15 +126,11 @@ function getTrashAlertDistrictName(alert: StopTrashOverflowAlertRow, data: StopC
 function KpiCard({
     title,
     value,
-    caption,
-    detail,
     icon: Icon,
     tone = "normal",
 }: {
     title: string
     value: string
-    caption: string
-    detail: string
     icon: typeof MapIcon
     tone?: KpiTone
 }) {
@@ -165,10 +160,6 @@ function KpiCard({
                     <Icon className="h-5 w-5" />
                 </div>
             </CardHeader>
-            <CardContent className="space-y-1">
-                <p className="text-sm text-muted-foreground">{caption}</p>
-                <p className="text-xs font-medium text-foreground">{detail}</p>
-            </CardContent>
         </Card>
     )
 }
@@ -252,13 +243,7 @@ export function StopDistrictCurrentAnalytics() {
             )),
         [districtSummaries, alertFilter],
     )
-    const activeDistricts = districtSummaries.filter((district) => district.liveDirections > 0 || district.safetyEvents > 0)
     const connectedDistrictStops = districtSummaries.reduce((sum, district) => sum + district.stops, 0)
-    const estimatedDistrictMin = districtSummaries.reduce((sum, district) => sum + district.estimatedTotalMin, 0)
-    const estimatedDistrictMax = districtSummaries.reduce((sum, district) => sum + district.estimatedTotalMax, 0)
-    const estimatedDistrictLabel = estimatedDistrictMin === estimatedDistrictMax
-        ? integerFormat.format(estimatedDistrictMin)
-        : `${integerFormat.format(estimatedDistrictMin)}-${integerFormat.format(estimatedDistrictMax)}`
     const liveDirections = districtSummaries.reduce((sum, district) => sum + district.liveDirections, 0)
     const selectedSafetyEvents = districtEventRows.reduce((sum, district) => sum + district.selectedSafetyEvents, 0)
     const alertFilterLabel = alertFilter === "all" ? "Все события" : STOP_SAFETY_ALERT_LABELS[alertFilter]
@@ -307,14 +292,7 @@ export function StopDistrictCurrentAnalytics() {
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">Микрорайоны</h2>
-                        <Badge variant="outline" className="gap-1">
-                            <MapIcon className="h-3 w-3" />
-                            микрорайонная сводка
-                        </Badge>
                     </div>
-                    <p className="max-w-3xl text-sm text-muted-foreground">
-                        Сравнение микрорайонов по оснащенным остановкам, онлайн-загруженности и событиям безопасности.
-                    </p>
                 </div>
                 <div className="text-sm text-muted-foreground lg:text-right">
                     <div>Период: {formatDateTime(data?.displayedRange.from.toISOString() ?? range.from.toISOString())} - {formatDateTime(data?.displayedRange.to.toISOString() ?? range.to.toISOString())}</div>
@@ -345,31 +323,23 @@ export function StopDistrictCurrentAnalytics() {
                     <KpiCard
                         title="Микрорайонов"
                         value={integerFormat.format(districtSummaries.length)}
-                        caption="по сопоставлению остановок"
-                        detail={`${integerFormat.format(activeDistricts.length)} с онлайн-данными или событиями`}
                         icon={MapIcon}
                     />
                     <KpiCard
-                        title="Подключено в микрорайонах"
+                        title="Остановок с видеонаблюдением"
                         value={integerFormat.format(connectedDistrictStops)}
-                        caption="остановок с видеонаблюдением"
-                        detail={`${estimatedDistrictLabel} всего примерно`}
                         icon={MapPin}
                         tone="attention"
                     />
                     <KpiCard
-                        title="Онлайн-направления"
+                        title="Остановок на связи"
                         value={integerFormat.format(liveDirections)}
-                        caption="есть данные загруженности"
-                        detail="по оснащенным остановкам"
                         icon={Users2}
                         tone={liveDirections > 0 ? "attention" : "normal"}
                     />
                     <KpiCard
-                        title="События за период"
+                        title="Событий за период"
                         value={integerFormat.format(selectedSafetyEvents)}
-                        caption={alertFilterLabel}
-                        detail="группировка по микрорайонам"
                         icon={ShieldAlert}
                         tone={getKpiTone(selectedSafetyEvents)}
                     />
@@ -400,9 +370,6 @@ export function StopDistrictCurrentAnalytics() {
                                                 <ShieldAlert className="h-5 w-5 text-red-500" />
                                                 События по микрорайонам
                                             </CardTitle>
-                                            <CardDescription>
-                                                Гистограмма по выбранному типу события
-                                            </CardDescription>
                                         </div>
                                         <Button asChild variant="outline" size="sm" className="shrink-0">
                                             <Link href={districtNotificationsHref}>
@@ -468,9 +435,6 @@ export function StopDistrictCurrentAnalytics() {
                                             <Trash2 className="h-5 w-5 text-amber-500" />
                                             Загрязнения
                                         </CardTitle>
-                                        <CardDescription>
-                                            В каких микрорайонах больше всего неубранных урн
-                                        </CardDescription>
                                     </div>
                                     <Button asChild variant="outline" size="sm" className="shrink-0">
                                         <Link href={trashNotificationsHref}>
@@ -509,20 +473,17 @@ export function StopDistrictCurrentAnalytics() {
 
                     <Card>
                         <CardHeader>
-                            <CardTitle className="text-base">Микрорайонная сводка</CardTitle>
-                            <CardDescription>
-                                Остановки, онлайн-покрытие, средняя загрузка и реальные события безопасности по микрорайонам
-                            </CardDescription>
+                            <CardTitle className="text-base">Сводка по микрорайонам</CardTitle>
                         </CardHeader>
                         <CardContent>
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Микрорайон</TableHead>
-                                        <TableHead className="text-right">Подключено</TableHead>
+                                        <TableHead className="text-right">С видео</TableHead>
                                         <TableHead className="text-right">Всего</TableHead>
                                         <TableHead className="text-right">Покрытие</TableHead>
-                                        <TableHead className="text-right">Онлайн-данные</TableHead>
+                                        <TableHead className="text-right">На связи</TableHead>
                                         <TableHead className="text-right">Загрузка</TableHead>
                                         <TableHead className="text-right">Лежачий человек</TableHead>
                                         <TableHead className="text-right">Курение</TableHead>
@@ -556,7 +517,7 @@ export function StopDistrictCurrentAnalytics() {
                                                         ? district.connectedStopNames.join(", ")
                                                         : district.topStops.length > 0
                                                             ? district.topStops.join(", ")
-                                                            : "Нет онлайн-наблюдений"}
+                                                            : "—"}
                                                 </div>
                                             </TableCell>
                                         </TableRow>

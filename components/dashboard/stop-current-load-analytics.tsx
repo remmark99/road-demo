@@ -20,11 +20,9 @@ import {
     Gauge,
     MapPin,
     Users2,
-    Video,
 } from "lucide-react"
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -229,15 +227,13 @@ function getHeatmapCellClass(value: number | null, maxValue: number) {
 function KpiCard({
     title,
     value,
-    caption,
     detail,
     icon: Icon,
     tone = "normal",
 }: {
     title: string
     value: string
-    caption: string
-    detail: string
+    detail?: string
     icon: typeof Users2
     tone?: LoadTone
 }) {
@@ -268,10 +264,11 @@ function KpiCard({
                     <Icon className="h-5 w-5" />
                 </div>
             </CardHeader>
-            <CardContent className="space-y-1">
-                <p className="text-sm text-muted-foreground">{caption}</p>
-                <p className="text-xs font-medium text-foreground">{detail}</p>
-            </CardContent>
+            {detail && (
+                <CardContent>
+                    <p className="text-xs font-medium text-foreground">{detail}</p>
+                </CardContent>
+            )}
         </Card>
     )
 }
@@ -419,14 +416,7 @@ export function StopCurrentLoadAnalytics() {
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">Загруженность остановок</h2>
-                        <Badge variant="outline" className="gap-1">
-                            <Video className="h-3 w-3" />
-                            данные загруженности
-                        </Badge>
                     </div>
-                    <p className="max-w-3xl text-sm text-muted-foreground">
-                        Поминутные наблюдения камер агрегируются по часам и остановочным направлениям. Метрики показывают наблюдаемое количество людей, а не уникальных пассажиров.
-                    </p>
                 </div>
 
                 <div className="text-sm text-muted-foreground lg:text-right">
@@ -507,31 +497,24 @@ export function StopCurrentLoadAnalytics() {
                     <KpiCard
                         title="Людей сейчас"
                         value={integerFormat.format(summary.currentPeople)}
-                        caption="сумма последних минутных окон"
-                        detail={`В среднем ${numberFormat.format(summary.averagePerLocation)} чел. на направление`}
                         icon={Users2}
                         tone={getLoadTone(summary.currentLoadPct)}
                     />
                     <KpiCard
                         title="Среднее за час"
                         value={numberFormat.format(summary.averageHourlyPeople)}
-                        caption="среднее одновременное количество людей"
-                        detail={`${integerFormat.format(hourlyRows.length)} часовых бакетов в периоде`}
                         icon={BarChart3}
                     />
                     <KpiCard
                         title="Пик на остановке"
                         value={integerFormat.format(summary.peakStopPeople)}
-                        caption="максимум на одном остановочном направлении"
-                        detail={summary.peakStopLabel ?? "по минутным окнам камер"}
+                        detail={summary.peakStopLabel ?? undefined}
                         icon={Gauge}
                         tone={getLoadTone(summary.currentLoadPct)}
                     />
                     <KpiCard
-                        title="Направления с данными"
+                        title="Остановок на связи"
                         value={`${summary.activeLocations}/${expectedLocationCount}`}
-                        caption={`${summary.coveragePct}% ожидаемых минутных окон`}
-                        detail={`Обновление: ${formatFreshness(summary.latestAt)}`}
                         icon={Camera}
                         tone={summary.activeLocations < expectedLocationCount ? "attention" : "normal"}
                     />
@@ -580,9 +563,6 @@ export function StopCurrentLoadAnalytics() {
                                     <Activity className="h-5 w-5 text-blue-500" />
                                     Почасовая загрузка
                                 </CardTitle>
-                                <CardDescription>
-                                    Средняя и суммарная пиковая загрузка остановок по часам
-                                </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <ChartContainer config={hourlyPeopleConfig} className="h-[320px] w-full">
@@ -614,9 +594,6 @@ export function StopCurrentLoadAnalytics() {
                                     <Gauge className="h-5 w-5 text-emerald-500" />
                                     Индекс загрузки
                                 </CardTitle>
-                                <CardDescription>
-                                    Доля средней нагрузки от суммарного пика за выбранный период
-                                </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <ChartContainer config={loadPercentConfig} className="h-[320px] w-full">
@@ -654,9 +631,6 @@ export function StopCurrentLoadAnalytics() {
                                 <Clock3 className="h-5 w-5 text-sky-500" />
                                 Заполненность остановок
                             </CardTitle>
-                            <CardDescription>
-                                Среднее число людей в кадре.
-                            </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="overflow-x-auto">
@@ -706,9 +680,6 @@ export function StopCurrentLoadAnalytics() {
                                 <MapPin className="h-5 w-5 text-violet-500" />
                                 Остановки с наблюдениями
                             </CardTitle>
-                            <CardDescription>
-                                Последнее окно, средняя и пиковая загруженность по выбранному периоду
-                            </CardDescription>
                         </CardHeader>
                         <CardContent>
                             <Table>

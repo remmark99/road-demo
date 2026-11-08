@@ -14,7 +14,7 @@ import {
     CartesianGrid,
     ReferenceLine,
 } from "recharts"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
     ChartContainer,
     ChartTooltip,
@@ -660,9 +660,6 @@ export function ConditionAnalytics() {
                                         <Thermometer className="h-5 w-5 text-muted-foreground" />
                                         Микроклимат павильонов
                                     </CardTitle>
-                                    <CardDescription>
-                                        Температура внутри и влажность по часам для выбранных остановок.
-                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <ChartContainer config={sensorTrendConfig} className="h-[220px] w-full">
@@ -687,9 +684,6 @@ export function ConditionAnalytics() {
                                         <Zap className="h-5 w-5 text-muted-foreground" />
                                         Питание и стекло
                                     </CardTitle>
-                                    <CardDescription>
-                                        Напряжение сети и срабатывания датчика разбития.
-                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <ChartContainer config={sensorTrendConfig} className="h-[220px] w-full">
@@ -715,9 +709,6 @@ export function ConditionAnalytics() {
                                     <Gauge className="h-5 w-5 text-muted-foreground" />
                                     Датчики по остановкам
                                 </CardTitle>
-                                <CardDescription>
-                                    Большинство остановок в норме, проблемные датчики подняты наверх списка.
-                                </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -770,10 +761,6 @@ export function ConditionAnalytics() {
                                         <Activity className="h-5 w-5 text-muted-foreground" />
                                         Пульс состояния по часам
                                     </CardTitle>
-                                    <CardDescription>
-                                        Индекс здоровья сети, все тревоги и критические срабатывания в одном
-                                        временном окне.
-                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <ChartContainer config={pulseConfig} className="h-[240px] w-full">
@@ -860,9 +847,6 @@ export function ConditionAnalytics() {
                                         <Flame className="h-5 w-5 text-muted-foreground" />
                                         Структура сигналов
                                     </CardTitle>
-                                    <CardDescription>
-                                        Разбивка тревог по типам проблем и уровню серьёзности.
-                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     <ChartContainer config={issueMixConfig} className="h-[180px] w-full">
@@ -946,9 +930,6 @@ export function ConditionAnalytics() {
                                         <ShieldAlert className="h-5 w-5 text-muted-foreground" />
                                         Приоритет обслуживания
                                     </CardTitle>
-                                    <CardDescription>
-                                        Сортировка по реальному риску: кто сильнее всего просаживает индекс сети.
-                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-3">
                                     {priorityStops.map((stop) => {
@@ -1030,9 +1011,6 @@ export function ConditionAnalytics() {
                                         <Gauge className="h-5 w-5 text-muted-foreground" />
                                         Снимок по остановкам
                                     </CardTitle>
-                                    <CardDescription>
-                                        Компактный снимок по каждой точке: индекс, главный драйвер и окно риска.
-                                    </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-3">
                                     {priorityStops.map((stop) => {
@@ -1090,9 +1068,6 @@ export function ConditionAnalytics() {
                                     <Sparkles className="h-5 w-5 text-muted-foreground" />
                                     Очередь действий для диспетчера
                                 </CardTitle>
-                                <CardDescription>
-                                    Не просто журнал тревог, а список того, что лучше сделать следующим шагом.
-                                </CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="grid gap-4 xl:grid-cols-2">
