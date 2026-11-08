@@ -63,10 +63,13 @@ test('pipeline stop code is never confused with the first number as database id'
  assert.match(route.buildStopDisplay('36-23',stops).detail,/в сторону центра/)
 })
 test('API retains weights for heatmap and excludes missing detections instead of counting them as zero',()=>{
- const make=(avg,count)=>({location_id:'36-23',window_start:'2026-09-22T20:00:00Z',person_count_avg:avg,person_count_max:10,sample_count:count})
- const result=route.aggregateRows([make(10,1),make(0,9),make(null,9),make(100,0)],new Map())
+ // Two valid windows (10 people x 1 sample, 0 x 9): the database has already dropped the invalid ones.
+ const result=route.aggregateRows({hours:[['36-23','2026-09-22T20:00:00+00:00',10,10,10,2]],latest:[['36-23','2026-09-22T20:01:00+00:00',4]]},new Map())
  assert.equal(result.locationHours[0].avgPeople,1);assert.equal(result.locationHours[0].sampleCount,10)
+ assert.equal(result.locationHours[0].hourKey,'2026-09-22T20:00:00.000Z')
  assert.equal(result.locations[0].label,'Никольский')
+ assert.equal(result.locations[0].currentPeople,4);assert.equal(result.locations[0].averagePeople,1)
+ assert.equal(result.locations[0].latestAt,'2026-09-22T20:01:00.000Z')
 })
 function safetyApi(rows, failAt=-1) {
  const offsets=[]

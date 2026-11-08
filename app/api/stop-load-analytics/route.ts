@@ -51,10 +51,15 @@ interface StopLoadAnalyticsResponse {
     fallbackRange: StopLoadRangeResponse | null
     locationHours: StopLoadLocationHourRow[]
     locations: StopLoadLocationSummary[]
-    truncated: boolean
-    limit: number
-    sourceRows: number
-    totalRows: number | null
+}
+
+/** Ответ get_stop_load_hourly: компактные строки вместо объектов. */
+type HourTuple = [locationId: string, hourStart: string, weightedSum: number, weight: number, peak: number, windows: number]
+type LatestTuple = [locationId: string, windowStart: string, personCountAvg: number]
+
+interface HourlyAggregate {
+    hours: HourTuple[]
+    latest: LatestTuple[]
 }
 
 interface CacheEntry {
@@ -62,9 +67,6 @@ interface CacheEntry {
     payload: StopLoadAnalyticsResponse
 }
 
-const PAGE_SIZE = 1000
-const MAX_RAW_ROWS = 60000
-const PARALLEL_PAGE_REQUESTS = 8
 const CACHE_TTL_MS = 45_000
 const SUPABASE_QUERY_TIMEOUT_MS = 8_000
 const SUPABASE_QUERY_ATTEMPTS = 3
@@ -123,16 +125,6 @@ async function runSupabaseQuery<T extends { error: { message: string } | null }>
     throw lastError instanceof Error ? lastError : new Error(`${label} failed`)
 }
 
-
-function floorToHour(iso: string) {
-    const date = new Date(iso)
-    date.setMinutes(0, 0, 0)
-    return date.toISOString()
-}
-
-function toFiniteNumber(value: number | null | undefined) {
-    return Number.isFinite(value) ? Number(value) : 0
-}
 
 function compareLocationId(a: string, b: string) {
     return a.localeCompare(b, "ru", { numeric: true })
@@ -232,166 +224,65 @@ async function fetchLatestWindow() {
     return ((data ?? [])[0] ?? null) as BusynessWindowRow | null
 }
 
-async function fetchBusynessRows(from: Date, to: Date) {
+async function fetchHourlyAggregate(from: Date, to: Date) {
     const supabase = await createClient()
-    const countQuery = await runSupabaseQuery(
-        () => supabase
-            .from("busyness_windows")
-            .select("location_id", { count: "exact", head: true })
-            .gte("window_start", from.toISOString())
-            .lte("window_start", to.toISOString()),
-        "busyness count",
+    const { data, error } = await runSupabaseQuery(
+        () => supabase.rpc("get_stop_load_hourly", {
+            p_from: from.toISOString(),
+            p_to: to.toISOString(),
+        }),
+        "busyness hourly aggregate",
     )
 
-    if (countQuery.error) {
-        throw new Error(countQuery.error.message)
+    if (error) {
+        throw new Error(error.message)
     }
 
-    const totalRows = countQuery.count ?? 0
-    const limitedRows = Math.min(totalRows, MAX_RAW_ROWS)
-
-    if (limitedRows === 0) {
-        return {
-            rows: [] as BusynessWindowRow[],
-            totalRows,
-            truncated: false,
-        }
-    }
-
-    const ranges = Array.from(
-        { length: Math.ceil(limitedRows / PAGE_SIZE) },
-        (_, index) => {
-            const fromIndex = index * PAGE_SIZE
-            const toIndex = Math.min(limitedRows - 1, fromIndex + PAGE_SIZE - 1)
-
-            return { fromIndex, toIndex }
-        },
-    )
-    const rows: BusynessWindowRow[] = []
-
-    for (let index = 0; index < ranges.length; index += PARALLEL_PAGE_REQUESTS) {
-        const chunk = ranges.slice(index, index + PARALLEL_PAGE_REQUESTS)
-        const results = await Promise.all(chunk.map(({ fromIndex, toIndex }) => (
-            runSupabaseQuery(
-                () => supabase
-                    .from("busyness_windows")
-                    .select(BUSYNESS_COLUMNS)
-                    .gte("window_start", from.toISOString())
-                    .lte("window_start", to.toISOString())
-                    .order("window_start", { ascending: false })
-                    .order("location_id")
-                    .range(fromIndex, toIndex),
-                `busyness range ${fromIndex}-${toIndex}`,
-            )
-        )))
-
-        for (const result of results) {
-            if (result.error) {
-                throw new Error(result.error.message)
-            }
-
-            rows.push(...((result.data ?? []) as BusynessWindowRow[]))
-        }
-    }
-
-    return {
-        rows,
-        totalRows,
-        truncated: totalRows > MAX_RAW_ROWS,
-    }
+    return (data ?? { hours: [], latest: [] }) as HourlyAggregate
 }
 
 function aggregateRows(
-    rows: BusynessWindowRow[],
+    { hours, latest }: HourlyAggregate,
     stopsLookup: Map<number, StopInfo>,
 ) {
-    const hourMap = new Map<
-        string,
-        {
-            locationId: string
-            hourKey: string
-            weightedSum: number
-            weight: number
-            peakPeople: number
-            windows: number
-        }
-    >()
-    const locationMap = new Map<
-        string,
-        {
-            latestRow: BusynessWindowRow | null
-            weightedSum: number
-            weight: number
-            peakPeople: number
-            windows: number
-        }
-    >()
+    const locationMap = new Map<string, { weightedSum: number; weight: number; peakPeople: number; windows: number }>()
 
-    for (const row of rows) {
-        if (!Number.isFinite(row.person_count_avg) || row.person_count_avg === null || row.person_count_avg < 0 || (row.sample_count !== null && row.sample_count <= 0)) continue
-        const sampleWeight = Math.max(1, toFiniteNumber(row.sample_count))
-        const avgPeople = toFiniteNumber(row.person_count_avg)
-        const peakPeople = toFiniteNumber(row.person_count_max)
-        const hourKey = floorToHour(row.window_start)
-        const locationHourKey = `${row.location_id}|${hourKey}`
-        const hour = hourMap.get(locationHourKey) ?? {
-            locationId: row.location_id,
-            hourKey,
-            weightedSum: 0,
-            weight: 0,
-            peakPeople: 0,
-            windows: 0,
-        }
-        const location = locationMap.get(row.location_id) ?? {
-            latestRow: null,
-            weightedSum: 0,
-            weight: 0,
-            peakPeople: 0,
-            windows: 0,
-        }
-
-        hour.weightedSum += avgPeople * sampleWeight
-        hour.weight += sampleWeight
-        hour.peakPeople = Math.max(hour.peakPeople, peakPeople)
-        hour.windows += 1
-        hourMap.set(locationHourKey, hour)
-
-        location.weightedSum += avgPeople * sampleWeight
-        location.weight += sampleWeight
-        location.peakPeople = Math.max(location.peakPeople, peakPeople)
-        location.windows += 1
-
-        if (!location.latestRow || row.window_start > location.latestRow.window_start) {
-            location.latestRow = row
-        }
-
-        locationMap.set(row.location_id, location)
+    for (const [locationId, , weightedSum, weight, peak, windows] of hours) {
+        const location = locationMap.get(locationId) ?? { weightedSum: 0, weight: 0, peakPeople: 0, windows: 0 }
+        location.weightedSum += weightedSum
+        location.weight += weight
+        location.peakPeople = Math.max(location.peakPeople, peak)
+        location.windows += windows
+        locationMap.set(locationId, location)
     }
 
-    const locationHours = Array.from(hourMap.values())
-        .sort((a, b) => a.hourKey.localeCompare(b.hourKey) || compareLocationId(a.locationId, b.locationId))
-        .map<StopLoadLocationHourRow>((row) => ({
-            locationId: row.locationId,
-            hourKey: row.hourKey,
-            avgPeople: row.weight > 0 ? row.weightedSum / row.weight : 0,
-            peakPeople: Number(row.peakPeople.toFixed(1)),
-            windows: row.windows,
-            sampleCount: row.weight,
+    const latestByLocation = new Map(latest.map(([locationId, windowStart, avg]) => [locationId, { windowStart, avg }]))
+
+    const locationHours = hours
+        .map<StopLoadLocationHourRow>(([locationId, hourStart, weightedSum, weight, peak, windows]) => ({
+            locationId,
+            hourKey: new Date(hourStart).toISOString(),
+            avgPeople: weight > 0 ? weightedSum / weight : 0,
+            peakPeople: Number(peak.toFixed(1)),
+            windows,
+            sampleCount: weight,
         }))
+        .sort((a, b) => a.hourKey.localeCompare(b.hourKey) || compareLocationId(a.locationId, b.locationId))
 
     const locations = Array.from(locationMap.entries())
         .map<StopLoadLocationSummary>(([locationId, value]) => {
             const display = buildStopDisplay(locationId, stopsLookup)
+            const newest = latestByLocation.get(locationId)
 
             return {
                 locationId,
                 label: display.label,
                 detail: display.detail,
-                currentPeople: Math.round(toFiniteNumber(value.latestRow?.person_count_avg)),
+                currentPeople: Math.round(newest?.avg ?? 0),
                 averagePeople: value.weight > 0 ? Number((value.weightedSum / value.weight).toFixed(1)) : 0,
                 peakPeople: Math.round(value.peakPeople),
                 windows: value.windows,
-                latestAt: value.latestRow?.window_start ?? null,
+                latestAt: newest ? new Date(newest.windowStart).toISOString() : null,
             }
         })
         .sort((a, b) => b.currentPeople - a.currentPeople || compareLocationId(a.locationId, b.locationId))
@@ -414,9 +305,9 @@ async function buildPayload(from: Date, to: Date): Promise<StopLoadAnalyticsResp
     let displayedFrom = from
     let displayedTo = to
     let fallbackRange: StopLoadRangeResponse | null = null
-    let result = await fetchBusynessRows(from, to)
+    let result = await fetchHourlyAggregate(from, to)
 
-    if (result.rows.length === 0) {
+    if (result.hours.length === 0) {
         const latestWindow = await fetchLatestWindow()
 
         if (latestWindow) {
@@ -424,21 +315,17 @@ async function buildPayload(from: Date, to: Date): Promise<StopLoadAnalyticsResp
             displayedFrom = cityDayStart(latestDate)
             displayedTo = new Date(cityDayStart(latestDate).getTime() + 86_400_000 - 1)
             fallbackRange = toRangeResponse(displayedFrom, displayedTo)
-            result = await fetchBusynessRows(displayedFrom, displayedTo)
+            result = await fetchHourlyAggregate(displayedFrom, displayedTo)
         }
     }
 
-    const aggregated = aggregateRows(result.rows, stopsLookup)
+    const aggregated = aggregateRows(result, stopsLookup)
 
     return {
         displayedRange: toRangeResponse(displayedFrom, displayedTo),
         fallbackRange,
         locationHours: aggregated.locationHours,
         locations: aggregated.locations,
-        truncated: result.truncated,
-        limit: MAX_RAW_ROWS,
-        sourceRows: result.rows.length,
-        totalRows: result.totalRows,
     }
 }
 
@@ -448,10 +335,6 @@ function buildEmptyPayload(from: Date, to: Date): StopLoadAnalyticsResponse {
         fallbackRange: null,
         locationHours: [],
         locations: [],
-        truncated: false,
-        limit: MAX_RAW_ROWS,
-        sourceRows: 0,
-        totalRows: 0,
     }
 }
 

@@ -22,6 +22,7 @@ import {
 } from "lucide-react"
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
+import { cityDayStart, cityRange } from "@/lib/analytics/city-time"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -159,64 +160,6 @@ function getEventCameraIndexes(event: TrashOverflowEvent) {
     return typeof event.cameraIndex === "number" ? [event.cameraIndex] : []
 }
 
-function startOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(0, 0, 0, 0)
-    return result
-}
-
-function endOfLocalDay(date: Date) {
-    const result = new Date(date)
-    result.setHours(23, 59, 59, 999)
-    return result
-}
-
-function getRangeBounds(result: TimeRangeResult): RangeBounds {
-    const now = new Date()
-
-    if (result.preset === "custom" && result.customRange?.from) {
-        return {
-            from: startOfLocalDay(result.customRange.from),
-            to: result.customRange.to ? endOfLocalDay(result.customRange.to) : endOfLocalDay(result.customRange.from),
-        }
-    }
-
-    if (result.preset === "yesterday") {
-        const yesterday = new Date(now)
-        yesterday.setDate(now.getDate() - 1)
-
-        return {
-            from: startOfLocalDay(yesterday),
-            to: endOfLocalDay(yesterday),
-        }
-    }
-
-    if (result.preset === "week") {
-        const weekAgo = new Date(now)
-        weekAgo.setDate(now.getDate() - 7)
-
-        return {
-            from: weekAgo,
-            to: now,
-        }
-    }
-
-    if (result.preset === "month") {
-        const monthAgo = new Date(now)
-        monthAgo.setDate(now.getDate() - 30)
-
-        return {
-            from: monthAgo,
-            to: now,
-        }
-    }
-
-    return {
-        from: startOfLocalDay(now),
-        to: now,
-    }
-}
-
 function getTimestampMs(iso: string) {
     const timestamp = new Date(iso).getTime()
     return Number.isFinite(timestamp) ? timestamp : null
@@ -347,8 +290,8 @@ async function fetchTrashOverflowEventsForRange(range: RangeBounds) {
 
     const latestDate = new Date(latestAlert.timestamp)
     const fallbackRange = {
-        from: startOfLocalDay(latestDate),
-        to: endOfLocalDay(latestDate),
+        from: cityDayStart(latestDate),
+        to: new Date(cityDayStart(latestDate).getTime() + 86_400_000 - 1),
     }
     const fallbackAlerts = await fetchStopTrashOverflowAlerts({
         from: fallbackRange.from,
@@ -646,7 +589,7 @@ export function StopConditionCurrentAnalytics() {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
 
-    const range = useMemo(() => getRangeBounds(timeRange), [timeRange])
+    const range = useMemo(() => cityRange(timeRange), [timeRange])
 
     useEffect(() => {
         let cancelled = false

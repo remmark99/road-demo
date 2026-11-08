@@ -550,19 +550,6 @@ export function StopCurrentLoadAnalytics() {
                 </Card>
             )}
 
-            {data?.truncated && (
-                <Card className="border-amber-500/30 bg-amber-500/[0.05]">
-                    <CardContent className="flex items-start gap-3 p-4">
-                        <AlertCircle className="mt-0.5 h-5 w-5 text-amber-500" />
-                        <div>
-                            <p className="font-medium text-amber-700 dark:text-amber-300">Период слишком большой для полной агрегации</p>
-                            <p className="text-sm text-muted-foreground">
-                                Агрегация построена по {integerFormat.format(data.sourceRows)} из {integerFormat.format(data.totalRows ?? data.sourceRows)} окон. Для точной картины выберите более короткий период.
-                            </p>
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
 
             {(noRows || selectedEmpty) && (
                 <Card>

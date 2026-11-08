@@ -91,7 +91,7 @@ const SUBTYPE_COLORS = [
 // ─── Main Component ──────────────────────────────────
 
 export function SecurityAnalytics() {
-    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "week" })
+    const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
     const [selectedStops, setSelectedStops] = useState<BusStopId[]>(
         BUS_STOPS.map((s) => s.id)
     )
