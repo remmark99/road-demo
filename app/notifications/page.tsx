@@ -35,7 +35,7 @@ import {
   CONTROLLER_LINK_CATEGORIES,
   type ControllerAlert,
 } from "@/lib/api/controller-alerts"
-import { controllerKindFilter, feedKindTypes, type FeedKind } from "@/lib/notifications/feed-kind"
+import { controllerKindFilter, feedKindShows, feedKindTypes, pruneForFeedKind, type FeedKind } from "@/lib/notifications/feed-kind"
 import { FeedKindToggle } from "@/components/notifications/feed-kind-toggle"
 import { CLIMATE_ELEMENT, GLASS_BREAK_ELEMENT } from "@/lib/api/measurements"
 import type { Alert, Camera } from "@/lib/types"
@@ -934,7 +934,11 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
     setLoading(true)
     setPage(0)
     setFeedKind(kind)
+    setSelectedTypes((prev) => pruneForFeedKind(prev, kind, ALERT_CATEGORIES.bus_stop_equipment.types))
+    if (kind === 'equipment') setRepairShortcutSelected(false)
   }
+  const showEvents = feedKindShows(feedKind, false)
+  const showEquipment = feedKindShows(feedKind, true)
 
   const clearFilters = () => {
     setLoading(true)
@@ -1037,7 +1041,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             </>
           )}
 
-          {hasRoads && (
+          {hasRoads && showEvents && (
             <>
               {/* Спецтехника */}
               <div>
@@ -1140,7 +1144,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             </>
           )}
 
-          {hasShore && (
+          {hasShore && showEvents && (
             <>
               {/* Охрана периметра */}
               <div>
@@ -1204,7 +1208,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             </>
           )}
 
-          {hasParks && (
+          {hasParks && showEvents && (
             <>
               <div>
                 <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
@@ -1237,7 +1241,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             </>
           )}
 
-          {hasTransport && (
+          {hasTransport && showEvents && (
             <>
               <div>
                 <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
@@ -1270,7 +1274,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             </>
           )}
 
-          {hasStops && (
+          {hasStops && showEvents && (
             <>
               <div>
                 <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
@@ -1299,7 +1303,11 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
               </div>
 
               <Separator />
+            </>
+          )}
 
+          {hasStops && showEquipment && (
+            <>
               <div>
                 <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
                   <Cctv className="h-4 w-4 text-red-400" />
@@ -1810,7 +1818,13 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
     setLoading(true)
     setPage(0)
     setFeedKind(kind)
+    setSelectedCategories((prev) => pruneForFeedKind(prev, kind, CONTROLLER_LINK_CATEGORIES))
+    if (kind === 'equipment') setSelectedElements([])
   }
+  const showSensorFilters = feedKindShows(feedKind, false)
+  const visibleCategories = FILTERABLE_CATEGORIES.filter((key) =>
+    feedKindShows(feedKind, (CONTROLLER_LINK_CATEGORIES as readonly string[]).includes(key))
+  )
 
   const clearFilters = () => {
     setLoading(true)
@@ -1854,6 +1868,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
           <Separator />
 
           {/* Element filter */}
+          {showSensorFilters && (<>
           <div>
             <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
               <Activity className="h-4 w-4 text-emerald-400" />
@@ -1881,6 +1896,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
           </div>
 
           <Separator />
+          </>)}
 
           {/* Category filter */}
           <div>
@@ -1888,7 +1904,7 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
               Категория
             </div>
             <div className="flex flex-wrap gap-2">
-              {FILTERABLE_CATEGORIES.map((key) => {
+              {visibleCategories.map((key) => {
                 const label = CATEGORY_LABELS[key]
                 const isSelected = selectedCategories.includes(key)
                 return (

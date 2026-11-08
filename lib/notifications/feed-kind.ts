@@ -19,6 +19,16 @@ export function feedKindTypes(types: readonly string[], kind: FeedKind, equipmen
     return types.filter((type) => (kind === 'equipment') === equipment.has(type))
 }
 
+/** Показывать ли в фильтрах группу типов: техника — только при «Все» и «Техника», события — при «Все» и «События». */
+export function feedKindShows(kind: FeedKind, isEquipment: boolean): boolean {
+    return kind === 'all' || (kind === 'equipment') === isEquipment
+}
+
+/** Выбранные типы, которые остаются при смене режима: скрытые кнопки не должны оставаться нажатыми. */
+export function pruneForFeedKind(selected: readonly string[], kind: FeedKind, equipmentTypes: readonly string[]): string[] {
+    return kind === 'all' ? [...selected] : feedKindTypes(selected, kind, equipmentTypes)
+}
+
 export interface ControllerKindFilter {
     categories?: string[]
     excludeCategories?: string[]
