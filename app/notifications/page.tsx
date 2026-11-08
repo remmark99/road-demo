@@ -14,7 +14,7 @@ import { CAMERA_OFFLINE, CAMERA_ONLINE, getCameraOutageEpisode, getCameraOutageI
 import { MediaLightbox, useMediaLightbox, type LightboxImage } from "@/components/notifications/media-lightbox"
 import { cn } from "@/lib/utils"
 
-import { Suspense, useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import { Navigation } from "@/components/navigation"
 import {
@@ -778,6 +778,10 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
   const [pageSize, setPageSize] = useState(25)
   const [expandedId, setExpandedId] = useState<string | null>(initialAlertId)
   const [episodeRefreshTick, setEpisodeRefreshTick] = useState(0)
+  // Фоновое обновление раз в 30 с не должно менять список на спиннер:
+  // страница схлопывается и прокрутка улетает наверх.
+  const lastRefreshTick = useRef(episodeRefreshTick)
+  const scrolledToAlert = useRef(false)
   const { lightboxProps, openLightbox } = useMediaLightbox()
   useEffect(() => {
     // Keep the stops feed fresh even when no episode is currently visible:
@@ -791,7 +795,8 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
   }, [hasStops])
 
   useEffect(() => {
-    if (initialAlertId && !loading) {
+    if (initialAlertId && !loading && !scrolledToAlert.current) {
+      scrolledToAlert.current = true
       const timer = setTimeout(() => {
         const element = document.getElementById(`alert-${initialAlertId}`)
         if (element) {
@@ -855,7 +860,9 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
   useEffect(() => { setPage(0) }, [period.from, period.to, period.start, period.end])
 
   useEffect(() => {
-    setLoading(true)
+    const background = lastRefreshTick.current !== episodeRefreshTick
+    lastRefreshTick.current = episodeRefreshTick
+    if (!background) setLoading(true)
     let bounds
     try { bounds = notificationPeriodBounds(period) } catch {
       setAlerts([]); setLyingPersonEpisodes([]); setTotal(0); setLoading(false); return
