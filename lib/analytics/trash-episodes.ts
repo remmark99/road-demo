@@ -29,6 +29,7 @@ export interface TrashOverflowEpisode {
 }
 
 const LEGACY_EPISODE_GAP_MS = 2 * 60 * 60 * 1000
+const STOP_CAMERA_INDEX_OFFSET = 10000
 
 export function episodeOfAlert(alert: { alert_type: string; metadata: Record<string, unknown> | null }): TrashEventEpisode | null {
     const episode = getBinEpisode(alert as Parameters<typeof getBinEpisode>[0])
@@ -45,6 +46,19 @@ export function episodeOfAlert(alert: { alert_type: string; metadata: Record<str
 export function eventOverlapsRange(event: TrashOverflowEvent, from: Date) {
     const end = event.episode ? event.episode.endAt : event.timestamp
     return end === null || new Date(end).getTime() >= from.getTime()
+}
+
+/**
+ * Камеры остановки для ссылки в ленту. В stopIdByCameraIndex лежат короткие номера VMS,
+ * а эпизоды хранятся под номером +10000: лента ищет оба варианта, только если получила
+ * полный номер, иначе в выдачу попадают лишь старые записи без длительности.
+ */
+export function stopFeedCameraIndexes(stopId: number | null, stopIdByCameraIndex: Map<number, number> | undefined, fallback: number[]) {
+    if (stopId === null || !stopIdByCameraIndex) return fallback
+    const indexes = Array.from(stopIdByCameraIndex.entries())
+        .filter(([, cameraStopId]) => cameraStopId === stopId)
+        .map(([cameraIndex]) => cameraIndex + STOP_CAMERA_INDEX_OFFSET)
+    return indexes.length > 0 ? indexes : fallback
 }
 
 function cameraIndexesOf(event: TrashOverflowEvent) {

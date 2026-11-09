@@ -14,7 +14,7 @@ function load(path, modules = {}) {
   return exports
 }
 const bin = load('../lib/bin-episodes.ts')
-const { buildTrashOverflowEpisodes, episodeOfAlert, eventOverlapsRange } =
+const { buildTrashOverflowEpisodes, episodeOfAlert, eventOverlapsRange, stopFeedCameraIndexes } =
   load('../lib/analytics/trash-episodes.ts', { '../bin-episodes': bin })
 
 const alert = (started, lastSeen, ended, count) => ({
@@ -62,6 +62,14 @@ test('старые записи без эпизода склеиваются п�
   assert.equal(episodes.length, 2)
   assert.equal(episodes[0].durationMs, 60 * MIN)
   assert.equal(episodes[0].confirmations, 2)
+})
+
+test('ссылка в ленту передаёт полные номера камер, под которыми лежат эпизоды', () => {
+  const cameras = new Map([[148, 7], [149, 7], [150, 7], [131, 8]])
+  assert.deepEqual(stopFeedCameraIndexes(7, cameras, [10149]), [10148, 10149, 10150])
+  assert.deepEqual(stopFeedCameraIndexes(99, cameras, [10149]), [10149])
+  assert.deepEqual(stopFeedCameraIndexes(null, cameras, [10149]), [10149])
+  assert.deepEqual(stopFeedCameraIndexes(7, undefined, [10149]), [10149])
 })
 
 test('эпизод, начатый до периода и шедший в нём, входит в период', () => {
