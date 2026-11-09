@@ -31,6 +31,7 @@ import {
   getControllerAlertSourceLabel,
   isControllerLinkAlert,
   isRecoveryAlert,
+  isGlassAlert,
   getCategoryColor,
   controllerAlertMessage,
   CATEGORY_LABELS,
@@ -2092,8 +2093,16 @@ function ControllerAlertsTab({ stopPlaces, period, onPeriodChange }: { stopPlace
             const message = controllerAlertMessage(alert)
             const stopDisplay = getControllerAlertStopDisplay(alert, stopPlaces)
             const isPhoto = !!alert.clip_path && /\.(jpg|jpeg|png|webp)$/i.test(alert.clip_path)
-            const hasMedia = Boolean(alert.clip_path) || Boolean(alert.metadata?.glass_episode)
+            const glassEpisode = alert.metadata?.glass_episode
+            // У подтверждённого эпизода clip_path — первый кадр «после», он уже есть
+            // среди пар «до / после»; отдельно его не показываем.
+            const showClip = Boolean(alert.clip_path) && !glassEpisode
+            const hasMedia = showClip || Boolean(glassEpisode)
+            // Голое срабатывание контакта: кадры не сохранялись, проверки по камерам не было.
+            const unverifiedGlass = isGlassAlert(alert) && !glassEpisode && !isRecoveryAlert(alert)
             const isExpanded = expandedId === alert.id
+            const exactTime = formatTime(alert.created_at)
+            const relativeTime = formatTimeAgo(alert.created_at)
 
             return (
               <Card
@@ -2112,9 +2121,11 @@ function ControllerAlertsTab({ stopPlaces, period, onPeriodChange }: { stopPlace
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
                       <div className="min-w-0">
                         <div className="text-muted-foreground md:text-foreground">
-                          {formatTimeAgo(alert.created_at)}
+                          {relativeTime}
                         </div>
-                        <div className="text-xs text-muted-foreground">{formatTime(alert.created_at)}</div>
+                        {relativeTime !== exactTime && (
+                          <div className="text-xs text-muted-foreground">{exactTime}</div>
+                        )}
                       </div>
                     </div>
 
@@ -2144,6 +2155,16 @@ function ControllerAlertsTab({ stopPlaces, period, onPeriodChange }: { stopPlace
                     {/* What happened */}
                     <div className="md:col-span-4 min-w-0 text-sm">
                       <p className="break-words">{message}</p>
+                      {unverifiedGlass && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Кадров «до / после» нет: срабатывание не проверялось по камерам
+                        </p>
+                      )}
+                      {glassEpisode && !isExpanded && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Есть кадры «до / после» с {glassEpisode.first_evidence?.length ?? 0} {(glassEpisode.first_evidence?.length ?? 0) === 1 ? 'камеры' : 'камер'} — раскройте строку
+                        </p>
+                      )}
                     </div>
 
                     {/* Chevron icon indicator for media */}
@@ -2162,7 +2183,7 @@ function ControllerAlertsTab({ stopPlaces, period, onPeriodChange }: { stopPlace
 
                   {/* Expanded view when alert has image / clip */}
                   {isExpanded && <GlassEvidencePanel alert={alert} />}
-                  {isExpanded && alert.clip_path && (
+                  {isExpanded && showClip && alert.clip_path && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <MediaFrame>

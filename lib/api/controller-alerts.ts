@@ -22,6 +22,7 @@ export interface ControllerAlert {
         ended_at?: string
         first_evidence: GlassEvidence[]
         latest_evidence: GlassEvidence[]
+        closed_evidence?: GlassEvidence[]
     } }
 }
 
@@ -29,6 +30,8 @@ export interface GlassEvidence {
     camera_index: number
     before?: { timestamp: number; url: string }
     after: { timestamp: number; url: string }
+    /** Модель назвала эту камеру среди тех, где видно повреждение (glass_monitor.py). */
+    damaged?: boolean
 }
 
 export interface FetchControllerAlertsOptions {
@@ -147,6 +150,11 @@ export function isRecoveryAlert(alert: Pick<ControllerAlert, 'alarm'>): boolean 
 export function getCategoryColor(alert: Pick<ControllerAlert, 'category' | 'alarm'>): string {
     if (isRecoveryAlert(alert)) return RECOVERY_COLOR
     return CATEGORY_COLORS[alert.category] ?? 'text-muted-foreground bg-muted'
+}
+
+/** Срабатывание датчика стекла: подтверждённый эпизод или голый сигнал контакта. */
+export function isGlassAlert(alert: Pick<ControllerAlert, 'category'>): boolean {
+    return (INCIDENT_CATEGORY_ALIASES as readonly string[]).includes(alert.category)
 }
 
 export function getCategoryUnit(category: string): string {
