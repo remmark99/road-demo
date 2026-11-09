@@ -25,6 +25,7 @@ import {
     buildTrashOverflowEpisodes,
     episodeOfAlert,
     eventOverlapsRange,
+    stopFeedCameraIndexes,
     type TrashOverflowEpisode,
     type TrashOverflowEvent,
 } from "@/lib/analytics/trash-episodes"
@@ -59,6 +60,7 @@ import {
     type CurrentStopInfo,
     type RangeBounds,
 } from "@/lib/api/stop-current-analytics"
+import { notificationDate } from "@/lib/notifications/feed-filters"
 import { getStopComplexByCameraIndex } from "@/lib/stop-analytics-config"
 import { cn } from "@/lib/utils"
 
@@ -123,9 +125,11 @@ const TRASH_NOTIFICATION_TYPES = [...STOP_TRASH_OVERFLOW_ALERT_TYPES]
 function buildNotificationsHref({
     types,
     cameraIndexes = [],
+    from,
 }: {
     types: readonly string[]
     cameraIndexes?: readonly number[]
+    from?: string
 }) {
     const params = new URLSearchParams()
     const uniqueTypes = Array.from(new Set(types.filter(Boolean)))
@@ -137,6 +141,10 @@ function buildNotificationsHref({
 
     if (uniqueCameraIndexes.length > 0) {
         params.set("cameras", uniqueCameraIndexes.join(","))
+    }
+
+    if (from) {
+        params.set("from", from)
     }
 
     const query = params.toString()
@@ -419,14 +427,6 @@ function buildHourlyTrashRows(events: TrashOverflowEvent[]): HourlyTrashRow[] {
             stops: value.locations.size,
         }))
         .sort((a, b) => a.hour.localeCompare(b.hour))
-}
-
-function stopCameraIndexes(episode: TrashEpisodeDisplayRow, stopIdByCameraIndex?: Map<number, number>) {
-    if (episode.stopId === null || !stopIdByCameraIndex) return episode.cameraIndexes
-    const indexes = Array.from(stopIdByCameraIndex.entries())
-        .filter(([, stopId]) => stopId === episode.stopId)
-        .map(([cameraIndex]) => cameraIndex)
-    return indexes.length > 0 ? indexes : episode.cameraIndexes
 }
 
 function episodeDetail(episode: TrashEpisodeDisplayRow) {
@@ -766,7 +766,9 @@ export function StopConditionCurrentAnalytics() {
                                             types: TRASH_NOTIFICATION_TYPES,
                                             // Вся остановка: урну видят несколько камер, а эпизод одной
                                             // из них не должен скрывать в ленте эпизоды остальных.
-                                            cameraIndexes: stopCameraIndexes(episode, data?.stopIdByCameraIndex),
+                                            cameraIndexes: stopFeedCameraIndexes(episode.stopId, data?.stopIdByCameraIndex, episode.cameraIndexes),
+                                            // Лента открывается с дня начала эпизода, без старых записей ниже него.
+                                            from: notificationDate(new Date(episode.startAt).getTime()),
                                         })
 
                                         return (
