@@ -90,3 +90,30 @@ test('Shift selects and clears whole visible stop ranges in either direction', (
   assert.deepEqual(selectCameraPlaceRange(places,[99],'b','hidden-by-search',true),[99,3])
   assert.deepEqual(selectCameraPlaceRange(places,[99],'c',null,true),[99,4,5])
 })
+
+const { buildStopPlaces, findStopPlace } = load('lib/notifications/feed-filters.ts')
+const { controllerAlertMessage, isRecoveryAlert, getCategoryColor, RECOVERY_COLOR, CATEGORY_COLORS } = load('lib/api/controller-alerts.ts', { '../request-cache': { sessionRequest: (_k, _t, f) => f() }, '../supabase': { supabase: {} } })
+test('sensor feed: stops stand in for camera places and are found by bus_stop_id', () => {
+  const places = buildStopPlaces([
+    { id: 7, name: 'Центр', short_name: 'ост. 1-2', address: 'Ленина, 1', description: null },
+    { id: 3, name: 'Вокзал', short_name: null, address: null, description: null },
+  ])
+  assert.deepEqual(places.map(p => p.key), ['stop:3', 'stop:7'])
+  assert.deepEqual(places[1], { key: 'stop:7', label: 'Ленина, 1', detail: 'Центр · № 1-2', cameraIndexes: [7] })
+  assert.deepEqual(filteredCameraIndexes(places, 'вокзал', []), [3])
+  assert.equal(findStopPlace(places, 7)?.label, 'Ленина, 1')
+  assert.equal(findStopPlace(places, null), undefined)
+})
+test('sensor feed: the operator reads what happened, not a controller label', () => {
+  const own = 'Высокая температура на остановке: 35.2 °C (порог 30 °C)'
+  assert.equal(controllerAlertMessage({ category: 'temperature', alarm: 'critical', value: 35.2, message: own }), own)
+  assert.equal(controllerAlertMessage({ category: 'temperature', alarm: 'critical', value: 35.2, message: 'Temperature DIO alarm' }), 'Температура за пределами допустимого: 35,2 °C')
+  assert.equal(controllerAlertMessage({ category: 'humidity', alarm: 'normal', value: 40, message: '' }), 'Влажность вернулась в норму: 40 %')
+  assert.equal(controllerAlertMessage({ category: 'digital input', alarm: 'critical', value: 1, message: 'DIO1' }), 'Сработал датчик разбития стекла')
+  assert.equal(controllerAlertMessage({ category: 'digital input', alarm: 'normal', value: 0, message: 'DIO1' }), 'Датчик разбития стекла вернулся в норму')
+  assert.equal(controllerAlertMessage({ category: 'controller_offline', alarm: 'critical', value: 12, message: '' }), 'Контроллер остановки не на связи 12 мин')
+  assert.equal(controllerAlertMessage({ category: 'controller_online', alarm: 'normal', value: 48, message: 'ONLINE' }), 'Контроллер остановки снова на связи. Не отвечал 48 мин')
+  assert.equal(isRecoveryAlert({ alarm: 'alarm' }), false)
+  assert.equal(getCategoryColor({ category: 'temperature', alarm: 'normal' }), RECOVERY_COLOR)
+  assert.equal(getCategoryColor({ category: 'incident', alarm: 'alarm' }), CATEGORY_COLORS.incident)
+})

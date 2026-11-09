@@ -7,8 +7,12 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { searchCameraPlaces, selectCameraPlaceRange, type CameraPlace } from '@/lib/notifications/feed-filters'
 
-export function CameraPlaceFilter({ places, query, selected, onQueryChange, onSelectionChange }: {
+export function CameraPlaceFilter({ places, query, selected, onQueryChange, onSelectionChange,
+  directoryTitle = 'Остановки и места установки камер',
+  directoryDescription = 'Отметьте нужные места — в списке останутся события только с этих камер.',
+}: {
   places: CameraPlace[]; query: string; selected: number[]; onQueryChange: (value: string) => void; onSelectionChange: (value: number[]) => void
+  directoryTitle?: string; directoryDescription?: string
 }) {
   const [directoryQuery, setDirectoryQuery] = useState('')
   const [suggestionsOpen, setSuggestionsOpen] = useState(false)
@@ -57,7 +61,7 @@ export function CameraPlaceFilter({ places, query, selected, onQueryChange, onSe
       <Dialog onOpenChange={() => { rangeAnchor.current = null; shiftPressed.current = false }}>
         <DialogTrigger asChild><Button variant="outline" className="gap-2"><BookOpen className="h-4 w-4" />Справочник</Button></DialogTrigger>
         <DialogContent className="sm:max-w-xl">
-          <DialogHeader><DialogTitle>Остановки и места установки камер</DialogTitle><DialogDescription>Отметьте нужные места — в списке останутся события только с этих камер.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{directoryTitle}</DialogTitle><DialogDescription>{directoryDescription}</DialogDescription></DialogHeader>
           <Input aria-label="Поиск в справочнике" placeholder="Найти по названию, адресу или номеру" value={directoryQuery} onChange={e => { setDirectoryQuery(e.target.value); rangeAnchor.current = null }} />
           <div className="max-h-[55vh] space-y-1 overflow-y-auto">
             {directoryPlaces.map(place => {

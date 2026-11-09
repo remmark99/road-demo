@@ -53,6 +53,23 @@ export function buildCameraPlaces(cameras: Camera[], stops: BusStopProperties[])
   }
   return [...places.values()].sort((a, b) => a.label.localeCompare(b.label, 'ru', { numeric: true }) || a.detail.localeCompare(b.detail, 'ru'))
 }
+/**
+ * Остановки для ленты датчиков. controller_alerts привязаны к bus_stop_id, а не к
+ * камере, поэтому в `cameraIndexes` лежит id остановки: тот же поиск, справочник
+ * и выбор, что у камер, работают без изменений, а выбранные значения уходят в
+ * фильтр `busStopIds`.
+ */
+export function buildStopPlaces(stops: BusStopProperties[]): CameraPlace[] {
+  return stops.map(stop => {
+    const label = stop.address?.trim() || stop.name?.trim() || 'Адрес не указан'
+    const number = stop.short_name?.match(/\d+[-–]\d+/)?.[0]
+    const detail = [stop.name && stop.name.trim() !== label ? stop.name.trim() : null, number ? `№ ${number}` : null].filter(Boolean).join(' · ')
+    return { key: `stop:${stop.id}`, label, detail, cameraIndexes: [stop.id] }
+  }).sort((a, b) => a.label.localeCompare(b.label, 'ru', { numeric: true }) || a.detail.localeCompare(b.detail, 'ru'))
+}
+export function findStopPlace(places: CameraPlace[], busStopId: number | null | undefined) {
+  return busStopId == null ? undefined : places.find(place => place.key === `stop:${busStopId}`)
+}
 export function searchCameraPlaces(places: CameraPlace[], query: string) {
   const words = query.toLocaleLowerCase('ru').replace(/ё/g, 'е').trim().split(/\s+/).filter(Boolean)
   return places.filter(place => {
