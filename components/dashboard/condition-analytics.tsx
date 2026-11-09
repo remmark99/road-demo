@@ -25,12 +25,8 @@ import {
 } from "@/components/ui/chart"
 
 import { TimeRangeFilter, filterByDayResult, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
+import { StopMultiSelect } from "@/components/dashboard/stop-multi-select"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import {
     Activity,
     AlertCircle,
@@ -161,10 +157,6 @@ const ISSUE_META: Record<
         accentClassName: "bg-muted-foreground/60",
         panelClassName: "",
     },
-}
-
-function getShortStopName(stopId: BusStopId) {
-    return BUS_STOPS.find((stop) => stop.id === stopId)?.name.split("/")[0].trim() ?? stopId
 }
 
 function formatHourWindow(hour: string | null) {
@@ -435,22 +427,14 @@ function StatusBadge({ status }: { status: ConditionSeverity }) {
 
 // ─── Main Component ──────────────────────────────────
 
+const STOP_OPTIONS = BUS_STOPS.map((stop) => ({ id: stop.id, label: stop.name }))
+
 export function ConditionAnalytics() {
     const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
     const [selectedStops, setSelectedStops] = useState<BusStopId[]>(
         BUS_STOPS.map((s) => s.id)
     )
 
-    const toggleStop = (stopId: BusStopId) => {
-        setSelectedStops((prev) =>
-            prev.includes(stopId) ? prev.filter((id) => id !== stopId) : [...prev, stopId]
-        )
-    }
-    const toggleAll = () => {
-        setSelectedStops((prev) =>
-            prev.length === BUS_STOPS.length ? [] : BUS_STOPS.map((s) => s.id)
-        )
-    }
 
     // ─── Filtered data ─────────────────────────────────
 
@@ -480,15 +464,6 @@ export function ConditionAnalytics() {
     const sensorProblemStops = sensorSnapshots.filter((snapshot) => snapshot.status !== "healthy")
     const sensorHealthyStops = sensorSnapshots.filter((snapshot) => snapshot.status === "healthy").length
 
-    const selectedLabel =
-        selectedStops.length === BUS_STOPS.length
-            ? "Все остановки"
-            : selectedStops.length === 0
-                ? "Не выбрано"
-                : selectedStops.length === 1
-                    ? getShortStopName(selectedStops[0])
-                    : `${selectedStops.length} из ${BUS_STOPS.length}`
-
     const networkTone = getScoreBand(overview.networkHealth)
     const worstStop = priorityStops[0] ?? null
     const bestStop = priorityStops
@@ -516,44 +491,12 @@ export function ConditionAnalytics() {
         <div className="h-full overflow-auto">
             <div className="p-6 space-y-6">
                 <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
-                    <Popover>
-                        <PopoverTrigger asChild>
-                            <Button variant="outline" className="gap-2">
-                                <Users2 className="h-4 w-4" />
-                                {selectedLabel}
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-80" align="start">
-                            <div className="space-y-3">
-                                <div className="flex items-center space-x-2">
-                                    <Checkbox
-                                        id="all-stops-cond"
-                                        checked={selectedStops.length === BUS_STOPS.length}
-                                        onCheckedChange={toggleAll}
-                                    />
-                                    <Label htmlFor="all-stops-cond" className="font-medium">
-                                        Все остановки
-                                    </Label>
-                                </div>
-                                <ScrollArea className="max-h-64 border-t pt-2 pr-4">
-                                    <div className="space-y-2">
-                                        {BUS_STOPS.map((stop) => (
-                                            <div key={stop.id} className="flex items-center space-x-2">
-                                                <Checkbox
-                                                    id={`cond-${stop.id}`}
-                                                    checked={selectedStops.includes(stop.id)}
-                                                    onCheckedChange={() => toggleStop(stop.id)}
-                                                />
-                                                <Label htmlFor={`cond-${stop.id}`} className="text-sm">
-                                                    {stop.name}
-                                                </Label>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </ScrollArea>
-                            </div>
-                        </PopoverContent>
-                    </Popover>
+                    <StopMultiSelect
+                        options={STOP_OPTIONS}
+                        selected={selectedStops}
+                        onChange={setSelectedStops}
+                        icon={<Users2 className="h-4 w-4" />}
+                    />
                 </TimeRangeFilter>
 
                 <Tabs defaultValue="condition" className="space-y-6">

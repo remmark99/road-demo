@@ -23,6 +23,7 @@ import {
 import { cityRange } from "@/lib/analytics/city-time"
 import { sensorCityDay } from "@/lib/sensor-history-period"
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
+import { StopMultiSelect } from "@/components/dashboard/stop-multi-select"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -34,10 +35,6 @@ import {
     ChartTooltipContent,
     type ChartConfig,
 } from "@/components/ui/chart"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -307,20 +304,6 @@ export function StopSensorAnalytics() {
         ? Date.parse(data.generatedAt) - Date.parse(data.lastRecordedAt) > 3 * 60 * 1000
         : true
 
-    const allStopsSelected = selectedStops === null
-    const selectedStopsLabel = stops.length === 0
-        ? "Нет остановок"
-        : allStopsSelected
-            ? "Все остановки"
-            : selectedStops.length === 0
-                ? "Не выбрано"
-                : `${selectedStops.length} из ${stops.length}`
-
-    const toggleStop = (stopId: number) => {
-        const base = selectedStops ?? stops.map((stop) => stop.id)
-        const next = base.includes(stopId) ? base.filter((id) => id !== stopId) : [...base, stopId]
-        setSelectedStops(next.length === stops.length ? null : next)
-    }
 
     if (loading && !data) {
         return (
@@ -356,49 +339,11 @@ export function StopSensorAnalytics() {
             </div>
 
             <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button variant="outline" className="gap-2" disabled={stops.length === 0}>
-                            <MapPin className="h-4 w-4" />
-                            {selectedStopsLabel}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80" align="start">
-                        <div className="space-y-3">
-                            <div className="flex items-center space-x-2">
-                                <Checkbox
-                                    id="all-sensor-stops"
-                                    checked={allStopsSelected}
-                                    onCheckedChange={() => setSelectedStops(allStopsSelected ? [] : null)}
-                                />
-                                <Label htmlFor="all-sensor-stops" className="font-medium">
-                                    Все остановки
-                                </Label>
-                            </div>
-                            <ScrollArea className="max-h-72 border-t pt-2">
-                                <div className="space-y-2 pr-3">
-                                    {stops.map((stop) => (
-                                        <div key={stop.id} className="flex items-center space-x-2">
-                                            <Checkbox
-                                                id={`sensor-stop-${stop.id}`}
-                                                checked={allStopsSelected || selectedStops.includes(stop.id)}
-                                                onCheckedChange={() => toggleStop(stop.id)}
-                                            />
-                                            <Label htmlFor={`sensor-stop-${stop.id}`} className="text-sm">
-                                                <span className="flex flex-col">
-                                                    <span>{stop.label}</span>
-                                                    {stop.detail && (
-                                                        <span className="text-xs font-normal text-muted-foreground">{stop.detail}</span>
-                                                    )}
-                                                </span>
-                                            </Label>
-                                        </div>
-                                    ))}
-                                </div>
-                            </ScrollArea>
-                        </div>
-                    </PopoverContent>
-                </Popover>
+                <StopMultiSelect
+                    options={stops}
+                    selected={selectedStops ?? stops.map((stop) => stop.id)}
+                    onChange={(next) => setSelectedStops(next.length === stops.length ? null : next)}
+                />
                 <Button variant="outline" size="icon" onClick={() => void loadData()} disabled={loading} aria-label="Обновить данные">
                     <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
                 </Button>

@@ -32,10 +32,7 @@ import {
     SelectValue,
 } from "@/components/ui/select"
 import { TimeRangeFilter, filterByDayResult, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
+import { StopMultiSelect } from "@/components/dashboard/stop-multi-select"
 import { Users2, Gauge, BarChart3, ArrowUpFromLine, ArrowDownToLine } from "lucide-react"
 import {
     BUS_STOPS,
@@ -74,25 +71,15 @@ const alightingChartConfig = {
 
 // ─── Main Component ──────────────────────────────────
 
+const STOP_OPTIONS = BUS_STOPS.map((stop) => ({ id: stop.id, label: stop.name }))
+
 export function PassengerAnalytics() {
     const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: "today" })
     const [selectedStops, setSelectedStops] = useState<BusStopId[]>(
         BUS_STOPS.map((s) => s.id)
     )
 
-    const toggleStop = (stopId: BusStopId) => {
-        setSelectedStops((prev) =>
-            prev.includes(stopId)
-                ? prev.filter((id) => id !== stopId)
-                : [...prev, stopId]
-        )
-    }
 
-    const toggleAll = () => {
-        setSelectedStops((prev) =>
-            prev.length === BUS_STOPS.length ? [] : BUS_STOPS.map((s) => s.id)
-        )
-    }
 
     // ─── Filtered & aggregated data ──────────────────
 
@@ -194,53 +181,16 @@ export function PassengerAnalytics() {
         }
     }, [occupancyFiltered])
 
-    const selectedLabel =
-        selectedStops.length === BUS_STOPS.length
-            ? "Все остановки"
-            : selectedStops.length === 0
-                ? "Не выбрано"
-                : `${selectedStops.length} из ${BUS_STOPS.length}`
-
     return (
         <div className="h-full overflow-auto p-6 space-y-6">
             {/* ─── Filter bar ──────────────────────────── */}
             <TimeRangeFilter value={timeRange} onChange={setTimeRange}>
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button variant="outline" className="gap-2">
-                            <Users2 className="h-4 w-4" />
-                            {selectedLabel}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-80" align="start">
-                        <div className="space-y-3">
-                            <div className="flex items-center space-x-2">
-                                <Checkbox
-                                    id="all-stops"
-                                    checked={selectedStops.length === BUS_STOPS.length}
-                                    onCheckedChange={toggleAll}
-                                />
-                                <Label htmlFor="all-stops" className="font-medium">
-                                    Все остановки
-                                </Label>
-                            </div>
-                            <div className="border-t pt-2 space-y-2">
-                                {BUS_STOPS.map((stop) => (
-                                    <div key={stop.id} className="flex items-center space-x-2">
-                                        <Checkbox
-                                            id={stop.id}
-                                            checked={selectedStops.includes(stop.id)}
-                                            onCheckedChange={() => toggleStop(stop.id)}
-                                        />
-                                        <Label htmlFor={stop.id} className="text-sm">
-                                            {stop.name}
-                                        </Label>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </PopoverContent>
-                </Popover>
+                <StopMultiSelect
+                    options={STOP_OPTIONS}
+                    selected={selectedStops}
+                    onChange={setSelectedStops}
+                    icon={<Users2 className="h-4 w-4" />}
+                />
             </TimeRangeFilter>
 
 
