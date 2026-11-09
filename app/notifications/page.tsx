@@ -5,7 +5,7 @@ import { EventsExport } from '@/components/notifications/events-export'
 import { getAbandonedEpisode } from '@/lib/notifications/abandoned-episode'
 import { PeriodFilter } from '@/components/notifications/period-filter'
 import { CameraPlaceFilter } from '@/components/notifications/camera-place-filter'
-import { buildCameraPlaces, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
+import { buildCameraPlaces, buildStopPlaces, findStopPlace, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
 import { fetchStopDirectory, type BusStopProperties } from '@/lib/api/bus-stops'
 import { formatCameraConfidence, closedEpisodeImage } from '@/lib/notifications/camera-evidence'
 import { getBinEpisode } from "@/lib/bin-episodes"
@@ -29,17 +29,19 @@ import { STOP_TRASH_OVERFLOW_ALERT_TYPES } from "@/lib/api/stop-condition-window
 import {
   fetchControllerAlerts,
   getControllerAlertSourceLabel,
-  getSensorLabel,
   isControllerLinkAlert,
-  ALARM_CONFIG,
+  isRecoveryAlert,
+  getCategoryColor,
+  controllerAlertMessage,
   CATEGORY_LABELS,
+  CATEGORY_BADGE_LABELS,
   FILTERABLE_CATEGORIES,
   CONTROLLER_LINK_CATEGORIES,
+  INCIDENT_CATEGORY_ALIASES,
   type ControllerAlert,
 } from "@/lib/api/controller-alerts"
 import { controllerKindFilter, feedKindShows, feedKindTypes, pruneForFeedKind, type FeedKind } from "@/lib/notifications/feed-kind"
 import { FeedKindToggle } from "@/components/notifications/feed-kind-toggle"
-import { CLIMATE_ELEMENT, GLASS_BREAK_ELEMENT } from "@/lib/api/measurements"
 import type { Alert, Camera } from "@/lib/types"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -81,7 +83,6 @@ import {
   Sparkles,
   Thermometer,
   Activity,
-  ArrowRight,
   Footprints,
   User,
   Car,
@@ -444,31 +445,6 @@ function getRussianAlertMessage(alert: Alert, fallbackLabel: string) {
       ? "Зафиксировано событие мониторинга"
       : `Зафиксировано событие: ${fallbackLabel}`)
   )
-}
-
-/**
- * Единицы измерения, которые не считаются латиницей.
- *
- * Сообщение контроллера с латинскими буквами заменяется общим: контроллер
- * подписывает свои каналы как «DIO1». Но «°C» — это единица измерения в нашем
- * собственном сообщении о пороге температуры, и без этой поправки оператор
- * вместо значения и порога увидел бы «Температура: критично».
- */
-function withoutUnits(value: string) {
-  return value.replace(/°\s?C/g, "°")
-}
-
-function getRussianControllerMessage(
-  message: string,
-  categoryLabel: string,
-  alarmLabel: string
-) {
-  const rawMessage = message.trim()
-  if (rawMessage && hasCyrillic(rawMessage) && !hasLatin(withoutUnits(rawMessage))) {
-    return rawMessage
-  }
-
-  return `${categoryLabel}: ${alarmLabel.toLowerCase()}`
 }
 
 function getMetadataString(
@@ -1873,17 +1849,34 @@ function ControllerCategoryIcon({
 }) {
   if (category === "temperature") return <Thermometer className={className} />
   if (category === "humidity") return <Droplets className={className} />
-  if (category === "incident" || category === "glass_break" || category === "digital input") return <Hammer className={className} />
+  if ((INCIDENT_CATEGORY_ALIASES as readonly string[]).includes(category)) return <Hammer className={className} />
   if (category === "controller_offline") return <WifiOff className={className} />
   if (category === "controller_online") return <Wifi className={className} />
   return <Activity className={className} />
 }
 
-function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void }) {
-  const [selectedElements, setSelectedElements] = useState<number[]>([])
-  const [selectedAlarms, setSelectedAlarms] = useState<string[]>([])
+/** Категории датчиков остановки — кнопки «Что случилось» в режиме «События». */
+const SENSOR_EVENT_CATEGORIES = FILTERABLE_CATEGORIES.filter(
+  (key) => !(CONTROLLER_LINK_CATEGORIES as readonly string[]).includes(key)
+)
+
+/** Где произошло: остановка по bus_stop_id, иначе — что известно из самой записи. */
+function getControllerAlertStopDisplay(alert: ControllerAlert, places: CameraPlace[]) {
+  const place = findStopPlace(places, alert.bus_stop_id)
+  if (place) return { label: place.label, detail: place.detail }
+  if (alert.bus_stop_id != null) return { label: `Остановка № ${alert.bus_stop_id}`, detail: "" }
+  // Массовое отключение контроллеров не принадлежит одной остановке:
+  // перечень остановок — в тексте сообщения.
+  if (isControllerLinkAlert(alert)) return { label: "Несколько остановок", detail: "" }
+  return { label: "Остановка не указана", detail: "" }
+}
+
+function ControllerAlertsTab({ stopPlaces, period, onPeriodChange }: { stopPlaces: CameraPlace[]; period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void }) {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [feedKind, setFeedKind] = useState<FeedKind>('all')
+  const [selectedStops, setSelectedStops] = useState<number[]>([])
+  const [stopSearch, setStopSearch] = useState('')
+  const effectiveStops = useMemo(() => filteredCameraIndexes(stopPlaces, stopSearch, selectedStops), [stopPlaces, stopSearch, selectedStops])
   const kindFilter = useMemo(
     () => controllerKindFilter(selectedCategories, feedKind, CONTROLLER_LINK_CATEGORIES),
     [selectedCategories, feedKind]
@@ -1904,17 +1897,17 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
     try { bounds = notificationPeriodBounds(period) } catch {
       setAlerts([]); setTotal(0); setLoading(false); return
     }
-    if (kindFilter.empty) {
+    // Поиск остановки без совпадений или режим без категорий — показывать нечего.
+    if (kindFilter.empty || (effectiveStops !== undefined && effectiveStops.length === 0)) {
       setAlerts([]); setTotal(0); setLoading(false); return
     }
     fetchControllerAlerts({
       ...bounds,
-      elements: selectedElements.length > 0 ? selectedElements : undefined,
-      alarms: selectedAlarms.length > 0 ? selectedAlarms : undefined,
+      busStopIds: effectiveStops,
       categories: kindFilter.categories,
       excludeCategories: kindFilter.excludeCategories,
       limit: pageSize,
-            countExact: false,
+      countExact: false,
       offset: page * pageSize,
     }).then((result) => {
       if (cancelled) return
@@ -1923,33 +1916,17 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
       setLoading(false)
     })
     return () => { cancelled = true }
-  }, [selectedElements, selectedAlarms, kindFilter, page, pageSize, period.from, period.to, period.start, period.end])
+  }, [effectiveStops, kindFilter, page, pageSize, period.from, period.to, period.start, period.end])
 
   const totalPages = Math.ceil(total / pageSize)
 
-  const toggleElement = (el: number) => {
-    setLoading(true)
-    setPage(0)
-    setSelectedElements((prev) =>
-      prev.includes(el) ? prev.filter((e) => e !== el) : [...prev, el]
-    )
-  }
-
-  const toggleAlarm = (alarm: string) => {
-    setLoading(true)
-    setPage(0)
-    setSelectedAlarms((prev) =>
-      prev.includes(alarm)
-        ? prev.filter((a) => a !== alarm)
-        : [...prev, alarm]
-    )
-  }
-
-  const toggleCategory = (cat: string) => {
+  const toggleCategories = (categories: readonly string[]) => {
     setLoading(true)
     setPage(0)
     setSelectedCategories((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+      categories.some((c) => prev.includes(c))
+        ? prev.filter((c) => !categories.includes(c))
+        : [...prev, ...categories.filter((c) => !prev.includes(c))]
     )
   }
 
@@ -1958,27 +1935,24 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
     setPage(0)
     setFeedKind(kind)
     setSelectedCategories((prev) => pruneForFeedKind(prev, kind, CONTROLLER_LINK_CATEGORIES))
-    if (kind === 'equipment') setSelectedElements([])
   }
-  const showSensorFilters = feedKindShows(feedKind, false)
-  const visibleCategories = FILTERABLE_CATEGORIES.filter((key) =>
-    feedKindShows(feedKind, (CONTROLLER_LINK_CATEGORIES as readonly string[]).includes(key))
-  )
+  const showEvents = feedKindShows(feedKind, false)
+  const showEquipment = feedKindShows(feedKind, true)
 
   const clearFilters = () => {
     setLoading(true)
     setPage(0)
-    setSelectedElements([])
-    setSelectedAlarms([])
     setSelectedCategories([])
     setFeedKind('all')
+    setSelectedStops([])
+    setStopSearch('')
   }
 
   const hasFilters =
-    selectedElements.length > 0 ||
-    selectedAlarms.length > 0 ||
     selectedCategories.length > 0 ||
-    feedKind !== 'all'
+    feedKind !== 'all' ||
+    selectedStops.length > 0 ||
+    !!stopSearch
 
   return (
     <>
@@ -2006,92 +1980,71 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
 
           <Separator />
 
-          {/* Element filter */}
-          {showSensorFilters && (<>
-          <div>
-            <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
-              <Activity className="h-4 w-4 text-emerald-400" />
-              Датчик
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {[GLASS_BREAK_ELEMENT, CLIMATE_ELEMENT].map((el) => {
-                const isSelected = selectedElements.includes(el)
-                return (
+          {showEvents && (
+            <>
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <Activity className="h-4 w-4 text-amber-400" />
+                  Датчики остановки
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {SENSOR_EVENT_CATEGORIES.map((key) => {
+                    const isSelected = selectedCategories.includes(key)
+                    return (
+                      <Button
+                        key={key}
+                        variant={isSelected ? "default" : "outline"}
+                        size="sm"
+                        className="gap-2"
+                        onClick={() => toggleCategories([key])}
+                      >
+                        <ControllerCategoryIcon category={key} className="h-3.5 w-3.5" />
+                        {CATEGORY_LABELS[key]}
+                      </Button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <Separator />
+            </>
+          )}
+
+          {showEquipment && (
+            <>
+              <div>
+                <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
+                  <Cctv className="h-4 w-4 text-red-400" />
+                  Оборудование остановок
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {/* Одна кнопка на отключение: «снова на связи» входит в него, как у камер. */}
                   <Button
-                    key={el}
-                    variant={isSelected ? "default" : "outline"}
+                    variant={CONTROLLER_LINK_CATEGORIES.some((c) => selectedCategories.includes(c)) ? "default" : "outline"}
                     size="sm"
                     className="gap-2"
-                    onClick={() => toggleElement(el)}
+                    onClick={() => toggleCategories(CONTROLLER_LINK_CATEGORIES)}
                   >
-                    {el === GLASS_BREAK_ELEMENT
-                      ? <Hammer className="h-3.5 w-3.5" />
-                      : <Thermometer className="h-3.5 w-3.5" />}
-                    {getSensorLabel(el)}
+                    <WifiOff className="h-3.5 w-3.5" />
+                    {CATEGORY_LABELS.controller_offline}
                   </Button>
-                )
-              })}
-            </div>
-          </div>
+                </div>
+              </div>
 
-          <Separator />
-          </>)}
+              <Separator />
+            </>
+          )}
 
-          {/* Category filter */}
-          <div>
-            <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
-              Категория
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {visibleCategories.map((key) => {
-                const label = CATEGORY_LABELS[key]
-                const isSelected = selectedCategories.includes(key)
-                return (
-                  <Button
-                    key={key}
-                    variant={isSelected ? "default" : "outline"}
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => toggleCategory(key)}
-                  >
-                    <ControllerCategoryIcon category={key} className="h-3.5 w-3.5" />
-                    {label}
-                  </Button>
-                )
-              })}
-            </div>
-          </div>
-
-          <Separator />
-
-          {/* Alarm status filter */}
-          <div>
-            <div className="text-sm font-medium text-foreground mb-2 flex items-center gap-2">
-              Статус
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(ALARM_CONFIG).map(([key, cfg]) => {
-                const isSelected = selectedAlarms.includes(key)
-                return (
-                  <Button
-                    key={key}
-                    variant={isSelected ? "default" : "outline"}
-                    size="sm"
-                    className="gap-2"
-                    onClick={() => toggleAlarm(key)}
-                  >
-                    {cfg.label}
-                  </Button>
-                )
-              })}
-            </div>
-          </div>
+          <CameraPlaceFilter places={stopPlaces} query={stopSearch} selected={selectedStops}
+            directoryTitle="Остановки" directoryDescription="Отметьте нужные остановки — в списке останутся события только их датчиков."
+            onQueryChange={value => { setPage(0); setStopSearch(value) }}
+            onSelectionChange={value => { setPage(0); setSelectedStops(value) }} />
         </CardContent>
       </Card>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <PeriodFilter value={period} onChange={onPeriodChange} />
-        <EventsExport channel="sensors" period={period} filters={{elements:selectedElements.join(','),alarms:selectedAlarms.join(','),categories:selectedCategories.join(',')}} />
+        <EventsExport channel="sensors" period={period} filters={{categories:selectedCategories.join(','),stops:(effectiveStops ?? []).join(',')}} />
       </div>
 
       <ResultsHeader
@@ -2125,124 +2078,95 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
       ) : (
         <div className="space-y-2">
           {/* Table header */}
-          <div className="hidden md:grid md:grid-cols-[minmax(8rem,_1fr)_minmax(10rem,_1.3fr)_minmax(8rem,_1fr)_minmax(6rem,_0.8fr)_minmax(12rem,_1.6fr)_minmax(0,_1.5fr)_2rem] gap-4 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-            <div className="min-w-0">Время</div>
-            <div className="min-w-0">Датчик</div>
-            <div className="min-w-0">Категория</div>
-            <div className="min-w-0">Значение</div>
-            <div className="min-w-0">Статус</div>
-            <div className="min-w-0">Сообщение</div>
-            <div className="min-w-0"></div>
+          <div className="hidden md:grid md:grid-cols-12 gap-4 px-4 py-2 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            <div className="col-span-2">Время</div>
+            <div className="col-span-2">Тип</div>
+            <div className="col-span-3">Остановка</div>
+            <div className="col-span-4">Что произошло</div>
+            <div className="col-span-1"></div>
           </div>
 
           {alerts.map((alert) => {
-            const alarmCfg = ALARM_CONFIG[alert.alarm] || {
-              label: "Неизвестный статус",
-              color: "text-muted-foreground bg-muted",
-            }
-            const prevAlarmCfg = alert.prev_alarm
-              ? ALARM_CONFIG[alert.prev_alarm]
-              : null
-            const categoryLabel =
-              CATEGORY_LABELS[alert.category] || "Другая категория"
-            const unit = isControllerLinkAlert(alert) ? "мин" : alert.category === "temperature" ? "°C" : alert.category === "humidity" ? "%" : ""
-            const message = getRussianControllerMessage(
-              alert.message,
-              categoryLabel,
-              alarmCfg.label
-            )
-            const hasMedia = Boolean(alert.clip_path)
+            const categoryLabel = CATEGORY_LABELS[alert.category] || "Событие датчика"
+            const recovered = isRecoveryAlert(alert)
+            const message = controllerAlertMessage(alert)
+            const stopDisplay = getControllerAlertStopDisplay(alert, stopPlaces)
+            const isPhoto = !!alert.clip_path && /\.(jpg|jpeg|png|webp)$/i.test(alert.clip_path)
+            const hasMedia = Boolean(alert.clip_path) || Boolean(alert.metadata?.glass_episode)
             const isExpanded = expandedId === alert.id
 
             return (
               <Card
                 key={alert.id}
                 className={`transition-all duration-300 hover:border-primary/50 ${
-                  hasMedia ? "cursor-pointer" : ""
+                  hasMedia ? "cursor-pointer" : "cursor-default"
                 } ${isExpanded ? "border-primary" : ""}`}
                 onClick={() =>
                   hasMedia ? setExpandedId(isExpanded ? null : alert.id) : undefined
                 }
               >
                 <CardContent className="p-4">
-                  <div className="grid grid-cols-1 gap-4 items-center md:grid-cols-[minmax(8rem,_1fr)_minmax(10rem,_1.3fr)_minmax(8rem,_1fr)_minmax(6rem,_0.8fr)_minmax(12rem,_1.6fr)_minmax(0,_1.5fr)_2rem]">
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
                     {/* Time */}
-                    <div className="min-w-0 flex items-center gap-2 text-sm">
+                    <div className="md:col-span-2 flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
-                      <span className="text-muted-foreground md:text-foreground">
-                        {formatTimeAgo(alert.created_at)}
-                      </span>
+                      <div className="min-w-0">
+                        <div className="text-muted-foreground md:text-foreground">
+                          {formatTimeAgo(alert.created_at)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{formatTime(alert.created_at)}</div>
+                      </div>
                     </div>
 
-                    {/* Sensor */}
-                    <div className="min-w-0 text-sm truncate">
-                      <span className="text-muted-foreground md:hidden">
-                        Датчик:{" "}
-                      </span>
-                      {getControllerAlertSourceLabel(alert)}
-                    </div>
-
-                    {/* Category */}
-                    <div className="min-w-0">
-                      <Badge
-                        variant="outline"
-                        className="max-w-full gap-1.5 overflow-hidden"
-                      >
+                    {/* Type */}
+                    <div className="md:col-span-2 min-w-0">
+                      <Badge className={`max-w-full gap-1.5 overflow-hidden ${getCategoryColor(alert)}`}>
                         <ControllerCategoryIcon category={alert.category} className="h-3 w-3" />
-                        <span className="truncate">{categoryLabel}</span>
+                        <span className="truncate">{CATEGORY_BADGE_LABELS[alert.category] || categoryLabel}</span>
                       </Badge>
-                    </div>
-
-                    {/* Value */}
-                    <div className="min-w-0 text-sm">
-                      <span className="font-bold tabular-nums text-base">
-                        {alert.value.toFixed(1)}
-                      </span>
-                      <span className="text-muted-foreground ml-1">{unit}</span>
-                    </div>
-
-                    {/* Alarm status with transition */}
-                    <div className="min-w-0 flex flex-wrap items-center gap-1.5">
-                      {prevAlarmCfg && alert.prev_alarm !== alert.alarm && (
-                        <>
-                          <Badge
-                            className={`text-xs ${prevAlarmCfg.color} opacity-60`}
-                          >
-                            {prevAlarmCfg.label}
-                          </Badge>
-                          <ArrowRight className="h-3 w-3 text-muted-foreground" />
-                        </>
+                      {recovered && !isControllerLinkAlert(alert) && (
+                        <div className="mt-1 text-xs text-muted-foreground">Вернулось в норму</div>
                       )}
-                      <Badge className={`text-xs ${alarmCfg.color}`}>
-                        {alarmCfg.label}
-                      </Badge>
                     </div>
 
-                    {/* Message */}
-                    <div className="min-w-0 text-sm text-muted-foreground truncate">
-                      {message}
-                      {alert.category === 'controller_online' && Number.isFinite(Date.parse(alert.created_at)) && Number.isFinite(alert.value) && alert.value >= 0 && <p className="mt-2 whitespace-normal font-medium text-foreground">Длительность отключения: {formatEventDuration(new Date(Date.parse(alert.created_at) - alert.value * 60_000).toISOString(), alert.created_at)}</p>}
+                    {/* Stop */}
+                    <div className="md:col-span-3 min-w-0 text-sm">
+                      <div className="flex items-center gap-1.5 text-muted-foreground md:hidden">
+                        <BusFront className="h-4 w-4" />
+                        <span>Остановка</span>
+                      </div>
+                      <div className="font-medium break-words">{stopDisplay.label}</div>
+                      {stopDisplay.detail && (
+                        <div className="text-xs text-muted-foreground break-words">{stopDisplay.detail}</div>
+                      )}
+                    </div>
+
+                    {/* What happened */}
+                    <div className="md:col-span-4 min-w-0 text-sm">
+                      <p className="break-words">{message}</p>
                     </div>
 
                     {/* Chevron icon indicator for media */}
-                    <div className="hidden md:flex justify-end items-center">
-                      {hasMedia && (
+                    <div className="hidden md:flex md:col-span-1 justify-end items-center">
+                      {hasMedia ? (
                         <ChevronRight
                           className={`h-4 w-4 text-muted-foreground transition-transform ${
                             isExpanded ? "rotate-90" : ""
                           }`}
                         />
+                      ) : (
+                        <div className="h-4 w-4" />
                       )}
                     </div>
                   </div>
 
                   {/* Expanded view when alert has image / clip */}
                   {isExpanded && <GlassEvidencePanel alert={alert} />}
-                  {isExpanded && hasMedia && alert.clip_path && (
+                  {isExpanded && alert.clip_path && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <MediaFrame>
-                          {alert.clip_path.toLowerCase().match(/\.(jpg|jpeg|png|webp)$/) ? (
+                          {isPhoto ? (
                             <MediaPhoto
                               src={alert.clip_path}
                               alt={categoryLabel}
@@ -2262,12 +2186,16 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
 
                         <div className="space-y-3 text-sm">
                           <div>
-                            <div className="text-muted-foreground">Датчик</div>
+                            <div className="text-muted-foreground">Остановка</div>
+                            <div className="font-medium">{stopDisplay.label}</div>
+                            {stopDisplay.detail && (
+                              <div className="text-xs text-muted-foreground">{stopDisplay.detail}</div>
+                            )}
+                          </div>
+                          <div>
+                            <div className="text-muted-foreground">Источник</div>
                             <div className="font-medium">
-                              {getSensorLabel(alert.element)}
-                            </div>
-                            <div className="text-xs text-muted-foreground">
-                              Элемент #{alert.element}, адрес #{alert.address}
+                              {getControllerAlertSourceLabel(alert)}
                             </div>
                           </div>
                           <div>
@@ -2279,14 +2207,10 @@ function ControllerAlertsTab({ period, onPeriodChange }: { period: NotificationP
                             </div>
                           </div>
                           <div>
-                            <div className="text-muted-foreground">Категория</div>
-                            <div className="font-medium">{categoryLabel}</div>
-                          </div>
-                          <div>
-                            <div className="text-muted-foreground">Сообщение</div>
+                            <div className="text-muted-foreground">Что произошло</div>
                             <div className="font-medium">{message}</div>
                           </div>
-                          {!alert.clip_path.toLowerCase().match(/\.(jpg|jpeg|png|webp)$/) && (
+                          {!isPhoto && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -2339,6 +2263,7 @@ function NotificationsContent() {
   const [period, setPeriod] = useState<NotificationPeriod>(() => ({ from: searchParams.get('from') || '', to: searchParams.get('to') || '', ...(searchParams.get('start') ? {start: searchParams.get('start')!, end: searchParams.get('end') || ''} : {}) }))
   const [tab, setTab] = useState('camera')
   const places = useMemo(() => buildCameraPlaces(cameras, stops), [cameras, stops])
+  const stopPlaces = useMemo(() => buildStopPlaces(stops), [stops])
 
   useEffect(() => {
     if (modulesLoading) return
@@ -2389,7 +2314,7 @@ function NotificationsContent() {
 
             {showStops && (
               <TabsContent value="controller">
-                <ControllerAlertsTab period={period} onPeriodChange={setPeriod} />
+                <ControllerAlertsTab stopPlaces={stopPlaces} period={period} onPeriodChange={setPeriod} />
               </TabsContent>
             )}
           </Tabs>
