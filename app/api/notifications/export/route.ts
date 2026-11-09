@@ -8,7 +8,7 @@ import { notificationPeriodBounds, buildCameraPlaces, filteredCameraIndexes } fr
 import { cameraEventSheet, sensorEventSheet } from '@/lib/exports/notification-events'
 import { createXlsx } from '@/lib/exports/xlsx'
 import { ALERT_TYPE_CONFIG, type LyingPersonEpisode } from '@/lib/api/alerts'
-import { CATEGORY_LABELS, ALARM_CONFIG, expandCategoryFilter, type ControllerAlert } from '@/lib/api/controller-alerts'
+import { ALARM_CONFIG, controllerAlertMessage, expandCategoryFilter, type ControllerAlert } from '@/lib/api/controller-alerts'
 import type { Alert, Camera } from '@/lib/types'
 
 export const runtime='nodejs'
@@ -25,8 +25,8 @@ export async function GET(request:NextRequest){
  let bounds
  const list=(key:string)=>{const value=params.get(key);if(value===null||value==='')return [];const items=value.split(',');if(items.length>500||items.some(x=>!x||x.length>80||!/^[-\w ]+$/.test(x)))throw new Error('Некорректный фильтр');return items}
  const numbers=(key:string)=>list(key).map(x=>{const n=Number(x);if(!Number.isSafeInteger(n)||n<0)throw new Error('Некорректный фильтр');return n})
- let types:string[],selected:number[],elements:number[],alarms:string[],categories:string[]
- try{bounds=notificationPeriodBounds({from,to,start:params.get('start')||undefined,end:params.get('end')||undefined});types=list('types');selected=numbers('cameras');elements=numbers('elements');alarms=list('alarms');categories=list('categories')}
+ let types:string[],selected:number[],stopIds:number[],categories:string[]
+ try{bounds=notificationPeriodBounds({from,to,start:params.get('start')||undefined,end:params.get('end')||undefined});types=list('types');selected=numbers('cameras');stopIds=numbers('stops');categories=list('categories')}
  catch(e){return NextResponse.json({error:(e as Error).message},{status:400})}
  try{
   const geometry=(admin||modules.includes('stops'))?await db.rpc('get_bus_stops_geojson'):{data:{features:[]},error:null}
@@ -66,15 +66,17 @@ export async function GET(request:NextRequest){
    },type=>ALERT_TYPE_CONFIG[type]?.label||'Другое событие')
   }else{
    const rows=await readReportRows<ControllerAlert>((a,b)=>{
-    let q=db.from('controller_alerts').select('*').eq('module_name','stops').order('created_at').order('id').range(a,b)
+    // Все записи таблицы — события остановок: подтверждение стекла пишет module_name
+    // «stops», пороги климата и мониторинг связи — «controller». Фильтр по одному
+    // значению терял температуру, влажность и связь с контроллером.
+    let q=db.from('controller_alerts').select('*').order('created_at').order('id').range(a,b)
     if(bounds.fromInclusive)q=q.gte('created_at',bounds.fromInclusive)
     if(bounds.toExclusive)q=q.lt('created_at',bounds.toExclusive)
-    if(elements.length)q=q.in('element',elements)
-    if(alarms.length)q=q.in('alarm',alarms)
+    if(stopIds.length)q=q.in('bus_stop_id',stopIds)
     if(categories.length)q=q.in('category',expandCategoryFilter(categories))
     return q
    })
-   sheet=sensorEventSheet(rows,a=>{const place=stopNames.get(a.bus_stop_id??-1);if(!place)throw new Error(`Для события датчика ${a.id} не найдено место остановки №${a.bus_stop_id}. Заполните справочник.`);return place},a=>{const name=CATEGORY_LABELS[a.category]||'Событие датчика';const unit=a.category==='temperature'?'°C':a.category==='humidity'?'%':a.category==='digital input'?'В':null;return unit&&Number.isFinite(a.value)?`${name}: ${a.value.toLocaleString('ru-RU')} ${unit}`:name},alarm=>ALARM_CONFIG[alarm]?.label||'Зафиксировано')
+   sheet=sensorEventSheet(rows,a=>{const place=stopNames.get(a.bus_stop_id??-1);if(!place)throw new Error(`Для события датчика ${a.id} не найдено место остановки №${a.bus_stop_id}. Заполните справочник.`);return place},a=>controllerAlertMessage(a),alarm=>ALARM_CONFIG[alarm]?.label||'Зафиксировано')
   }
   const day=(v:string)=>v.split('-').reverse().join('.')
   const period=from&&to?`с ${day(from)} по ${day(to)}`:from?`с ${day(from)}`:to?`по ${day(to)}`:'за всё время'

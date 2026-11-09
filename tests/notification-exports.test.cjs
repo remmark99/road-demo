@@ -38,7 +38,7 @@ function endpoint({user={id:'user'},profile={role:'user',modules:['stops']},rows
  const db={auth:{getUser:async()=>({data:{user},error:null})},rpc:async()=>({data:{features},error:null}),from(table){
   const state={a:0,b:999};const query=new Proxy({}, {get(_,key){if(key==='then')return resolve=>resolve({data:table==='profiles'?profile:table==='cameras'?cameras:table==='alerts_with_bin_episodes'||table==='controller_alerts'?rows.slice(state.a,state.b+1):[],error:null});return(...args)=>{calls.push([table,key,...args]);if(key==='range'){state.a=args[0];state.b=args[1]}return query}}});return query
  }}
- const mod=load('app/api/notifications/export/route.ts',{'@/lib/supabase/server':{createClient:async()=>db},'@/lib/api/alerts':{ALERT_TYPE_CONFIG:{}},'@/lib/api/controller-alerts':{CATEGORY_LABELS:{},ALARM_CONFIG:{}}})
+ const mod=load('app/api/notifications/export/route.ts',{'@/lib/supabase/server':{createClient:async()=>db},'@/lib/api/alerts':{ALERT_TYPE_CONFIG:{}},'@/lib/api/controller-alerts':{ALARM_CONFIG:{},expandCategoryFilter:c=>[...c],controllerAlertMessage:a=>a.message}})
  return {calls,...mod}
 }
 test('exports enforce authentication, module access and valid dates',async()=>{
@@ -51,6 +51,19 @@ test('exports enforce authentication, module access and valid dates',async()=>{
  assert.equal(response.status,200);assert.ok(decodeURIComponent(response.headers.get('content-disposition')).includes('События камер'))
  assert.ok(api.calls.some(c=>c[0]==='alerts_with_bin_episodes'&&c[1]==='in'&&c[2]==='module_name'&&c[3][0]==='stops'))
  assert.ok(api.calls.some(c=>c[1]==='lt'&&c[2]==='timestamp'&&c[3]==='2026-09-03T19:00:00.000Z'))
+})
+test('sensor export filters by stop and keeps every writer of controller_alerts',async()=>{
+ const req=q=>({nextUrl:new URL('http://local/api/notifications/export?'+q)})
+ const api=endpoint({features:[{properties:{id:5,address:'Ленина, 1',name:'Центр',short_name:'1-2'},geometry:{coordinates:[0,0]}}],rows:[{id:'t',bus_stop_id:5,category:'temperature',value:35.2,alarm:'critical',created_at:'2026-09-03T10:00:00Z',message:'Высокая температура на остановке: 35.2 °C (порог 30 °C)'}]})
+ const response=await api.GET(req('channel=sensors&from=2026-09-03&to=2026-09-03&stops=5&categories=temperature'))
+ assert.equal(response.status,200);assert.ok(decodeURIComponent(response.headers.get('content-disposition')).includes('События датчиков'))
+ const sensorCalls=api.calls.filter(c=>c[0]==='controller_alerts')
+ assert.ok(sensorCalls.some(c=>c[1]==='in'&&c[2]==='bus_stop_id'&&c[3][0]===5))
+ assert.ok(sensorCalls.some(c=>c[1]==='in'&&c[2]==='category'&&c[3][0]==='temperature'))
+ assert.ok(!sensorCalls.some(c=>c[1]==='eq'&&c[2]==='module_name'))
+ const xml=strFromU8(unzipSync(Buffer.from(await response.arrayBuffer()))['xl/worksheets/sheet1.xml'])
+ assert.ok(xml.includes('Высокая температура на остановке: 35.2 °C (порог 30 °C)'))
+ assert.equal((await api.GET(req('channel=sensors&stops=evil'))).status,400)
 })
 test('report reads every page and fails closed when a page is unavailable',async()=>{
  const {readReportRows}=load('lib/exports/read-report-rows.ts'),rows=Array.from({length:1001},(_,id)=>({id})),pages=[]
