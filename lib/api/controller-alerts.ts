@@ -182,7 +182,12 @@ function formatValue(value: number, unit: string): string {
  */
 export function controllerAlertMessage(alert: Pick<ControllerAlert, 'category' | 'alarm' | 'value' | 'message'>): string {
     const raw = (alert.message ?? '').trim()
-    if (raw && /[А-Яа-яЁё]/.test(raw) && !/[A-Za-z]/.test(withoutUnits(raw))) return raw
+    const climate = alert.category === 'temperature' || alert.category === 'humidity'
+    // «Зафиксировано срабатывание: Влажность (элемент 13, адрес 1)» — так поллер
+    // писал тревогу контроллера до 09.11.2026: без показания. Значение в строке
+    // есть, так что текст собирается заново.
+    const informative = !climate || /\d+[.,]\d|\d+\s?(°|%)/.test(raw)
+    if (raw && informative && /[А-Яа-яЁё]/.test(raw) && !/[A-Za-z]/.test(withoutUnits(raw))) return raw
 
     const recovered = isRecoveryAlert(alert)
     const value = Number.isFinite(alert.value) ? formatValue(alert.value, getCategoryUnit(alert.category)) : null
@@ -190,11 +195,11 @@ export function controllerAlertMessage(alert: Pick<ControllerAlert, 'category' |
         case 'temperature':
             return recovered
                 ? `Температура вернулась в норму${value ? `: ${value}` : ''}`
-                : `Температура за пределами допустимого${value ? `: ${value}` : ''}`
+                : `Температура вне допустимых пределов${value ? `: ${value}` : ''}`
         case 'humidity':
             return recovered
                 ? `Влажность вернулась в норму${value ? `: ${value}` : ''}`
-                : `Влажность за пределами допустимого${value ? `: ${value}` : ''}`
+                : `Влажность вне допустимых пределов${value ? `: ${value}` : ''}`
         case 'controller_offline':
             return `Контроллер остановки не на связи${value ? ` ${value}` : ''}`
         case 'controller_online':

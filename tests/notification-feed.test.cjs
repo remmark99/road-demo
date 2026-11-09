@@ -107,8 +107,11 @@ test('sensor feed: stops stand in for camera places and are found by bus_stop_id
 test('sensor feed: the operator reads what happened, not a controller label', () => {
   const own = 'Высокая температура на остановке: 35.2 °C (порог 30 °C)'
   assert.equal(controllerAlertMessage({ category: 'temperature', alarm: 'critical', value: 35.2, message: own }), own)
-  assert.equal(controllerAlertMessage({ category: 'temperature', alarm: 'critical', value: 35.2, message: 'Temperature DIO alarm' }), 'Температура за пределами допустимого: 35,2 °C')
+  assert.equal(controllerAlertMessage({ category: 'temperature', alarm: 'critical', value: 35.2, message: 'Temperature DIO alarm' }), 'Температура вне допустимых пределов: 35,2 °C')
   assert.equal(controllerAlertMessage({ category: 'humidity', alarm: 'normal', value: 40, message: '' }), 'Влажность вернулась в норму: 40 %')
+  // The poller's old row: Cyrillic, but no reading in it — the value column has one.
+  assert.equal(controllerAlertMessage({ category: 'humidity', alarm: 'alarm', value: 91.04, message: 'Зафиксировано срабатывание: Влажность (элемент 13, адрес 1)' }), 'Влажность вне допустимых пределов: 91 %')
+  assert.equal(controllerAlertMessage({ category: 'humidity', alarm: 'alarm', value: 91, message: 'Влажность вне допустимых пределов: 91.0 % (порог задан на контроллере)' }), 'Влажность вне допустимых пределов: 91.0 % (порог задан на контроллере)')
   assert.equal(controllerAlertMessage({ category: 'digital input', alarm: 'critical', value: 1, message: 'DIO1' }), 'Сработал датчик разбития стекла')
   assert.equal(controllerAlertMessage({ category: 'digital input', alarm: 'normal', value: 0, message: 'DIO1' }), 'Датчик разбития стекла вернулся в норму')
   assert.equal(controllerAlertMessage({ category: 'controller_offline', alarm: 'critical', value: 12, message: '' }), 'Контроллер остановки не на связи 12 мин')
