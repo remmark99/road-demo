@@ -2,8 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { format } from "date-fns"
-import { ru } from "date-fns/locale"
 import {
     Bar,
     BarChart,
@@ -22,7 +20,14 @@ import {
 } from "lucide-react"
 
 import { TimeRangeFilter, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
-import { cityDayStart, cityRange } from "@/lib/analytics/city-time"
+import { cityDateTime, cityDayStart, cityHour, cityRange } from "@/lib/analytics/city-time"
+import {
+    buildTrashOverflowEpisodes,
+    episodeOfAlert,
+    eventOverlapsRange,
+    type TrashOverflowEpisode,
+    type TrashOverflowEvent,
+} from "@/lib/analytics/trash-episodes"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -69,23 +74,6 @@ interface StopConditionAnalyticsData {
     limit: number
 }
 
-interface TrashOverflowEvent {
-    id: string
-    locationId: string
-    timestamp: string
-    cameraIndex: number | null
-}
-
-interface TrashOverflowEpisode {
-    id: string
-    locationId: string
-    startAt: string
-    endAt: string
-    durationMs: number
-    confirmations: number
-    cameraIndexes: number[]
-}
-
 interface StopTrashSummary {
     locationId: string
     stopId: number | null
@@ -127,7 +115,7 @@ const stopConfig = {
     totalHours: { label: "Часы переполнения", color: "hsl(0, 84%, 60%)" },
 } satisfies ChartConfig
 
-const OVERFLOW_EPISODE_GAP_MS = 2 * 60 * 60 * 1000
+const EPISODE_LOOKBACK_MS = 7 * 86_400_000
 const TRASH_EVENT_LIMIT = 5000
 const integerFormat = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 })
 const TRASH_NOTIFICATION_TYPES = [...STOP_TRASH_OVERFLOW_ALERT_TYPES]
@@ -153,10 +141,6 @@ function buildNotificationsHref({
 
     const query = params.toString()
     return query ? `/notifications?${query}` : "/notifications"
-}
-
-function getEventCameraIndexes(event: TrashOverflowEvent) {
-    return typeof event.cameraIndex === "number" ? [event.cameraIndex] : []
 }
 
 function getTimestampMs(iso: string) {
@@ -202,6 +186,7 @@ function buildEventsFromTrashAlerts(alerts: StopTrashOverflowAlertRow[]): TrashO
             locationId: getAlertLocationId(alert),
             timestamp: alert.timestamp,
             cameraIndex: alert.camera_index,
+            episode: episodeOfAlert(alert),
         }))
         .filter((event) => getTimestampMs(event.timestamp) !== null)
         .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
@@ -209,21 +194,21 @@ function buildEventsFromTrashAlerts(alerts: StopTrashOverflowAlertRow[]): TrashO
 
 function formatDateTime(iso: string | null) {
     if (!iso) return "Нет данных"
-    return format(new Date(iso), "dd.MM.yyyy HH:mm", { locale: ru })
+    return cityDateTime(iso).replace(",", "")
 }
 
 function formatInterval(startAt: string | null, endAt: string | null) {
     if (!startAt || !endAt) return "Нет данных"
 
-    const startDate = new Date(startAt)
-    const endDate = new Date(endAt)
-    const sameDay = format(startDate, "yyyy-MM-dd") === format(endDate, "yyyy-MM-dd")
+    const start = formatDateTime(startAt)
+    const end = formatDateTime(endAt)
+    return start.slice(0, 10) === end.slice(0, 10) ? `${start}-${end.slice(11)}` : `${start} - ${end}`
+}
 
-    if (sameDay) {
-        return `${format(startDate, "dd.MM.yyyy HH:mm", { locale: ru })}-${format(endDate, "HH:mm", { locale: ru })}`
-    }
-
-    return `${formatDateTime(startAt)} - ${formatDateTime(endAt)}`
+function formatEpisodeInterval(episode: TrashOverflowEpisode) {
+    return episode.isOpen
+        ? `${formatDateTime(episode.startAt)} - продолжается`
+        : formatInterval(episode.startAt, episode.endAt)
 }
 
 function formatFreshness(iso: string | null) {
@@ -262,15 +247,18 @@ function durationToHours(durationMs: number) {
 }
 
 async function fetchTrashOverflowEventsForRange(range: RangeBounds) {
+    // Записи датируются началом эпизода, поэтому берём с запасом: эпизод мог начаться
+    // до периода и ещё идти в нём.
     const alerts = await fetchStopTrashOverflowAlerts({
-        from: range.from,
+        from: new Date(range.from.getTime() - EPISODE_LOOKBACK_MS),
         to: range.to,
         limit: TRASH_EVENT_LIMIT,
     })
+    const events = buildEventsFromTrashAlerts(alerts).filter((event) => eventOverlapsRange(event, range.from))
 
-    if (alerts.length > 0) {
+    if (events.length > 0) {
         return {
-            events: buildEventsFromTrashAlerts(alerts),
+            events,
             displayedRange: range,
             fallbackRange: null,
             truncated: alerts.length >= TRASH_EVENT_LIMIT,
@@ -322,77 +310,6 @@ async function fetchStopConditionAnalyticsData(range: RangeBounds): Promise<Stop
         truncated: eventResult.truncated,
         limit: TRASH_EVENT_LIMIT,
     }
-}
-
-function buildTrashOverflowEpisodes(events: TrashOverflowEvent[]): TrashOverflowEpisode[] {
-    const eventsByLocation = new Map<string, TrashOverflowEvent[]>()
-
-    for (const event of events) {
-        const list = eventsByLocation.get(event.locationId) ?? []
-        list.push(event)
-        eventsByLocation.set(event.locationId, list)
-    }
-
-    const episodes: TrashOverflowEpisode[] = []
-
-    for (const [locationId, locationEvents] of eventsByLocation.entries()) {
-        const sortedEvents = [...locationEvents].sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-        let current: TrashOverflowEpisode | null = null
-
-        for (const event of sortedEvents) {
-            const eventMs = getTimestampMs(event.timestamp)
-            if (eventMs === null) continue
-
-            if (!current) {
-                current = {
-                    id: `${locationId}-${event.timestamp}`,
-                    locationId,
-                    startAt: event.timestamp,
-                    endAt: event.timestamp,
-                    durationMs: 0,
-                    confirmations: 1,
-                    cameraIndexes: getEventCameraIndexes(event),
-                }
-                continue
-            }
-
-            const currentStartMs = getTimestampMs(current.startAt)
-            const currentEndMs = getTimestampMs(current.endAt)
-            const isSameEpisode = (
-                currentStartMs !== null &&
-                currentEndMs !== null &&
-                eventMs - currentEndMs <= OVERFLOW_EPISODE_GAP_MS
-            )
-
-            if (isSameEpisode) {
-                current.endAt = event.timestamp
-                current.durationMs = Math.max(0, eventMs - currentStartMs)
-                current.confirmations += 1
-                for (const cameraIndex of getEventCameraIndexes(event)) {
-                    if (!current.cameraIndexes.includes(cameraIndex)) {
-                        current.cameraIndexes.push(cameraIndex)
-                    }
-                }
-            } else {
-                episodes.push(current)
-                current = {
-                    id: `${locationId}-${event.timestamp}`,
-                    locationId,
-                    startAt: event.timestamp,
-                    endAt: event.timestamp,
-                    durationMs: 0,
-                    confirmations: 1,
-                    cameraIndexes: getEventCameraIndexes(event),
-                }
-            }
-        }
-
-        if (current) {
-            episodes.push(current)
-        }
-    }
-
-    return episodes.sort((a, b) => b.durationMs - a.durationMs || b.confirmations - a.confirmations || b.endAt.localeCompare(a.endAt))
 }
 
 function buildStopTrashSummaries(
@@ -487,7 +404,7 @@ function buildHourlyTrashRows(events: TrashOverflowEvent[]): HourlyTrashRow[] {
     const hourMap = new Map<string, { confirmations: number; locations: Set<string> }>()
 
     for (const event of events) {
-        const hour = format(new Date(event.timestamp), "HH:00")
+        const hour = `${cityHour(event.timestamp, false).slice(0, 2)}:00`
         const current = hourMap.get(hour) ?? { confirmations: 0, locations: new Set<string>() }
 
         current.confirmations += 1
@@ -502,6 +419,20 @@ function buildHourlyTrashRows(events: TrashOverflowEvent[]): HourlyTrashRow[] {
             stops: value.locations.size,
         }))
         .sort((a, b) => a.hour.localeCompare(b.hour))
+}
+
+function stopCameraIndexes(episode: TrashEpisodeDisplayRow, stopIdByCameraIndex?: Map<number, number>) {
+    if (episode.stopId === null || !stopIdByCameraIndex) return episode.cameraIndexes
+    const indexes = Array.from(stopIdByCameraIndex.entries())
+        .filter(([, stopId]) => stopId === episode.stopId)
+        .map(([cameraIndex]) => cameraIndex)
+    return indexes.length > 0 ? indexes : episode.cameraIndexes
+}
+
+function episodeDetail(episode: TrashEpisodeDisplayRow) {
+    const camera = episode.cameraIndexes.length === 1 ? episode.cameraIndexes[0] : null
+    if (camera === null) return episode.detail
+    return `${episode.detail} · камера ${camera >= 10000 ? camera - 10000 : camera}`
 }
 
 function buildStopDurationChartRows(summaries: StopTrashSummary[]): StopDurationChartRow[] {
@@ -624,7 +555,7 @@ export function StopConditionCurrentAnalytics() {
         [data, episodes],
     )
     const hourlyRows = useMemo(
-        () => data ? buildHourlyTrashRows(data.events) : [],
+        () => data ? buildHourlyTrashRows(data.events.filter((event) => getTimestampMs(event.timestamp)! >= data.displayedRange.from.getTime())) : [],
         [data],
     )
     const topStopRows = useMemo(
@@ -833,7 +764,9 @@ export function StopConditionCurrentAnalytics() {
                                     {episodeRows.map((episode) => {
                                         const episodeNotificationsHref = buildNotificationsHref({
                                             types: TRASH_NOTIFICATION_TYPES,
-                                            cameraIndexes: episode.cameraIndexes,
+                                            // Вся остановка: урну видят несколько камер, а эпизод одной
+                                            // из них не должен скрывать в ленте эпизоды остальных.
+                                            cameraIndexes: stopCameraIndexes(episode, data?.stopIdByCameraIndex),
                                         })
 
                                         return (
@@ -841,17 +774,17 @@ export function StopConditionCurrentAnalytics() {
                                                 <TableCell>
                                                     <div className="flex flex-col">
                                                         <span className="font-medium">{episode.label}</span>
-                                                        <span className="text-xs text-muted-foreground">{episode.detail}</span>
+                                                        <span className="text-xs text-muted-foreground">{episodeDetail(episode)}</span>
                                                     </div>
                                                 </TableCell>
                                                 <TableCell>{episode.districtName}</TableCell>
                                                 <TableCell className="text-right font-medium tabular-nums">{formatDuration(episode.durationMs)}</TableCell>
                                                 <TableCell className="text-right tabular-nums">{integerFormat.format(episode.confirmations)}</TableCell>
-                                                <TableCell>{formatInterval(episode.startAt, episode.endAt)}</TableCell>
+                                                <TableCell>{formatEpisodeInterval(episode)}</TableCell>
                                                 <TableCell>
                                                     <div className="flex flex-col">
-                                                        <span>{formatFreshness(episode.endAt)}</span>
-                                                        <span className="text-xs text-muted-foreground">{formatDateTime(episode.endAt)}</span>
+                                                        <span>{formatFreshness(episode.lastSeenAt)}</span>
+                                                        <span className="text-xs text-muted-foreground">{formatDateTime(episode.lastSeenAt)}</span>
                                                     </div>
                                                 </TableCell>
                                                 <TableCell className="text-right">
