@@ -97,8 +97,8 @@ test('protocol: initialize, read-only tool list, unknown method and tool', async
   assert.equal(init.protocolVersion, '2025-06-18'); assert.equal(init.serverInfo.name, 'vector-city'); assert.match(init.instructions, /Сургут/)
   assert.equal((await server.handleVectorRpc(ctx(), 'initialize', { protocolVersion: '1999-01-01' })).protocolVersion, '2025-11-25')
   const { tools } = await server.handleVectorRpc(ctx(), 'tools/list', {})
-  assert.equal(tools.length, 12)
-  assert.ok(tools.some(t => t.name === 'create_report'))
+  assert.equal(tools.length, 13)
+  assert.ok(['create_report', 'create_chart'].every(name => tools.some(t => t.name === name)))
   assert.ok(tools.every(t => t.annotations.readOnlyHint && !t.annotations.destructiveHint && t.inputSchema.additionalProperties === false))
   await assert.rejects(server.handleVectorRpc(ctx(), 'resources/list', {}), e => e.code === -32601)
   await assert.rejects(server.handleVectorRpc(ctx(), 'tools/call', { name: 'drop_table' }), e => e.code === -32602)
@@ -136,7 +136,9 @@ test('security events map cameras to stops and group them', async () => {
   assert.equal(events.total, 4)
   assert.deepEqual(events.by_type, { 'Лежачий человек': 2, 'Курение': 2 })
   // Камера 99999 не из справочника: остановка находится по направлению 73-25.
-  assert.deepEqual(events.groups, [{ key: 'Никольский (в центр)', count: 2 }, { key: 'Никольский (из центра)', count: 2 }])
+  assert.deepEqual(events.groups.map(({ key, count }) => ({ key, count })), [{ key: 'Никольский (в центр)', count: 2 }, { key: 'Никольский (из центра)', count: 2 }])
+  // Разбивка группы по типам (для графиков с накоплением) сходится с числом событий.
+  assert.ok(events.groups.every(g => Object.values(g.by_type).reduce((a, b) => a + b, 0) === g.count))
   const lying = (await call('security_events', { types: ['lying_person'], stop: 179, group_by: 'hour_of_day' })).data
   assert.equal(lying.total, 2)
 })
@@ -190,4 +192,26 @@ test('вежливые фразы — готовым ответом без мо�
   assert.equal(ask('Привет, что с урнами?'), null)
   assert.equal(ask('Дай рецепт печенья'), null)
   assert.match(assistant.OFF_TOPIC_REPLY, /только по остановочным павильонам/)
+})
+
+test('create_chart: графики из базы разных форм, ошибки — понятным текстом', async () => {
+  const byDay = await call('create_chart', { chart: 'security_by_day', from: '2026-11-07', to: '2026-11-13' })
+  assert.equal(byDay.error, null)
+  assert.equal(byDay.data.chart.type, 'stacked')
+  assert.equal(byDay.data.chart.labels.length, 7)
+  assert.equal(byDay.data.chart.labels[6], '13.11')
+  const total = byDay.data.chart.series.reduce((sum, s) => sum + s.values.reduce((a, b) => a + (b ?? 0), 0), 0)
+  const events = (await call('security_events', { from: '2026-11-07', to: '2026-11-13' })).data.total
+  assert.equal(total, events)
+  const equipment = await call('create_chart', { chart: 'equipment_status_now', type: 'pie' })
+  assert.equal(equipment.data.chart.type, 'pie')
+  assert.equal(equipment.data.chart.series.length, 1)
+  const conditions = await call('create_chart', { chart: 'stop_conditions_now' })
+  assert.equal(conditions.data.chart.type, 'donut')
+  assert.ok(conditions.data.chart.labelColors.every(Boolean))
+  assert.match((await call('create_chart', { chart: 'climate_temperature' })).error, /stop/)
+  assert.match((await call('create_chart', { chart: 'weather' })).error, /График должен быть/)
+  const report = await call('create_report', { title: 'С графиком', from: '2026-11-07', to: '2026-11-13', summary: ['x'],
+    sections: [{ heading: 'События', chart: 'security_by_day', chart_type: 'line' }] })
+  assert.equal(report.data.report.sections[0].chart.type, 'line')
 })

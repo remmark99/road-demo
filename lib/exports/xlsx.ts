@@ -1,7 +1,9 @@
 import { strToU8, zipSync } from 'fflate'
 
 export type Cell = string | number | null
-export interface Sheet { name: string; rows: Cell[][]; columnWidths?: number[]; wrapColumns?: number[] }
+/** Диаграмма на листе: готовый chartSpace и ячейки, на которые она ложится (с нуля). */
+export interface SheetChart { xml: string; from: { col: number; row: number }; to: { col: number; row: number } }
+export interface Sheet { name: string; rows: Cell[][]; columnWidths?: number[]; wrapColumns?: number[]; chart?: SheetChart }
 const xml = (s: string) => s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '')
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;')
 const ns = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'
@@ -16,7 +18,7 @@ function column(index: number): string {
 export function createXlsx(sheets: Sheet[]): Uint8Array {
     const files: Record<string, Uint8Array> = {}
     const add = (name: string, content: string) => { files[name] = strToU8('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' + content) }
-    add('[Content_Types].xml', `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_, i) => `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/tables/table${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>`).join('')}</Types>`)
+    add('[Content_Types].xml', `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((s, i) => `<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/tables/table${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml"/>${s.chart ? `<Override PartName="/xl/drawings/drawing${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawing+xml"/><Override PartName="/xl/charts/chart${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.drawingml.chart+xml"/>` : ''}`).join('')}</Types>`)
     add('_rels/.rels', `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${rel}/officeDocument" Target="xl/workbook.xml"/></Relationships>`)
     add('xl/workbook.xml', `<workbook xmlns="${ns}" xmlns:r="${rel}"><sheets>${sheets.map((s, i) => `<sheet name="${xml(s.name)}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join('')}</sheets></workbook>`)
     add('xl/_rels/workbook.xml.rels', `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_, i) => `<Relationship Id="rId${i+1}" Type="${rel}/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join('')}<Relationship Id="styles" Type="${rel}/styles" Target="styles.xml"/></Relationships>`)
@@ -24,7 +26,13 @@ export function createXlsx(sheets: Sheet[]): Uint8Array {
     sheets.forEach((sheet, i) => {
         const width = Math.max(1, ...sheet.rows.map(r => r.length))
         const range = `A1:${column(width-1)}${Math.max(2, sheet.rows.length)}`
-        add(`xl/worksheets/_rels/sheet${i+1}.xml.rels`, `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="table" Type="${rel}/table" Target="../tables/table${i+1}.xml"/></Relationships>`)
+        add(`xl/worksheets/_rels/sheet${i+1}.xml.rels`, `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="table" Type="${rel}/table" Target="../tables/table${i+1}.xml"/>${sheet.chart ? `<Relationship Id="drawing" Type="${rel}/drawing" Target="../drawings/drawing${i+1}.xml"/>` : ''}</Relationships>`)
+        if (sheet.chart) {
+            const { from, to } = sheet.chart
+            files[`xl/charts/chart${i+1}.xml`] = strToU8(sheet.chart.xml)
+            add(`xl/drawings/_rels/drawing${i+1}.xml.rels`, `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="chart" Type="${rel}/chart" Target="../charts/chart${i+1}.xml"/></Relationships>`)
+            add(`xl/drawings/drawing${i+1}.xml`, `<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><xdr:twoCellAnchor editAs="oneCell"><xdr:from><xdr:col>${from.col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${from.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>${to.col}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${to.row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to><xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${i+2}" name="Диаграмма ${i+1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:r="${rel}" r:id="chart"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>`)
+        }
         add(`xl/tables/table${i+1}.xml`, `<table xmlns="${ns}" id="${i+1}" name="Report${i+1}" displayName="Report${i+1}" ref="${range}" totalsRowShown="0"><autoFilter ref="${range}"/><tableColumns count="${width}">${Array.from({length:width},(_,c)=>`<tableColumn id="${c+1}" name="${xml(String(sheet.rows[0]?.[c] ?? `Колонка ${c+1}`))}"/>`).join('')}</tableColumns><tableStyleInfo name="" showFirstColumn="0" showLastColumn="0" showRowStripes="0" showColumnStripes="0"/></table>`)
 
         add(`xl/worksheets/sheet${i+1}.xml`, `<worksheet xmlns="${ns}" xmlns:r="${rel}"><sheetViews><sheetView workbookViewId="0" showGridLines="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${Array.from({ length: width }, (_, c) => `<col min="${c+1}" max="${c+1}" width="${sheet.columnWidths?.[c] ?? 26}" customWidth="1"/>`).join('')}</cols><sheetData>${sheet.rows.map((row, r) => `<row r="${r+1}"${sheet.wrapColumns?.length && r > 0 ? ` ht="${Math.max(1, ...sheet.wrapColumns.map(c => String(row[c] ?? '').split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(line.length / (sheet.columnWidths?.[c] ?? 26))), 0))) * 16}" customHeight="1"` : ''}>${row.map((cell, c) => {
@@ -33,7 +41,7 @@ export function createXlsx(sheets: Sheet[]): Uint8Array {
             if (typeof cell === 'number' && Number.isFinite(cell)) return `<c r="${ref}"${style}><v>${cell}</v></c>`
             // Explicit inlineStr prevents names beginning with =, +, - or @ becoming formulas.
             return `<c r="${ref}" t="inlineStr"${style}><is><t xml:space="preserve">${xml(String(cell))}</t></is></c>`
-        }).join('')}</row>`).join('')}</sheetData><tableParts count="1"><tablePart r:id="table"/></tableParts></worksheet>`)
+        }).join('')}</row>`).join('')}</sheetData>${sheet.chart ? '<drawing r:id="drawing"/>' : ''}<tableParts count="1"><tablePart r:id="table"/></tableParts></worksheet>`)
     })
     return zipSync(files, { level: 6 })
 }

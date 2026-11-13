@@ -300,12 +300,20 @@ export const VECTOR_TOOLS: VectorTool[] = [
                 : groupBy === 'hour_of_day' ? `${new Date(Date.parse(e.timestamp) + 5 * HOUR).getUTCHours().toString().padStart(2, '0')}:00`
                 : EVENT_LABELS[e.alert_type] ?? e.alert_type
             const groups = Object.entries(countBy(events, groupKey))
+            // Разбивка группы по типам — для графиков с накоплением.
+            const typesByGroup = new Map<string, Record<string, number>>()
+            for (const event of events) {
+                const key = groupKey(event), type = EVENT_LABELS[event.alert_type] ?? event.alert_type
+                const counts = typesByGroup.get(key) ?? {}
+                counts[type] = (counts[type] ?? 0) + 1
+                typesByGroup.set(key, counts)
+            }
             return {
                 period: { from: localTime(from), to: localTime(to) },
                 total: events.length,
                 by_type: Object.fromEntries(Object.entries(countBy(events, e => e.alert_type)).map(([k, v]) => [EVENT_LABELS[k] ?? k, v])),
                 group_by: groupBy,
-                groups: (groupBy === 'stop' ? groups : groups.sort((a, b) => a[0].localeCompare(b[0]))).slice(0, take).map(([key, count]) => ({ key, count })),
+                groups: (groupBy === 'stop' ? groups : groups.sort((a, b) => a[0].localeCompare(b[0]))).slice(0, take).map(([key, count]) => ({ key, count, by_type: typesByGroup.get(key) ?? {} })),
                 latest: events.slice(0, 10).map(e => ({ id: e.id, type: EVENT_LABELS[e.alert_type] ?? e.alert_type, time: localTime(e.timestamp),
                     stop: stopLabel(e.stop_id !== null ? directory.stopById.get(e.stop_id) : undefined, e.stop_id), camera: e.camera_index })),
             }

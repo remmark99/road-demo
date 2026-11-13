@@ -1,9 +1,11 @@
 import { createOpenAI } from '@ai-sdk/openai'
 import { generateText, jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type ToolSet, type UIMessage } from 'ai'
 import { localTime } from '@/lib/mcp/vector/args'
+import { CHART_TOOL_NAME, chartSummary } from '@/lib/mcp/vector/chart-presets'
 import { REPORT_TOOL_NAME } from '@/lib/mcp/vector/report-tool'
 import { ALL_VECTOR_TOOLS, INSTRUCTIONS, callVectorTool } from '@/lib/mcp/vector/server'
 import type { VectorToolContext } from '@/lib/mcp/vector/tools'
+import type { ReportChart } from '@/lib/reports/chart'
 import type { ReportDocument } from '@/lib/reports/document'
 import { MAX_REPORT_PROMPT_CHARS } from './limits'
 
@@ -54,6 +56,8 @@ export interface AssistantOptions {
 
 /** Вывод create_report в окне чата: отчёт для кнопок скачивания или ошибка. */
 export interface ReportToolOutput { report?: ReportDocument; formats?: string[]; error?: string }
+/** Вывод create_chart в окне чата: график или пояснение, почему его нет. */
+export interface ChartToolOutput { chart?: ReportChart | null; message?: string; error?: string }
 
 export function assistantConfigured() {
     return Boolean(process.env.ASSISTANT_LLM_API_KEY && process.env.ASSISTANT_LLM_MODEL)
@@ -74,8 +78,12 @@ ${OFF_TOPIC_REPLY}
 Инструменты вызывай строго по одному за шаг: дождись результата и только потом вызывай следующий. Никогда не пиши вызовы инструментов текстом.
 Не показывай пользователю названия инструментов, JSON и id, кроме номеров камер. Не выдумывай данных: если инструмент вернул ошибку или пусто — скажи об этом.
 
+Графики. Слова «график», «диаграмма», «покажи столбцами / линией / кругом», «динамика», «сравни», «доли» — это всегда вызов create_chart, даже если цифры уже есть; таблицу вместо графика не рисуй.
+Выбери вид графика и форму (bar, hbar, stacked, line, area, pie, donut), если пользователь не назвал её сам. Потом одной-двумя фразами скажи главное, что видно на графике.
+
 Отчёты. Когда просят отчёт, справку для руководства, документ или файл (PDF, Excel, Word): возьми период из запроса (если не указан — последние 7 дней), получи цифры инструментами данных и один раз вызови create_report.
 В create_report: короткий title, from и to периода, 3–6 плиток metrics, 2–5 выводов в summary и 2–5 разделов sections; в разделе 1–2 абзаца пояснений и, где нужен список, table — вид таблицы из базы. Таблицы текстом не переписывай.
+Добавь в отчёт 1–3 графика разных форм полями chart и chart_type раздела: динамика — line или area, рейтинги — hbar, доли — donut или pie, по дням с разбивкой — stacked.
 После create_report ответь одной-двумя фразами, что вошло в отчёт. Не повторяй таблицы и не давай ссылок: кнопки PDF, Excel и Word пользователь видит под ответом.${wishes ? `
 
 Пожелания пользователя к отчётам из его настроек — учитывай состав разделов и акценты, когда он просит отчёт; правила выше они не отменяют:
@@ -107,6 +115,23 @@ export function vectorToolSet(ctx: VectorToolContext): ToolSet {
     const tools: ToolSet = {}
     for (const definition of ALL_VECTOR_TOOLS) {
         const inputSchema = jsonSchema(definition.inputSchema as Parameters<typeof jsonSchema>[0])
+        if (definition.name === CHART_TOOL_NAME) {
+            // Окну чата — весь график, модели — его цифры коротким текстом.
+            tools[definition.name] = tool({
+                description: definition.description,
+                inputSchema,
+                execute: async (args: unknown): Promise<ChartToolOutput> => {
+                    const result = await callVectorTool(ctx, definition.name, args)
+                    const text = result.content.map(part => part.text).join('\n')
+                    return result.isError ? { error: text } : JSON.parse(text) as ChartToolOutput
+                },
+                toModelOutput: ({ output }) => {
+                    const value = output as ChartToolOutput
+                    return { type: 'text', value: value.chart ? chartSummary(value.chart) : `Ошибка: ${value.error ?? value.message ?? 'графика нет'}` }
+                },
+            })
+            continue
+        }
         if (definition.name === REPORT_TOOL_NAME) {
             // Окну чата — весь отчёт для кнопок скачивания, модели — короткое подтверждение.
             tools[definition.name] = tool({

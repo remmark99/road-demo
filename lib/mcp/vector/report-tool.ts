@@ -1,5 +1,7 @@
 import { normalizeReport, ReportInputError, type ReportCell, type ReportDocument, type ReportTable } from '@/lib/reports/document'
+import { CHART_TYPES } from '@/lib/reports/chart'
 import { ToolInputError, localTime, type ToolArgs } from './args'
+import { CHART_PRESET_HELP, CHART_PRESET_NAMES, buildChart } from './chart-presets'
 import { VECTOR_TOOL_TITLES } from './titles'
 import { VECTOR_TOOLS, runVectorTool, type VectorTool, type VectorToolContext } from './tools'
 
@@ -118,6 +120,16 @@ async function presetTable(ctx: VectorToolContext, kind: string, period: ToolArg
     }
 }
 
+async function sectionChart(ctx: VectorToolContext, section: { chart?: unknown; chart_type?: unknown; stop?: unknown }, period: ToolArgs, heading: string) {
+    try {
+        return await buildChart(ctx, { preset: section.chart, type: section.chart_type, from: period.from, to: period.to, stop: section.stop }) ?? undefined
+    } catch (error) {
+        if (error instanceof ToolInputError) throw new ToolInputError(`Раздел «${heading}»: ${error.message}`)
+        console.error('report chart failed:', error instanceof Error ? error.message : 'unknown error')
+        return undefined
+    }
+}
+
 /** Отчёт из аргументов модели: разделы с data получают таблицы из базы. */
 export async function buildReport(ctx: VectorToolContext, args: ToolArgs): Promise<ReportDocument> {
     const period: ToolArgs = {}
@@ -125,10 +137,13 @@ export async function buildReport(ctx: VectorToolContext, args: ToolArgs): Promi
     const sections = Array.isArray(args.sections) ? args.sections.slice(0, 20) : []
     const resolved = await Promise.all(sections.map(async raw => {
         if (!raw || typeof raw !== 'object') return raw
-        const section = raw as { heading?: unknown; table?: unknown; stop?: unknown }
-        if (typeof section.table !== 'string' || !section.table.trim()) return { ...section, table: undefined }
-        const heading = typeof section.heading === 'string' ? section.heading : 'Таблица'
-        return { ...section, table: await presetTable(ctx, section.table.trim(), period, section.stop, heading) }
+        const section = raw as { heading?: unknown; table?: unknown; stop?: unknown; chart?: unknown; chart_type?: unknown }
+        const heading = typeof section.heading === 'string' ? section.heading : 'Раздел'
+        const [table, chart] = await Promise.all([
+            typeof section.table === 'string' && section.table.trim() ? presetTable(ctx, section.table.trim(), period, section.stop, heading) : undefined,
+            typeof section.chart === 'string' && section.chart.trim() ? sectionChart(ctx, section, period, heading) : undefined,
+        ])
+        return { ...section, table, chart }
     }))
     try {
         return normalizeReport({ ...args, sections: resolved }, localTime(ctx.now) ?? '')
@@ -145,8 +160,8 @@ export const REPORT_TOOL: VectorTool = {
     title: VECTOR_TOOL_TITLES[REPORT_TOOL_NAME],
     description: 'Оформленный отчёт по остановочным павильонам: пользователь скачает его в PDF, Excel и Word. '
         + 'Вызывай, когда просят отчёт, сводку для руководства, документ или выгрузку. Сначала получи цифры инструментами данных, '
-        + 'потом один раз вызови create_report: выводы и плитки с цифрами пиши сам, а таблицы не переписывай — укажи в разделе table '
-        + 'нужный вид таблицы, сервер вставит её из базы за период from–to отчёта.',
+        + 'потом один раз вызови create_report: выводы и плитки с цифрами пиши сам, а таблицы и графики не переписывай — укажи в разделе '
+        + 'table (вид таблицы) и chart с chart_type (вид и форма графика), сервер вставит их из базы за период from–to отчёта.',
     inputSchema: {
         type: 'object',
         additionalProperties: false,
@@ -175,6 +190,8 @@ export const REPORT_TOOL: VectorTool = {
                             + 'passenger_load_by_stop / passenger_load_by_hour — люди в кадре; bin_episodes — переполнения урн. На сейчас: equipment_offline_now, stop_problems_now, '
                             + 'climate_coldest_now, climate_humid_now, bins_full_now, districts.',
                     },
+                    chart: { type: 'string', enum: CHART_PRESET_NAMES, description: `График из базы за период отчёта. ${CHART_PRESET_HELP}` },
+                    chart_type: { type: 'string', enum: CHART_TYPES, description: 'Форма графика: bar, hbar, stacked, line, area, pie, donut. Разные разделы — разные формы' },
                     stop: { type: 'string', maxLength: 120, description: 'Только для отчёта по одной остановке: её название или id' },
                 } },
             },

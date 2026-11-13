@@ -1,4 +1,7 @@
 import { strToU8, zipSync } from 'fflate'
+import { createXlsx } from '@/lib/exports/xlsx'
+import type { ReportChart } from './chart'
+import { CHART_CONTENT_TYPE, chartDataRows, chartSpaceXml, officeChartView } from './chart-ooxml'
 import { REPORT_BRAND, displayNumber, displayTime, type ReportCell, type ReportDocument, type ReportTable } from './document'
 
 /**
@@ -74,7 +77,18 @@ function dataTable(table: ReportTable) {
     return `<w:tbl><w:tblPr><w:tblW w:w="${TEXT_WIDTH}" w:type="dxa"/><w:tblLayout w:type="fixed"/><w:tblBorders>${borders(COLOR.line)}</w:tblBorders><w:tblCellMar><w:top w:w="50" w:type="dxa"/><w:left w:w="90" w:type="dxa"/><w:bottom w:w="50" w:type="dxa"/><w:right w:w="90" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${widths.map(w => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>${row(table.columns, true, 0)}${table.rows.map((cells, index) => row(cells.map(cellText), false, index)).join('')}</w:tbl>`
 }
 
-function body(report: ReportDocument) {
+const EMU_PER_TWIP = 635
+const CHART_SHEET = 'Данные'
+
+/** Диаграмма в тексте: ссылка на часть word/charts/chartN.xml. */
+function chartParagraph(index: number, chart: ReportChart) {
+    const cx = TEXT_WIDTH * EMU_PER_TWIP
+    const inches = chart.type === 'hbar' ? Math.min(7, 1 + chart.labels.length * 0.32 * Math.max(1, chart.series.length * 0.7)) : chart.type === 'pie' || chart.type === 'donut' ? 3.2 : 3.4
+    const cy = Math.round(inches * 914400)
+    return `<w:p><w:pPr><w:keepNext/><w:spacing w:before="120" w:after="160"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${index}" name="Диаграмма ${index}"/><wp:cNvGraphicFramePr/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" r:id="rIdChart${index}"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
+}
+
+function body(report: ReportDocument, charts: ReportChart[]) {
     const parts: string[] = []
     parts.push(para({ text: REPORT_BRAND, bold: true, size: 8, color: COLOR.accent, caps: true }, { after: 120 }))
     parts.push(para({ text: report.title }, { style: 'Title' }))
@@ -89,6 +103,11 @@ function body(report: ReportDocument) {
         if (section.heading) parts.push(para({ text: `${index + 1}. ${section.heading}` }, { style: 'Heading1', keepNext: true }))
         section.paragraphs.forEach(text => parts.push(para({ text })))
         section.bullets.forEach(text => parts.push(para({ text }, { bullet: true })))
+        if (section.chart) {
+            charts.push(section.chart)
+            parts.push(chartParagraph(charts.length, section.chart))
+            if (section.chart.note) parts.push(para({ text: section.chart.note, size: 8.5, color: COLOR.muted }, { after: 120 }))
+        }
         if (section.table) {
             if (section.table.title) parts.push(para({ text: section.table.title, bold: true, color: COLOR.ink }, { keepNext: true, after: 80 }))
             if (section.table.rows.length) parts.push(dataTable(section.table))
@@ -117,14 +136,27 @@ export function renderReportDocx(report: ReportDocument): Uint8Array {
     const W = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
     const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
     const footer = `<w:ftr xmlns:w="${W}" xmlns:r="${R}"><w:p><w:pPr><w:pStyle w:val="Footer"/><w:tabs><w:tab w:val="right" w:pos="${TEXT_WIDTH}"/></w:tabs></w:pPr>${run({ text: `${report.title.slice(0, 90)} · ${displayTime(report.generatedAt)}` })}<w:r><w:tab/></w:r>${field('PAGE')}${run({ text: ' из ' })}${field('NUMPAGES')}</w:p></w:ftr>`
-    const document = `<w:document xmlns:w="${W}" xmlns:r="${R}"><w:body>${body(report)}<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`
+    const charts: ReportChart[] = []
+    const content = body(report, charts)
+    const document = `<w:document xmlns:w="${W}" xmlns:r="${R}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>${content}<w:sectPr><w:footerReference w:type="default" r:id="rIdFooter"/><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1134" w:right="1134" w:bottom="1134" w:left="1134" w:header="567" w:footer="567" w:gutter="0"/></w:sectPr></w:body></w:document>`
     const xml = (content: string) => strToU8(`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>${content}`)
     const now = new Date().toISOString().replace(/\.\d+Z$/, 'Z')
+    // Каждая диаграмма — своя часть и своя встроенная книга с данными («Изменить данные» в Word).
+    const chartFiles: Record<string, Uint8Array> = {}
+    charts.forEach((chart, i) => {
+        const n = i + 1
+        chartFiles[`word/charts/chart${n}.xml`] = strToU8(chartSpaceXml(chart, CHART_SHEET, { externalDataId: 'rIdData' }))
+        chartFiles[`word/charts/_rels/chart${n}.xml.rels`] = xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdData" Type="${R}/package" Target="../embeddings/chart${n}.xlsx"/></Relationships>`)
+        chartFiles[`word/embeddings/chart${n}.xlsx`] = createXlsx([{ name: CHART_SHEET, rows: chartDataRows(officeChartView(chart)) }])
+    })
+    const chartTypes = charts.map((_, i) => `<Override PartName="/word/charts/chart${i + 1}.xml" ContentType="${CHART_CONTENT_TYPE}"/>`).join('')
+    const chartRels = charts.map((_, i) => `<Relationship Id="rIdChart${i + 1}" Type="${R}/chart" Target="charts/chart${i + 1}.xml"/>`).join('')
     return zipSync({
-        '[Content_Types].xml': xml(`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`),
+        ...chartFiles,
+        '[Content_Types].xml': xml(`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="xlsx" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"/>${chartTypes}<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/><Override PartName="/word/numbering.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"/><Override PartName="/word/footer1.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml"/><Override PartName="/docProps/core.xml" ContentType="application/vnd.openxmlformats-package.core-properties+xml"/></Types>`),
         '_rels/.rels': xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${R}/officeDocument" Target="word/document.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties" Target="docProps/core.xml"/></Relationships>`),
         'docProps/core.xml': xml(`<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:dcterms="http://purl.org/dc/terms/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><dc:title>${esc(report.title)}</dc:title><dc:creator>ИИ-ассистент «Вектора города»</dc:creator><dcterms:created xsi:type="dcterms:W3CDTF">${now}</dcterms:created></cp:coreProperties>`),
-        'word/_rels/document.xml.rels': xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="${R}/styles" Target="styles.xml"/><Relationship Id="rIdNumbering" Type="${R}/numbering" Target="numbering.xml"/><Relationship Id="rIdFooter" Type="${R}/footer" Target="footer1.xml"/></Relationships>`),
+        'word/_rels/document.xml.rels': xml(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdStyles" Type="${R}/styles" Target="styles.xml"/><Relationship Id="rIdNumbering" Type="${R}/numbering" Target="numbering.xml"/><Relationship Id="rIdFooter" Type="${R}/footer" Target="footer1.xml"/>${chartRels}</Relationships>`),
         'word/document.xml': xml(document),
         'word/styles.xml': xml(STYLES),
         'word/numbering.xml': xml(NUMBERING),

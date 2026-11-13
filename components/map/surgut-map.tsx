@@ -13,7 +13,7 @@ import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
 import { fetchCameras } from "@/lib/api/cameras"
 import { fetchRoadsGeoJSON, HIGHWAY_CONFIG, type RoadsGeoJSON } from "@/lib/api/roads"
-import { fetchBusStopsGeoJSON, STOP_STATUS_REFRESH_MS, toSensorsOnlyStops, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
+import { fetchBusStopsGeoJSON, STOP_STATUS_REFRESH_MS, toSensorsOnlyStops, type BusStopProperties, type BusStopsGeoJSON } from "@/lib/api/bus-stops"
 import { ACTIVITY_STATUS_LABELS, type StopActivityStatus } from "@/lib/api/stop-activity"
 import { fetchBusStopHeatmapData, fetchBusStopOccupancyHeatmapData, type BusStopHeatmapResult, type BusStopOccupancyHeatmapResult } from "@/lib/api/bus-stop-heatmap"
 import { fetchParksGeoJSON } from "@/lib/api/parks"
@@ -153,6 +153,12 @@ function formatTkoDescription(description: string | null | undefined): string {
   }).join("")}</div>`
 }
 
+function statusPill(label: string, color: string): string {
+  return `<span class="map-popup-pill" style="background:${color}1f;color:${color};border-color:${color}40">
+    <span class="map-popup-pill-dot" style="background:${color}"></span>${escapeHtml(label)}
+  </span>`
+}
+
 function tkoStatusPillHtml(status: string | undefined): string {
   const isActive = status === "active"
   const color = isActive ? "#4ade80" : "#9ca3af"
@@ -221,6 +227,42 @@ function getSimulatedStatusAtTime(osmId: number, time: Date): RoadStatus {
   return "dirty";
 }
 
+const MAX_PINNED_STOPS = 6
+const SURGUT_TIME = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Yekaterinburg", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
+
+function formatMeasure(value: number | null | undefined, unit: string) {
+  return value === null || value === undefined || !Number.isFinite(value) ? "—" : `${String(Math.round(value * 10) / 10).replace(".", ",")} ${unit}`
+}
+
+/** Карточка закреплённой остановки: состояние на момент слайдера (или сейчас). */
+function pinnedStopContent(properties: BusStopProperties, condition: StopCondition | null, at: number, historical: boolean, onDetails: () => void): HTMLElement {
+  const data = properties.sensor_data
+  const sensors = !data?.has_controller ? "не установлены" : data.sensors_history_known === false ? "нет истории" : data.sensors_online ? "в сети" : "не в сети"
+  const cameraTotal = data?.total_camera_count ?? 0
+  const cameras = cameraTotal === 0 ? "нет" : data?.cameras_history_known === false ? "нет истории" : `${data?.online_camera_count ?? 0} из ${cameraTotal} в сети`
+  const level = condition?.level
+  const root = document.createElement("div")
+  root.className = "map-popup pinned-stop"
+  root.innerHTML = `
+    <div class="map-popup-title">${escapeHtml(properties.name || "Остановка")}</div>
+    ${properties.description || properties.address ? `<div class="map-popup-subtitle">${escapeHtml(properties.description || properties.address || "")}</div>` : ""}
+    <div class="pinned-stop-time">${historical ? "На" : "Сейчас,"} ${escapeHtml(SURGUT_TIME.format(new Date(at)))}</div>
+    ${condition ? `
+      <div class="map-popup-footer">${statusPill(CONDITION_LABELS[condition.level], level === "unknown" ? "#94a3b8" : CONDITION_COLORS[condition.level])}</div>
+      ${condition.issues.length ? `<ul class="pinned-stop-issues">${condition.issues.map(issue => `<li>${escapeHtml(issue)}</li>`).join("")}</ul>` : ""}
+      <div class="pinned-stop-grid map-popup-divider">
+        <span>Температура</span><b>${formatMeasure(condition.temperature, "°C")}</b>
+        <span>Влажность</span><b>${formatMeasure(condition.humidity, "%")}</b>
+      </div>` : ""}
+    <div class="pinned-stop-grid${condition ? "" : " map-popup-divider"}">
+      <span>Камеры</span><b>${escapeHtml(cameras)}</b>
+      <span>Датчики</span><b>${escapeHtml(sensors)}</b>
+    </div>
+    <button type="button" class="pinned-stop-details">Подробнее</button>`
+  root.querySelector("button")?.addEventListener("click", onDetails)
+  return root
+}
+
 export function SurgutMap({ selectedTime, timelineRange, statusOverride, hoveredSegmentId, onHoverSegment, focusTarget, historySnapshot = null, stopClass = "all" }: SurgutMapProps) {
 
   const lastFocusRequest = useRef<number | null>(null)
@@ -274,6 +316,11 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
     }
     return result
   }, [conditionHistory, busStopsData, conditionTime])
+  // Закреплённые карточки остановок: не закрываются при движении слайдера и показывают его момент.
+  const [pinnedStops, setPinnedStops] = useState<number[]>([])
+  const pinnedPopups = useRef(new Map<number, maplibregl.Popup>())
+  const pinModeRef = useRef(false)
+  useEffect(() => { pinModeRef.current = historySnapshot !== null || showStopConditions }, [historySnapshot, showStopConditions])
   const conditionCounts = useMemo(() => {
     const counts: Record<ConditionLevel, number> = { ok: 0, warn: 0, bad: 0, unknown: 0 }
     for (const condition of stopConditions?.values() ?? []) counts[condition.level]++
@@ -747,6 +794,11 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
           if (feature) {
             const props = feature.properties as any
             popup.remove()
+            if (pinModeRef.current) {
+              const stopId = Number(props.id)
+              setPinnedStops(prev => prev.includes(stopId) ? prev : [...prev, stopId].slice(-MAX_PINNED_STOPS))
+              return
+            }
             setSelectedCamera(null)
             setSelectedBusStop({
               id: Number(props.id),
@@ -1969,6 +2021,51 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
       rawSource.setData(flatData as any)
     }
   }, [busStopsData, cameras, mapLoaded, addBusStops, busStopFilters, stopClass, stopConditions])
+
+  // Карточки закреплённых остановок пересчитываются под момент слайдера.
+  useEffect(() => {
+    const instance = map.current
+    if (!instance || !mapLoaded) return
+    const popups = pinnedPopups.current
+    for (const [stopId, popup] of popups) {
+      if (pinnedStops.includes(stopId)) continue
+      popups.delete(stopId)
+      popup.remove()
+    }
+    const at = conditionTime ?? Date.now()
+    for (const stopId of pinnedStops) {
+      const feature = busStopsData?.features.find(f => f.properties.id === stopId)
+      if (!feature) continue
+      const openDetails = () => {
+        setSelectedCamera(null)
+        setSelectedBusStop({ id: stopId, name: feature.properties.name, description: feature.properties.description, address: feature.properties.address, sensor_data: feature.properties.sensor_data })
+      }
+      const content = pinnedStopContent(feature.properties, stopConditions?.get(stopId) ?? null, at, historySnapshot !== null, openDetails)
+      const existing = popups.get(stopId)
+      if (existing) {
+        existing.setDOMContent(content)
+        continue
+      }
+      const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, closeOnMove: false, offset: 12, maxWidth: "280px", className: "pinned-stop-popup" })
+        .setLngLat(feature.geometry.coordinates)
+        .setDOMContent(content)
+        .addTo(instance)
+      popup.on("close", () => {
+        if (popups.get(stopId) !== popup) return
+        popups.delete(stopId)
+        setPinnedStops(prev => prev.filter(value => value !== stopId))
+      })
+      popups.set(stopId, popup)
+    }
+  }, [pinnedStops, busStopsData, stopConditions, conditionTime, historySnapshot, mapLoaded])
+
+  useEffect(() => {
+    const popups = pinnedPopups.current
+    return () => {
+      for (const popup of popups.values()) popup.remove()
+      popups.clear()
+    }
+  }, [])
 
   // Остановки «Умного транспорта» грузятся только при включённом слое
   useEffect(() => {

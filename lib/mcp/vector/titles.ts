@@ -12,4 +12,5 @@ export const VECTOR_TOOL_TITLES: Record<string, string> = {
     bin_episodes: 'Переполнение урн',
     districts_summary: 'Микрорайоны',
     create_report: 'Оформление отчёта',
+    create_chart: 'График',
 }

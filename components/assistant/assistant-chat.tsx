@@ -7,11 +7,13 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
     AlertTriangle, ArrowUp, AudioLines, Bot, Check, CircleAlert, Copy, History, Loader2, MessageSquarePlus, Mic, PanelLeft, Snowflake, Square, Volume2, X,
-    Thermometer, Trash2, Users, Wifi, WifiOff, Sparkles, FileBarChart2,
+    Thermometer, Trash2, Users, Wifi, WifiOff, Sparkles, FileBarChart2, LineChart as LineChartIcon,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ChartCard } from "@/components/assistant/chart-view"
 import { ReportCard } from "@/components/assistant/report-card"
 import { VECTOR_TOOL_TITLES } from "@/lib/mcp/vector/titles"
+import type { ReportChart } from "@/lib/reports/chart"
 import type { ReportDocument } from "@/lib/reports/document"
 import { startRecording, type RecordingHandle } from "@/lib/speech/recorder"
 import { cn } from "@/lib/utils"
@@ -25,6 +27,7 @@ const SUGGESTIONS = [
     { icon: Wifi, text: "Какое оборудование чаще всего отключалось за неделю?" },
     { icon: Thermometer, text: "На каких остановках нарушены нормы температуры и влажности?" },
     { icon: Users, text: "На каких остановках больше всего людей сегодня?" },
+    { icon: LineChartIcon, text: "Нарисуй график событий безопасности по дням за неделю" },
     { icon: FileBarChart2, text: "Сделай отчёт о состоянии павильонов за неделю" },
 ] as const
 
@@ -37,8 +40,18 @@ function reportOf(part: ToolPart): ReportDocument | null {
     return report && typeof report.title === "string" && Array.isArray(report.sections) ? report : null
 }
 
+/** График из вывода create_chart. */
+function chartOf(part: ToolPart): ReportChart | null {
+    if (toolName(part) !== "create_chart" || part.state !== "output-available") return null
+    const chart = (part.output as { chart?: ReportChart | null } | null)?.chart
+    return chart && Array.isArray(chart.labels) && Array.isArray(chart.series) ? chart : null
+}
+
 function toolFailed(part: ToolPart) {
-    return part.state === "output-error" || (toolName(part) === "create_report" && part.state === "output-available" && !reportOf(part) && part.output !== null)
+    if (part.state === "output-error") return true
+    if (part.state !== "output-available" || !part.output) return false
+    if (toolName(part) === "create_report") return !reportOf(part)
+    return toolName(part) === "create_chart" && Boolean((part.output as { error?: string }).error)
 }
 
 function toolName(part: ToolPart) {
@@ -122,6 +135,7 @@ function ListenButton({ id, text, speech }: { id: string; text: string; speech: 
 function AssistantMessage({ message, streaming, speech }: { message: UIMessage; streaming: boolean; speech: SpeechControls }) {
     const tools = message.parts.filter(isToolPart)
     const reports = tools.map(reportOf).filter((report): report is ReportDocument => report !== null)
+    const charts = tools.map(chartOf).filter((chart): chart is ReportChart => chart !== null)
     const text = messageText(message)
     return (
         <div className="flex gap-3">
@@ -130,11 +144,12 @@ function AssistantMessage({ message, streaming, speech }: { message: UIMessage; 
             </div>
             <div className="min-w-0 flex-1">
                 <ToolSteps parts={tools} />
+                {charts.map((chart, index) => <ChartCard key={`${chart.title}-${index}`} chart={chart} />)}
                 {text ? (
                     <div className={MARKDOWN}>
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: props => <a {...props} target="_blank" rel="noopener noreferrer" />, table: props => <div className="overflow-x-auto"><table {...props} /></div> }}>{text}</ReactMarkdown>
                     </div>
-                ) : streaming && !reports.length ? (
+                ) : streaming && !reports.length && !charts.length ? (
                     <div className="flex h-6 items-center gap-1" aria-label="Ассистент думает">
                         {[0, 1, 2].map(i => <span key={i} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60" style={{ animationDelay: `${i * 150}ms` }} />)}
                     </div>
