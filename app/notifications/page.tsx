@@ -1507,7 +1507,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             // Раскрывать есть смысл, только когда есть что показать: фото или видео.
             // Массовое отключение раскрывается в список камер и остановок.
             const expandable = !demoAlert && !!(binEpisode || episode || alert.clip_path || outageList)
-            const duration = timedEvent ? formatEventDuration(timedEvent.started_at,
+            const duration = timedEvent && (binEpisode?.object_first_seen_at || timedEvent.started_at) ? formatEventDuration(binEpisode?.object_first_seen_at || timedEvent.started_at,
               timedEvent.status === 'open' ? new Date().toISOString() : timedEvent.ended_at || timedEvent.last_seen_at) : ['bin_full', 'lying_person', 'abandoned_object'].includes(alert.alert_type) ? 'не определена' : null
 
             return (
@@ -1531,7 +1531,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
                       <div className="min-w-0">
                         <div className="text-muted-foreground md:text-foreground">
-                          {binEpisode ? `Начало: ${formatBinTime(binEpisode.started_at)}`
+                          {binEpisode ? `Начало: ${formatBinTime(binEpisode.object_first_seen_at || binEpisode.started_at)}`
                             : outageEpisode ? `Начало: ${formatBinTime(outageEpisode.started_at)}`
                             : formatTimeAgo(alert.timestamp)}
                         </div>

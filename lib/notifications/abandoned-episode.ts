@@ -8,5 +8,13 @@ export function getAbandonedEpisode(alert: Pick<Alert, 'alert_type' | 'metadata'
   const start = Date.parse(episode.started_at), last = Date.parse(episode.last_seen_at)
   if (!Number.isFinite(start) || !Number.isFinite(last) || last < start) return null
   if (episode.status === 'closed' && (!episode.ended_at || !Number.isFinite(Date.parse(episode.ended_at)) || Date.parse(episode.ended_at) < last)) return null
-  return {...episode, closed_image_url:episode.status === 'closed' && typeof episode.closed_image_url === 'string' ? episode.closed_image_url : null}
+  // object_first_seen_at comes from the backend; ignore it if it is not a valid
+  // timestamp or not before started_at (the hold always precedes firing).
+  const firstSeen = Date.parse(episode.object_first_seen_at ?? '')
+  const object_first_seen_at = Number.isFinite(firstSeen) && firstSeen < start ? episode.object_first_seen_at : null
+  return {
+    ...episode,
+    object_first_seen_at,
+    closed_image_url:episode.status === 'closed' && typeof episode.closed_image_url === 'string' ? episode.closed_image_url : null,
+  }
 }

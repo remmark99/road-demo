@@ -14,6 +14,8 @@ test('abandoned episode retries, first clear evidence, recurrence, occlusion and
  await open();await open();assert.equal((await db.query('SELECT count(*)::int AS n FROM deliveries')).rows[0].n,1)
  const observe=async(s,present,url=null)=>(await db.query('SELECT record_abandoned_observation($1,$2,$3,$4) AS r',[id,at(s),present,url])).rows[0].r
  const episode=async()=>(await db.query('SELECT metadata FROM alerts WHERE id=$1',[id])).rows[0].metadata.abandoned_episode
+ // object_first_seen_at falls back to started_at when the backend did not send it.
+ assert.equal(Date.parse((await episode()).object_first_seen_at),base)
  assert.equal((await observe(1,false,null)).action,'ignored')
  await observe(5,false,'discard.jpg');await observe(10,true);await observe(15,false,'also-discard.jpg');await observe(20,null)
  await observe(25,false,'first-clean.jpg');await observe(30,false,'second-clean.jpg');assert.equal((await episode()).status,'open')
@@ -23,6 +25,11 @@ test('abandoned episode retries, first clear evidence, recurrence, occlusion and
  const e=await episode();assert.equal(e.status,'closed');assert.equal(e.first_image_url,'first.jpg');assert.equal(e.closed_image_url,'first-clean.jpg');assert.equal(Date.parse(e.ended_at),base+25000)
  await observe(45,true);assert.equal((await episode()).status,'closed')
  assert.equal((await db.query('SELECT count(*)::int AS n FROM deliveries')).rows[0].n,1)
+ // A supplied object_first_seen_at is kept verbatim while started_at stays the firing time.
+ const id2='00000000-0000-4000-8000-000000000154'
+ await db.query('SELECT open_abandoned_episode($1,154,$2,$3,$4)',[id2,at(100),'first.jpg',{abandoned_regions:[[.1,.2,.2,.4]],object_first_seen_at:at(-1100)}])
+ const e2=(await db.query('SELECT metadata FROM alerts WHERE id=$1',[id2])).rows[0].metadata.abandoned_episode
+ assert.equal(Date.parse(e2.object_first_seen_at),base-1100000);assert.equal(Date.parse(e2.started_at),base+100000)
  for(const role of ['anon','authenticated']){await db.exec('SET ROLE '+role);await assert.rejects(observe(50,true),/permission denied/);await assert.rejects(open(),/permission denied/);await db.exec('RESET ROLE')}
  }finally{await db.close()}
 })

@@ -16,6 +16,9 @@ BEGIN
  VALUES(p_event_id,'stops','abandoned_object',0.8,'Оставлен предмет',
   p_metadata||jsonb_build_object('episode_schema','abandoned_episode_v1','abandoned_episode',jsonb_build_object(
     'status','open','started_at',p_observed_at,'last_seen_at',p_observed_at,'last_observed_at',p_observed_at,
+    -- When the object was first tracked. The event fires only after the hold elapsed, so
+    -- started_at alone understates how long the object lay there; the UI prefers this.
+    'object_first_seen_at',coalesce(nullif(p_metadata->>'object_first_seen_at','')::timestamptz,p_observed_at),
     'ended_at',NULL,'first_image_url',p_image_url,'first_image_at',CASE WHEN p_image_url IS NOT NULL THEN p_observed_at END,'closed_image_url',NULL,
     'clear_count',0,'observation_count',1)),
   p_observed_at,extract(epoch FROM p_observed_at),p_source_description,p_image_url,p_camera_index)

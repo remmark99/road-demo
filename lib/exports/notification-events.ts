@@ -16,7 +16,10 @@ export function cameraEventSheet(alerts:Alert[], episodes:Map<string,LyingPerson
     const episode=getBinEpisode(a)||getAbandonedEpisode(a)||episodes.get(String(a.metadata?.episode_id))
     const ongoing = episode?.status === 'open'
     const durationEnd = ongoing ? new Date(now).toISOString() : episode?.ended_at
-    return [place(a),label(a.alert_type),reportTime(episode?.started_at||a.timestamp),episode?.status==='open'?'Продолжается':reportTime(episode?.ended_at),episode?formatEventDuration(episode.started_at,episode.status==='open'?new Date(now).toISOString():episode.ended_at||episode.last_seen_at):'—',episode?(episode.status==='open'?'Продолжается':'Завершено'):'Зафиксировано',durationBucket(episode?.started_at,durationEnd),completionBucket(episode?.ended_at,ongoing,now)]
+    // Abandoned objects: the object was first tracked `abandoned_hold_seconds`
+    // before the event fired, so the report starts at object_first_seen_at.
+    const startAt = (episode as {object_first_seen_at?: string | null} | undefined)?.object_first_seen_at || episode?.started_at
+    return [place(a),label(a.alert_type),reportTime(startAt||a.timestamp),episode?.status==='open'?'Продолжается':reportTime(episode?.ended_at),episode&&startAt?formatEventDuration(startAt,episode.status==='open'?new Date(now).toISOString():episode.ended_at||episode.last_seen_at):'—',episode?(episode.status==='open'?'Продолжается':'Завершено'):'Зафиксировано',durationBucket(startAt,durationEnd),completionBucket(episode?.ended_at,ongoing,now)]
   })]}
 }
 export function sensorEventSheet(alerts:ControllerAlert[],place:(a:ControllerAlert)=>string,label:(a:ControllerAlert)=>string,status:(alarm:string)=>string,now=Date.now()):Sheet {

@@ -10,6 +10,10 @@ export interface BinEpisode {
     closed_image_url?: string | null
     closed_image_at?: string | null
     observation_count: number
+    // Abandoned objects only: when the object was first tracked. The event fires
+    // `abandoned_hold_seconds` after that, so a total duration must start here,
+    // not at started_at (which is the firing moment).
+    object_first_seen_at?: string | null
 }
 
 export function getBinEpisode(alert: Pick<Alert, 'alert_type' | 'metadata'>): BinEpisode | null {
