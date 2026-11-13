@@ -5,6 +5,8 @@ import { preserveMapOverlays } from "@/lib/map-style-overlays"
 import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { historicalCameras, historicalStops, type StopHistorySnapshot } from "@/lib/stop-history"
 import { useMapPreference } from "@/lib/hooks/use-map-preference"
+import { useStopConditions } from "@/lib/hooks/use-stop-conditions"
+import { CONDITION_COLORS, CONDITION_LABELS, stopConditionAt, type ConditionLevel, type StopCondition } from "@/lib/stop-conditions"
 import { MAP_MAX_BOUNDS, MIN_ZOOM, MAX_ZOOM } from "@/lib/map-bounds"
 import { loadMapStyle } from "@/lib/map-style"
 import maplibregl from "maplibre-gl"
@@ -162,6 +164,8 @@ function tkoStatusPillHtml(status: string | undefined): string {
 
 interface SurgutMapProps {
   selectedTime?: Date
+  /** Окно слайдера времени: за него слой «Состояние остановок» читает историю. */
+  timelineRange?: { from: Date; to: Date } | null
   statusOverride?: Record<string, RoadStatus>
   hoveredSegmentId?: string | null
   onHoverSegment?: (segmentId: string | null) => void
@@ -214,7 +218,7 @@ function getSimulatedStatusAtTime(osmId: number, time: Date): RoadStatus {
   return "dirty";
 }
 
-export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHoverSegment, focusTarget, historySnapshot = null, stopClass = "all" }: SurgutMapProps) {
+export function SurgutMap({ selectedTime, timelineRange, statusOverride, hoveredSegmentId, onHoverSegment, focusTarget, historySnapshot = null, stopClass = "all" }: SurgutMapProps) {
 
   const lastFocusRequest = useRef<number | null>(null)
   const mapContainer = useRef<HTMLDivElement>(null)
@@ -252,6 +256,26 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
   // Учётке «только датчики» дополнительные слои остановок недоступны
   const showHeatmap = showHeatmapPref && !sensorsOnly
   const showSmartTransportStops = showSmartTransportPref && !sensorsOnly
+  // Слой «Состояние остановок»: цвет точки — сколько критериев нарушено на момент слайдера.
+  const [showStopConditionsPref, setShowStopConditions] = useMapPreference("showStopConditions", false)
+  const showStopConditions = showStopConditionsPref && !sensorsOnly && hasModule("stops")
+  const { data: conditionHistory, error: conditionError } = useStopConditions(showStopConditions, timelineRange)
+  const conditionTime = selectedTime?.getTime() ?? null
+  const stopConditions = useMemo(() => {
+    if (!conditionHistory || !busStopsData) return null
+    const at = conditionTime ?? Date.now()
+    const result = new Map<number, StopCondition>()
+    for (const feature of busStopsData.features) {
+      const hasCameras = (feature.properties.sensor_data?.total_camera_count ?? 0) > 0
+      result.set(feature.properties.id, stopConditionAt(conditionHistory.stops[feature.properties.id], conditionHistory.thresholds, at, { hasCameras }))
+    }
+    return result
+  }, [conditionHistory, busStopsData, conditionTime])
+  const conditionCounts = useMemo(() => {
+    const counts: Record<ConditionLevel, number> = { ok: 0, warn: 0, bad: 0, unknown: 0 }
+    for (const condition of stopConditions?.values() ?? []) counts[condition.level]++
+    return counts
+  }, [stopConditions])
   const [smartTransportStops, setSmartTransportStops] = useState<SmartTransportStopsGeoJSON | null>(null)
   // Only the stops module is enabled: hide generic display/camera controls
   const stopsOnly = modules.length > 0 && modules.every(m => m === "stops")
@@ -467,6 +491,8 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       "circle-radius": 10,
       "circle-color": [
         "case",
+        // Слой «Состояние остановок» перекрашивает точки поверх статуса связи.
+        ["has", "condition_color"], ["get", "condition_color"],
         ["==", ["has", "has_equipment"], false], "#3b82f6",
         ["==", ["get", "has_equipment"], false], "#3b82f6",
         ["==", ["get", "incident"], true], "#ef4444",
@@ -1908,12 +1934,18 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
         ...busStopsData,
         features: filteredFeatures.map(f => {
           const camCount = cameras.filter(c => c.busStopId === f.properties.id).length
+          const condition = stopConditions?.get(f.properties.id)
           return {
             ...f,
             properties: {
               ...f.properties,
               ...(f.properties.sensor_data || {}),
-              cameraCount: camCount
+              cameraCount: camCount,
+              ...(condition ? {
+                condition_color: CONDITION_COLORS[condition.level],
+                condition_level: condition.level,
+                condition_issues: condition.issues.join(", "),
+              } : {}),
             }
           }
         })
@@ -1921,7 +1953,7 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
       source.setData(flatData as any)
       rawSource.setData(flatData as any)
     }
-  }, [busStopsData, cameras, mapLoaded, addBusStops, busStopFilters, stopClass])
+  }, [busStopsData, cameras, mapLoaded, addBusStops, busStopFilters, stopClass, stopConditions])
 
   // Остановки «Умного транспорта» грузятся только при включённом слое
   useEffect(() => {
@@ -2642,6 +2674,23 @@ export function SurgutMap({ selectedTime, statusOverride, hoveredSegmentId, onHo
                     {heatmapMode === "safety" && heatmapData
                       ? `${heatmapData.totalAlerts} событий за выбранный период`
                       : "Загруженность по датчикам пассажиропотока"}
+                  </div>
+                )}
+                <div className="flex items-center space-x-2">
+                  <Checkbox id="stop-conditions" checked={showStopConditions} onCheckedChange={(checked) => setShowStopConditions(!!checked)} />
+                  <Label htmlFor="stop-conditions" className="text-sm cursor-pointer font-medium">Состояние остановок</Label>
+                </div>
+                {showStopConditions && (
+                  <div className="space-y-1 pl-6 -mt-1 text-xs text-muted-foreground">
+                    {conditionError ? <div className="text-destructive">{conditionError}</div> : !conditionHistory ? <div>Загрузка…</div> : (
+                      (["ok", "warn", "bad", "unknown"] as const).map(level => (
+                        <div key={level} className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CONDITION_COLORS[level] }} />
+                          <span className="flex-1">{CONDITION_LABELS[level]}</span>
+                          <span className="tabular-nums">{conditionCounts[level]}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
                 <div className="flex items-center space-x-2">
