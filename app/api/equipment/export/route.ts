@@ -5,6 +5,7 @@ import type { EquipmentOutage } from '@/lib/api/equipment'
 import { parseEquipmentPeriod } from '@/lib/exports/equipment-hours'
 import { buildMapInventoryDays, mapCameraIds, mapInventorySheet, mapFaultsSheet, type MapInventoryPoint, type DailySensorEvent } from '@/lib/exports/map-inventory'
 import { createXlsx } from '@/lib/exports/xlsx'
+import { indexEquipmentStatus, type EquipmentStatusRow } from '@/lib/equipment-status'
 import { mapReportFilename } from '@/lib/exports/filename'
 
 export const runtime = 'nodejs'
@@ -44,7 +45,7 @@ export async function GET(request: NextRequest) {
     catch (e) { return NextResponse.json({ error: (e as Error).message }, { status: 400 }) }
     try {
         const inventoryOnly = request.nextUrl.searchParams.get('format') === 'inventory'
-        const [cameras, geometry, history, outages, controllers, sensorEvents] = await Promise.all([
+        const [cameras, geometry, history, outages, controllers, sensorEvents, states] = await Promise.all([
             readAll<{ camera_index: number; bus_stop_id: number | null; lat: number; lng: number; name?: string; description?:string }>((a, b) => supabase.from('cameras')
                 .select('camera_index,bus_stop_id,lat,lng,name,description').eq('module', 'stops').order('camera_index').range(a, b)),
             supabase.rpc('get_bus_stops_geojson'),
@@ -56,7 +57,10 @@ export async function GET(request: NextRequest) {
                 .lt('started_at', new Date(period.end).toISOString()).or(`ended_at.is.null,ended_at.gt.${new Date(period.start).toISOString()}`).order('id').range(a, b)),
             readAll<{ id: number; ip_address: string | null; has_controller: boolean | null }>((a, b) => supabase.from('bus_stops').select('id,ip_address,has_controller').order('id').range(a, b)),
             inventoryOnly ? Promise.resolve([]) : readAll<DailySensorEvent>((a, b) => supabase.from('controller_alerts').select('created_at,bus_stop_id,category,alarm,element')
-                .gte('created_at', new Date(period.start).toISOString()).lt('created_at', new Date(period.end).toISOString()).order('created_at').order('id').range(a, b)),
+                .gte('created_at', new Date(period.start).toISOString()).lt('created_at', new Date(period.end).toISOString()).order('created_at').order('id').range(a, b)),,
+            // Статус «сейчас» для файла: тот же источник, что у вкладки «Оборудование».
+            readAll<EquipmentStatusRow>((a, b) => supabase.from('equipment_state').select('equipment_type,equipment_id,status')
+                .order('equipment_type').order('equipment_id').range(a, b)),
         ])
         if (geometry.error || !Array.isArray(geometry.data?.features)) throw new Error('Не удалось прочитать объекты карты')
         const stops = new Set<number>(geometry.data.features.map((f: { properties: { id: number } }) => f.properties.id))
@@ -83,7 +87,7 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ current, historyAvailable: history.length > 0, days, inventory }, { headers: { 'Cache-Control': 'private, no-store' } })
         }
         const faults = mapFaultsSheet(relevantOutages, names, period.start, period.end, sensorEvents.filter(e => e.bus_stop_id != null && stops.has(e.bus_stop_id)))
-        const workbook = createXlsx([...registerSheets(inventory,cameras.filter(c=>ids.has(c.camera_index)),geometry.data),mapInventorySheet(days), ...(faults ? [faults] : [])])
+        const workbook = createXlsx([...registerSheets(inventory,cameras.filter(c=>ids.has(c.camera_index)),geometry.data,{ at: now, status: indexEquipmentStatus(states), period: `${from} — ${to}` }),mapInventorySheet(days), ...(faults ? [faults] : [])])
         return new NextResponse(Buffer.from(workbook), { headers: {
             'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(mapReportFilename(from, to))}`,

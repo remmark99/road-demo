@@ -17,7 +17,9 @@ function MapPageContent() {
   const searchParams = useSearchParams()
   const { hasModule, sensorsOnly, loading: modulesLoading } = useModuleAccess()
   const [historyTime, setHistoryTime] = useState<Date | null>(null)
-  const { snapshot, loading: historyLoading, error: historyError } = useStopHistory(historyTime, !modulesLoading && hasModule("stops"))
+  // Окно слайдера: за него читаются история связи и состояние остановок.
+  const [timelineRange, setTimelineRange] = useState<{ from: Date; to: Date } | null>(null)
+  const { snapshot, loading: historyLoading, error: historyError } = useStopHistory(historyTime, !modulesLoading && hasModule("stops"), timelineRange?.from)
   const [selectedTime, setSelectedTime] = useState<Date>(new Date())
   const [statusOverride, setStatusOverride] = useState<Record<string, RoadStatus>>({})
   const [hoveredSegmentId, setHoveredSegmentId] = useState<string | null>(null)
@@ -46,10 +48,11 @@ function MapPageContent() {
     return () => { cancelled = true }
   }, [searchParams])
 
-  const handleTimeChange = useCallback((time: Date, statuses: Record<string, RoadStatus>, live: boolean) => {
+  const handleTimeChange = useCallback((time: Date, statuses: Record<string, RoadStatus>, live: boolean, from: Date, to: Date) => {
     setSelectedTime(time)
     setHistoryTime(live ? null : time)
     setStatusOverride(statuses)
+    setTimelineRange(prev => prev && prev.from.getTime() === from.getTime() && prev.to.getTime() === to.getTime() ? prev : { from, to })
   }, [])
 
   return (
@@ -62,6 +65,7 @@ function MapPageContent() {
           <div className="flex-1 min-w-0 relative p-2">
             <SurgutMap
               selectedTime={selectedTime}
+              timelineRange={timelineRange}
               historySnapshot={snapshot}
               statusOverride={statusOverride}
               hoveredSegmentId={hoveredSegmentId}

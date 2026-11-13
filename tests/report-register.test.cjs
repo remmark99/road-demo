@@ -32,6 +32,18 @@ test('inventory uses two sheets and yes/no equipment filters including offline d
  assert.ok(cameraPlace({...cameras[0],bus_stop_id:null,description:null},geometry).includes('61.000000'))
  assert.throws(()=>cameraPlace({...cameras[0],bus_stop_id:null,lat:null,lng:null},geometry),/нет места установки/)
 })
+test('the file states when it was generated and what was online at that moment',()=>{
+ const {indexEquipmentStatus}=load('lib/equipment-status.ts')
+ const status=indexEquipmentStatus([{equipment_type:'camera',equipment_id:1,status:'online'},{equipment_type:'camera',equipment_id:2,status:'offline'},{equipment_type:'controller',equipment_id:3,status:'offline'}])
+ const at=Date.parse('2026-11-13T10:42:00Z')
+ const sheets=registerSheets(stopRegister(geometry,cameras,controllers),cameras,geometry,{at,status,period:'2026-11-06 — 2026-11-13'})
+ assert.deepEqual(sheets.map(s=>s.name),['Выгрузка','Все остановки','Камеры'])
+ assert.deepEqual(sheets[0].rows[1],['Сформирован (время Сургута, UTC+5)','2026-11-13 15:42'])
+ assert.deepEqual(sheets[0].rows.slice(3),[['Камер в сети на момент выгрузки','1 из 2'],['Остановок с датчиками в сети на момент выгрузки','0 из 2']])
+ const stops=Object.fromEntries(sheets[1].rows.slice(1).map(r=>[r[1],r.slice(6)]))
+ assert.deepEqual(stops['86-1'],['1 из 1','Нет данных']);assert.deepEqual(stops['86-2'],['0 из 1','—']);assert.deepEqual(stops['86-3'],['—','Не в сети']);assert.deepEqual(stops['86-4'],['—','—'])
+ assert.deepEqual(sheets[2].rows.slice(1).map(r=>r[5]),['В сети','Не в сети'])
+})
 test('every Excel sheet has a unique editable table with filters, borders and frozen header, including empty groups',()=>{
  const sheets=registerSheets(stopRegister(geometry,cameras,controllers),cameras,geometry)
  sheets.push({name:'Пустой',rows:[['Место','Событие']]})

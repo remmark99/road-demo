@@ -20,7 +20,8 @@ import { ru } from "date-fns/locale"
 import { type DateRange } from "react-day-picker"
 
 interface TimelineSliderProps {
-  onTimeChange: (time: Date, statusOverride: Record<string, RoadStatus>, live: boolean) => void
+  /** from/to — окно слайдера, по нему читается история. */
+  onTimeChange: (time: Date, statusOverride: Record<string, RoadStatus>, live: boolean, from: Date, to: Date) => void
 }
 
 export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
@@ -40,7 +41,7 @@ export function TimelineSlider({ onTimeChange }: TimelineSliderProps) {
   const rangeDuration = Math.max(0, endTime.getTime() - startTime.getTime())
   const currentTime = useMemo(() => new Date(startTime.getTime() + value[0] / 100 * rangeDuration), [startTime, value, rangeDuration])
   const isLive = value[0] === 100 && endTime.getTime() === now.getTime()
-  useEffect(() => { onTimeChange(currentTime, {}, isLive) }, [currentTime, isLive, onTimeChange])
+  useEffect(() => { onTimeChange(currentTime, {}, isLive, startTime, endTime) }, [currentTime, isLive, onTimeChange, startTime, endTime])
   useEffect(() => {
     if (!isPlaying) return
     const timer = setInterval(() => setValue(prev => [Math.min(100, prev[0] + 0.5)]), 500)
