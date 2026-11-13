@@ -6,7 +6,7 @@ import {
 } from "ai"
 import { getAuthenticatedUser, jsonError } from "@/lib/notifications/http"
 import { createClient } from "@/lib/supabase/server"
-import { answerWithVectorAssistant, assistantConfigured } from "@/lib/assistant/vector-assistant"
+import { answerWithVectorAssistant, assistantConfigured, streamVectorAssistant } from "@/lib/assistant/vector-assistant"
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -3092,6 +3092,35 @@ function sanitizeError(error: unknown) {
     return "Ошибка ассистента: неизвестная ошибка."
 }
 
+const NO_STOPS_ACCESS = "Ассистент отвечает по модулю «Остановочные павильоны», а он вашей учётной записи не назначен."
+
+/** Поток нового ассистента: текст по мере генерации и шаги с инструментами MCP «Вектор города». */
+async function streamConfiguredAssistant(messages: UIMessage[]) {
+    const db = await createClient()
+    const { data: { user } } = await db.auth.getUser()
+    const profile = user ? await db.from("profiles").select("role,modules").eq("id", user.id).single() : null
+    const allowed = Boolean(profile?.data && (profile.data.role === "admin" || profile.data.modules?.includes("stops")))
+    const stream = createUIMessageStream<UIMessage>({
+        execute: async ({ writer }) => {
+            const result = allowed ? streamVectorAssistant(messages, { db, now: Date.now() }) : null
+            if (result) {
+                writer.merge(result.toUIMessageStream({ sendReasoning: false }))
+                return
+            }
+            writer.write({ type: "start" })
+            writer.write({ type: "text-start", id: TEXT_PART_ID })
+            writer.write({ type: "text-delta", id: TEXT_PART_ID, delta: allowed ? "Напишите вопрос." : NO_STOPS_ACCESS })
+            writer.write({ type: "text-end", id: TEXT_PART_ID })
+            writer.write({ type: "finish", finishReason: "stop" })
+        },
+        onError: (error) => {
+            console.error("Assistant stream failed:", error instanceof Error ? error.message : "unknown error")
+            return "Ассистент сейчас не отвечает. Попробуйте ещё раз через минуту."
+        },
+    })
+    return createUIMessageStreamResponse({ stream })
+}
+
 /** Новый ассистент: RouterAI + MCP «Вектор города»; без ключа в окружении остаётся прежний путь через GigaChat. */
 async function answerWithConfiguredAssistant(messages: UIMessage[], mode: AssistantMode) {
     if (!assistantConfigured()) return answerWithGigaChat(messages, mode)
@@ -3099,7 +3128,7 @@ async function answerWithConfiguredAssistant(messages: UIMessage[], mode: Assist
     const { data: { user } } = await db.auth.getUser()
     const profile = user ? await db.from("profiles").select("role,modules").eq("id", user.id).single() : null
     if (!profile?.data || (profile.data.role !== "admin" && !profile.data.modules?.includes("stops"))) {
-        return "Ассистент отвечает по модулю «Остановочные павильоны», а он вашей учётной записи не назначен."
+        return NO_STOPS_ACCESS
     }
     return answerWithVectorAssistant(messages, { db, now: Date.now() })
 }
@@ -3112,6 +3141,8 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}))
     const messages = Array.isArray(body.messages) ? body.messages as UIMessage[] : []
     const mode = getAssistantMode(body.mode)
+
+    if (assistantConfigured()) return streamConfiguredAssistant(messages)
 
     const stream = createUIMessageStream<UIMessage>({
         execute: async ({ writer }) => {
