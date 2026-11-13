@@ -1,4 +1,5 @@
 import { ToolInputError } from './args'
+import { CHART_TOOL } from './chart-presets'
 import { REPORT_TOOL } from './report-tool'
 import { VECTOR_TOOLS, runVectorTool, type VectorTool, type VectorToolContext } from './tools'
 
@@ -25,12 +26,13 @@ export const INSTRUCTIONS = `Платформа «Вектор города», �
 7. «Сколько людей / загруженность»: passenger_load — это люди в кадре, а не уникальные пассажиры.
 8. «По микрорайонам»: districts_summary.
 9. «Сделай отчёт / сводку для руководства / документ / выгрузку»: сначала данные (обычно system_overview и 1–3 инструмента по теме запроса за его период), затем один вызов create_report с периодом from/to. Таблицы в отчёт добавляй полем table раздела, а не текстом.
+10. «Нарисуй график / диаграмму / динамику / сравни / доли»: create_chart — вид графика chart и форма type (bar, hbar, stacked, line, area, pie, donut). Цифры сервер берёт из базы сам.
 
 Правила ответа: только цифры из инструментов, без догадок; если данных нет — так и скажи. Называй остановки по имени и направлению, время — по Сургуту.
 Периоды: from/to в формате YYYY-MM-DD (день по Сургуту) или ISO 8601; «вчера» — from и to на вчерашнюю дату.`
 
-/** Инструменты данных и оформление отчёта. */
-export const ALL_VECTOR_TOOLS: VectorTool[] = [...VECTOR_TOOLS, REPORT_TOOL]
+/** Инструменты данных, графики и оформление отчёта. */
+export const ALL_VECTOR_TOOLS: VectorTool[] = [...VECTOR_TOOLS, CHART_TOOL, REPORT_TOOL]
 
 const TOOL_LIST = ALL_VECTOR_TOOLS.map(tool => ({
     name: tool.name,

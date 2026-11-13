@@ -83,6 +83,7 @@ export function ReportDownloadButtons({ report, className }: { report: ReportDoc
 /** Карточка отчёта в чате: заголовок, главные цифры и выводы, кнопки скачивания. */
 export function ReportCard({ report }: { report: ReportDocument }) {
     const headings = report.sections.map(section => section.heading).filter(Boolean)
+    const charts = report.sections.filter(section => section.chart).length
     return (
         <div className="my-3 overflow-hidden rounded-xl border bg-card shadow-sm">
             <div className="flex items-start gap-3 border-b bg-gradient-to-r from-primary/10 via-primary/5 to-transparent px-4 py-3">
@@ -119,6 +120,7 @@ export function ReportCard({ report }: { report: ReportDocument }) {
             {headings.length > 0 && (
                 <div className="px-4 pt-2 text-xs text-muted-foreground">
                     Разделы: {headings.map((heading, index) => `${index + 1}. ${heading}`).join(" · ")}
+                    {charts > 0 && ` · графиков: ${charts}`}
                 </div>
             )}
             <ReportDownloadButtons report={report} className="px-4 py-3" />

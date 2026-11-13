@@ -68,3 +68,15 @@ test('готовые отчёты остаются в истории для кн
   const [, trimmed] = history.storableMessages([user('Сделай отчёт'), { ...withReport, parts: [{ ...withReport.parts[0], output: { report: huge } }] }])
   assert.equal(trimmed.parts[0].output, null)
 })
+
+test('графики остаются в истории, вход и прочие выводы — нет', () => {
+  const chart = { type: 'line', title: 'Люди по часам', labels: ['08', '09'], series: [{ name: 'В среднем', values: [3, 4] }] }
+  const message = { id: 'a2', role: 'assistant', parts: [
+    { type: 'tool-create_chart', toolCallId: 'c1', state: 'output-available', input: { chart: 'passenger_load_by_hour' }, output: { chart } },
+    { type: 'tool-create_chart', toolCallId: 'c2', state: 'output-available', input: {}, output: { chart: null, message: 'нет данных' } },
+  ] }
+  const [, stored] = history.storableMessages([user('График'), message])
+  assert.deepEqual(stored.parts[0].output, { chart })
+  assert.deepEqual(stored.parts[0].input, {})
+  assert.equal(stored.parts[1].output, null)
+})

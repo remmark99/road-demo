@@ -56,8 +56,24 @@ test('пояснение из значения плитки уходит в по
 
 const samples = process.env.REPORT_SAMPLES_DIR
 
+const days = ['06.11', '07.11', '08.11', '09.11', '10.11', '11.11', '12.11', '13.11']
+const CHARTS = [
+  { type: 'stacked', title: 'События безопасности по дням', unit: 'событий', labels: days, series: [
+    { name: 'Лежачий человек', values: [3, 5, 2, 0, 4, 6, 2, 1] }, { name: 'Курение', values: [6, 4, 7, 5, 3, 8, 6, 2] }, { name: 'Оставленный предмет', values: [1, 0, 2, 1, 0, 1, 3, 0] }] },
+  { type: 'line', title: 'Людей в кадре по часам суток', unit: 'чел.', labels: Array.from({ length: 24 }, (_, h) => String(h).padStart(2, '0')), series: [
+    { name: 'В среднем', values: Array.from({ length: 24 }, (_, h) => Math.round(10 * (2 + 6 * Math.exp(-((h - 8) ** 2) / 6) + 5 * Math.exp(-((h - 18) ** 2) / 5))) / 10) },
+    { name: 'Пик', values: Array.from({ length: 24 }, (_, h) => Math.round(4 + 12 * Math.exp(-((h - 8) ** 2) / 6) + 10 * Math.exp(-((h - 18) ** 2) / 5))) }] },
+  { type: 'hbar', title: 'Самые холодные павильоны сейчас', unit: '°C', labels: ['Никольский (в центр)', 'Взлётный', 'ТЦ Славянский', 'ул. Юности', 'Центральный рынок'], series: [{ name: 'Температура', values: [-11.2, -7.9, -3.1, 1.5, 4] }] },
+  { type: 'donut', title: 'Состояние остановок сейчас', unit: 'остановок', labels: ['Норма', 'Одно нарушение', 'Два и больше', 'Нет данных'], labelColors: ['#0ca30c', '#fab219', '#d03b3b', '#94a3b8'], series: [{ name: 'Остановки', values: [61, 19, 6, 8] }] },
+  { type: 'pie', title: 'События безопасности по типам', unit: 'событий', labels: ['Курение', 'Лежачий человек', 'Оставленный предмет', 'Собаки без людей'], series: [{ name: 'События', values: [41, 23, 8, 3] }] },
+  { type: 'bar', title: 'Связь оборудования сейчас', unit: 'шт.', labels: ['В сети', 'Не в сети', 'Нет данных'], series: [{ name: 'Камеры', values: [212, 18, 4] }, { name: 'Контроллеры датчиков', values: [81, 9, 4] }] },
+  { type: 'area', title: 'Влажность в павильоне · Никольский', unit: '%', labels: days, series: [{ name: 'Влажность', values: [62, 70, 85, 91, 88, 76, null, 64] }] },
+]
+
 test('PDF, Excel и Word собираются и содержат отчёт', () => {
-  const report = documentLib.normalizeReport(SAMPLE, '2026-11-13 18:40')
+  const withCharts = { ...SAMPLE, sections: [...SAMPLE.sections, ...CHARTS.map((chart, i) => ({ heading: `График ${i + 1}: ${chart.type}`, chart }))] }
+  const report = documentLib.normalizeReport(withCharts, '2026-11-13 18:40')
+  assert.equal(report.sections.filter(s => s.chart).length, 7)
   const pdf = render.renderReport(report, 'pdf')
   assert.equal(pdf.contentType, 'application/pdf')
   assert.equal(Buffer.from(pdf.body.slice(0, 5)).toString(), '%PDF-')
@@ -69,7 +85,8 @@ test('PDF, Excel и Word собираются и содержат отчёт', (
   assert.match(workbook, /name="Отчёт"/)
   assert.match(workbook, /name="Показатели"/)
   assert.match(workbook, /name="Отключения оборудования"/)
-  assert.match(strFromU8(book['xl/worksheets/sheet3.xml']), /<v>1860<\/v>/)
+  assert.ok(Object.keys(book).filter(name => /^xl\/charts\/chart\d+\.xml$/.test(name)).length === 7)
+  assert.ok(Object.values(book).some(file => /<c:doughnutChart>/.test(strFromU8(file))))
 
   const docx = render.renderReport(report, 'docx')
   const word = unzipSync(docx.body)
@@ -78,11 +95,27 @@ test('PDF, Excel и Word собираются и содержат отчёт', (
   assert.match(xml, /w:tblHeader/)
   assert.match(xml, /720,5/)
   assert.ok(word['word/footer1.xml'] && word['word/numbering.xml'])
+  assert.equal(Object.keys(word).filter(name => /^word\/charts\/chart\d+\.xml$/.test(name)).length, 7)
+  assert.ok(word['word/embeddings/chart1.xlsx'])
+  assert.match(strFromU8(word['word/charts/chart1.xml']), /<c:grouping val="stacked"\/>/)
 
   if (samples) for (const file of [pdf, xlsx, docx]) fs.writeFileSync(path.join(samples, `sample.${file.fileName.split('.').pop()}`), file.body)
 })
 
-const tools = { VECTOR_TOOLS: [], runVectorTool: async () => { throw new Error('mock') } } // только outputTable
+test('график: проверка, доли и «Другое» у круговой, домен оси с нулём', () => {
+  const chartLib = load('lib/reports/chart.ts')
+  assert.equal(chartLib.normalizeChart({ type: 'radar', labels: ['a'], series: [{ name: 'x', values: [1] }] }), undefined)
+  assert.equal(chartLib.normalizeChart({ type: 'bar', labels: ['a'], series: [{ name: 'x', values: [null] }] }), undefined)
+  const pie = chartLib.normalizeChart({ type: 'pie', title: 'Доли', labels: 'abcdefghij'.split(''), series: [{ name: 'x', values: [10, 9, 8, 7, 6, 5, 4, 3, 2, 1] }, { name: 'лишняя', values: [1] }] })
+  assert.equal(pie.labels.length, 7)
+  assert.equal(pie.labels[6], 'Другое')
+  assert.equal(pie.series.length, 1)
+  assert.equal(pie.series[0].values[6], 10)
+  assert.deepEqual(chartLib.valueDomain({ type: 'hbar', labels: ['a', 'b'], series: [{ name: 't', values: [-11.2, 4] }] }), [-15, 5])
+  assert.deepEqual(chartLib.valueDomain({ type: 'stacked', labels: ['a'], series: [{ name: 'x', values: [3] }, { name: 'y', values: [4] }] }), [0, 8])
+})
+
+const tools = { VECTOR_TOOLS: [], SECURITY_TYPES: [], EVENT_LABELS: {}, runVectorTool: async () => { throw new Error('mock') } } // только outputTable
 const outages = {
   period: { from: '2026-11-06 00:00', to: '2026-11-13 18:40' }, devices_with_outages: 3, outages: 5, downtime_minutes: 2600,
   worst: [
@@ -108,7 +141,7 @@ test('таблица из вывода инструмента: русские з
 test('create_report берёт таблицы из инструментов данных и сообщает об ошибке параметров', async () => {
   const calls = []
   const fake = { name: 'equipment_outages', handler: async () => outages }
-  const mocked = { VECTOR_TOOLS: [fake], runVectorTool: async (ctx, tool, args) => { calls.push(args); return tool.handler(ctx, args) } }
+  const mocked = { VECTOR_TOOLS: [fake], SECURITY_TYPES: [], EVENT_LABELS: {}, runVectorTool: async (ctx, tool, args) => { calls.push(args); return tool.handler(ctx, args) } }
   const { REPORT_TOOL } = load('lib/mcp/vector/report-tool.ts', { './tools': mocked })
   const ctx = { db: null, now: Date.parse('2026-11-13T13:40:00Z') }
   const result = await REPORT_TOOL.handler(ctx, {

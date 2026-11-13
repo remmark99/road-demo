@@ -4,6 +4,8 @@
  * здесь всё приводится к безопасному виду с ограничениями размеров.
  */
 
+import { normalizeChart, type ReportChart } from './chart'
+
 export type ReportFormat = 'pdf' | 'xlsx' | 'docx'
 export const REPORT_FORMATS: ReportFormat[] = ['pdf', 'xlsx', 'docx']
 
@@ -14,6 +16,7 @@ export interface ReportSection {
     heading: string
     paragraphs: string[]
     bullets: string[]
+    chart?: ReportChart
     table?: ReportTable
 }
 export interface ReportDocument {
@@ -96,9 +99,10 @@ export function normalizeReport(input: unknown, generatedAt: string): ReportDocu
             heading: text(s?.heading, LIMITS.title),
             paragraphs: list(s?.paragraphs, LIMITS.paragraphs, LIMITS.text),
             bullets: list(s?.bullets, LIMITS.bullets, LIMITS.cell),
+            ...(normalizeChart(s?.chart) ? { chart: normalizeChart(s?.chart) } : {}),
             ...(table(s?.table) ? { table: table(s?.table) } : {}),
         }
-        return section.heading || section.paragraphs.length || section.bullets.length || section.table ? [section] : []
+        return section.heading || section.paragraphs.length || section.bullets.length || section.table || section.chart ? [section] : []
     })
     const summary = list(raw.summary, 8, LIMITS.text)
     if (!summary.length && !metrics.length && !sections.length) throw new ReportInputError('Отчёт пустой: добавьте summary, metrics или sections')
