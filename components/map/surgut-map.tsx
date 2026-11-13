@@ -162,6 +162,9 @@ function tkoStatusPillHtml(status: string | undefined): string {
   </span>`
 }
 
+// Шаг, с которым тепловая карта следует за слайдером времени.
+const HEATMAP_STEP_MS = 15 * 60_000
+
 interface SurgutMapProps {
   selectedTime?: Date
   /** Окно слайдера времени: за него слой «Состояние остановок» читает историю. */
@@ -491,8 +494,9 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
       "circle-radius": 10,
       "circle-color": [
         "case",
-        // Слой «Состояние остановок» перекрашивает точки поверх статуса связи.
-        ["has", "condition_color"], ["get", "condition_color"],
+        // Слой «Состояние остановок»: белая точка с цветным кольцом и свечением,
+        // чтобы его цвета не путались со статусом связи (тот же зелёный/жёлтый/красный).
+        ["has", "condition_color"], "#ffffff",
         ["==", ["has", "has_equipment"], false], "#3b82f6",
         ["==", ["get", "has_equipment"], false], "#3b82f6",
         ["==", ["get", "incident"], true], "#ef4444",
@@ -501,15 +505,26 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
         ["==", ["get", "activity_status"], "partial"], "#eab308",
         "#9ca3af"
       ] as any,
-      "circle-stroke-width": 2,
-      "circle-stroke-color": "#ffffff",
+      "circle-stroke-width": ["case", ["has", "condition_color"], 4, 2] as any,
+      "circle-stroke-color": ["case", ["has", "condition_color"], ["get", "condition_color"], "#ffffff"] as any,
     }
+    // Свечение вокруг остановки цветом её состояния; под точкой, только у отдельных остановок.
+    const haloPaint = {
+      "circle-radius": 22,
+      "circle-color": ["get", "condition_color"],
+      "circle-opacity": 0.4,
+      "circle-blur": 0.7,
+    } as any
+    const haloFilter = ["all", ["!", ["has", "point_count"]], ["has", "condition_color"], ["!=", ["get", "condition_level"], "unknown"]] as any
 
     const symbolLayout = {
       "icon-image": "bus-icon",
       "icon-allow-overlap": true,
       "visibility": "visible"
     } as any
+
+    map.current.addLayer({ id: `${sourceId}-condition-halo`, type: "circle", source: sourceId, filter: haloFilter, paint: haloPaint })
+    map.current.addLayer({ id: `${sourceId}-condition-halo-raw`, type: "circle", source: `${sourceId}-raw`, filter: haloFilter, paint: haloPaint })
 
     // Unclustered single points (when clustering is OFF or max zoom)
     map.current.addLayer({
@@ -2044,15 +2059,20 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
     }
   }, [heatmapData, occupancyData, heatmapMode, busStopsData, mapLoaded, showHeatmap, addBusStopHeatmap, hasModule])
 
-  // Fetch heatmap data when dependencies change
+  // Тепловая карта идёт за слайдером: окно «N часов до выбранного момента».
+  // Момент округляется до 15 минут, чтобы протяжка слайдера не слала запрос на каждый шаг.
+  const heatmapAt = historySnapshot && selectedTime ? Math.floor(selectedTime.getTime() / HEATMAP_STEP_MS) * HEATMAP_STEP_MS : null
   useEffect(() => {
     if (!hasModule('stops') || !showHeatmap) return
+    let cancelled = false
+    const at = heatmapAt === null ? undefined : new Date(heatmapAt)
     if (heatmapMode === "safety") {
-      fetchBusStopHeatmapData(heatmapTimeWindow, heatmapAlertTypes).then(setHeatmapData)
+      fetchBusStopHeatmapData(heatmapTimeWindow, heatmapAlertTypes, at).then(data => { if (!cancelled) setHeatmapData(data) })
     } else {
-      fetchBusStopOccupancyHeatmapData(heatmapTimeWindow).then(setOccupancyData)
+      fetchBusStopOccupancyHeatmapData(heatmapTimeWindow, at).then(data => { if (!cancelled) setOccupancyData(data) })
     }
-  }, [hasModule, showHeatmap, heatmapMode, heatmapTimeWindow, heatmapAlertTypes])
+    return () => { cancelled = true }
+  }, [hasModule, showHeatmap, heatmapMode, heatmapTimeWindow, heatmapAlertTypes, heatmapAt])
 
   // Статусы датчиков и камер остановок меняются постоянно — перечитываем раз в минуту,
   // пока вкладка на экране. Геометрия при этом берётся из кэша, обновляется только статус.
@@ -2070,9 +2090,9 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
     return () => { active = false; clearInterval(interval); document.removeEventListener('visibilitychange', refresh) }
   }, [hasModule, sensorsOnly, modulesLoading])
 
-  // Auto-refresh heatmap data every 5 minutes
+  // Auto-refresh heatmap data every 5 minutes (только в живом режиме: прошлое не меняется)
   useEffect(() => {
-    if (!hasModule('stops') || !showHeatmap) return
+    if (!hasModule('stops') || !showHeatmap || heatmapAt !== null) return
     const interval = setInterval(() => {
       if (heatmapMode === "safety") {
         fetchBusStopHeatmapData(heatmapTimeWindow, heatmapAlertTypes).then(setHeatmapData)
@@ -2081,26 +2101,28 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
       }
     }, 5 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [hasModule, showHeatmap, heatmapMode, heatmapTimeWindow, heatmapAlertTypes])
+  }, [hasModule, showHeatmap, heatmapMode, heatmapTimeWindow, heatmapAlertTypes, heatmapAt])
 
   // Update bus stops visibility independently of full re-add
   useEffect(() => {
     if (!map.current || !mapLoaded) return
-    const clusterLayers = ["bus-stops-clusters", "bus-stops-cluster-count", "bus-stops-layer", "bus-stops-layer-symbol", "bus-stops-layer-badge-bg", "bus-stops-layer-badge-text"]
-    const rawLayers = ["bus-stops-layer-raw", "bus-stops-layer-raw-symbol", "bus-stops-layer-raw-badge-bg", "bus-stops-layer-raw-badge-text"]
+    // Состояние остановок смотрят по всему городу: группировка его прятала бы в синие кластеры.
+    const clusters = showClusters && !showStopConditions
+    const clusterLayers = ["bus-stops-condition-halo", "bus-stops-clusters", "bus-stops-cluster-count", "bus-stops-layer", "bus-stops-layer-symbol", "bus-stops-layer-badge-bg", "bus-stops-layer-badge-text"]
+    const rawLayers = ["bus-stops-condition-halo-raw", "bus-stops-layer-raw", "bus-stops-layer-raw-symbol", "bus-stops-layer-raw-badge-bg", "bus-stops-layer-raw-badge-text"]
 
     clusterLayers.forEach(l => {
       if (map.current!.getLayer(l)) {
-        map.current!.setLayoutProperty(l, "visibility", hasModule("stops") && showClusters ? "visible" : "none")
+        map.current!.setLayoutProperty(l, "visibility", hasModule("stops") && clusters ? "visible" : "none")
       }
     })
 
     rawLayers.forEach(l => {
       if (map.current!.getLayer(l)) {
-        map.current!.setLayoutProperty(l, "visibility", hasModule("stops") && !showClusters ? "visible" : "none")
+        map.current!.setLayoutProperty(l, "visibility", hasModule("stops") && !clusters ? "visible" : "none")
       }
     })
-  }, [showClusters, mapLoaded, busStopsData, cameras, hasModule])
+  }, [showClusters, showStopConditions, mapLoaded, busStopsData, cameras, hasModule])
 
   // TKO coverage analysis layers
   useEffect(() => {
@@ -2672,7 +2694,7 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
                 {showHeatmap && (
                   <div className="text-xs text-muted-foreground pl-6 -mt-1">
                     {heatmapMode === "safety" && heatmapData
-                      ? `${heatmapData.totalAlerts} событий за выбранный период`
+                      ? `${heatmapData.totalAlerts} событий за ${heatmapTimeWindow} ч${heatmapAt !== null ? ` до ${new Date(heatmapAt).toLocaleString("ru-RU", { timeZone: "Asia/Yekaterinburg", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}`
                       : "Загруженность по датчикам пассажиропотока"}
                   </div>
                 )}
@@ -2685,7 +2707,10 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
                     {conditionError ? <div className="text-destructive">{conditionError}</div> : !conditionHistory ? <div>Загрузка…</div> : (
                       (["ok", "warn", "bad", "unknown"] as const).map(level => (
                         <div key={level} className="flex items-center gap-2">
-                          <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: CONDITION_COLORS[level] }} />
+                          <span className="relative flex h-4 w-4 items-center justify-center">
+                            <span className="absolute inset-0 rounded-full opacity-40 blur-[2px]" style={{ backgroundColor: level === "unknown" ? "transparent" : CONDITION_COLORS[level] }} />
+                            <span className="relative h-2.5 w-2.5 rounded-full border-[3px] bg-white" style={{ borderColor: CONDITION_COLORS[level] }} />
+                          </span>
                           <span className="flex-1">{CONDITION_LABELS[level]}</span>
                           <span className="tabular-nums">{conditionCounts[level]}</span>
                         </div>
