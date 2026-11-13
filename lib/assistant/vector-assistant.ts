@@ -1,5 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai'
-import { generateText, jsonSchema, stepCountIs, tool, type ModelMessage, type ToolSet, type UIMessage } from 'ai'
+import { generateText, jsonSchema, stepCountIs, streamText, tool, type ModelMessage, type ToolSet, type UIMessage } from 'ai'
 import { localTime } from '@/lib/mcp/vector/args'
 import { INSTRUCTIONS, callVectorTool } from '@/lib/mcp/vector/server'
 import { VECTOR_TOOLS, type VectorToolContext } from '@/lib/mcp/vector/tools'
@@ -55,26 +55,40 @@ export function vectorToolSet(ctx: VectorToolContext): ToolSet {
     return tools
 }
 
-export async function answerWithVectorAssistant(messages: UIMessage[], ctx: VectorToolContext): Promise<string> {
+function assistantRequest(messages: UIMessage[], ctx: VectorToolContext) {
     const provider = createOpenAI({
         apiKey: process.env.ASSISTANT_LLM_API_KEY,
         baseURL: process.env.ASSISTANT_LLM_BASE_URL || DEFAULT_ASSISTANT_BASE_URL,
         name: 'routerai',
     })
-    const history = toModelMessages(messages)
-    if (!history.length || history.at(-1)?.role !== 'user') return 'Напишите вопрос.'
-    const result = await generateText({
+    return {
         // Chat Completions: RouterAI и GigaChat не поддерживают Responses API.
         model: provider.chat(process.env.ASSISTANT_LLM_MODEL!),
         system: systemPrompt(ctx.now),
-        messages: history,
+        messages: toModelMessages(messages),
         tools: vectorToolSet(ctx),
         stopWhen: stepCountIs(MAX_STEPS),
         temperature: 0.1,
         maxOutputTokens: 1500,
         abortSignal: AbortSignal.timeout(TIMEOUT_MS),
-    })
+    }
+}
+
+function lastIsQuestion(messages: UIMessage[]) {
+    const history = toModelMessages(messages)
+    return history.length > 0 && history.at(-1)?.role === 'user'
+}
+
+export async function answerWithVectorAssistant(messages: UIMessage[], ctx: VectorToolContext): Promise<string> {
+    if (!lastIsQuestion(messages)) return 'Напишите вопрос.'
+    const result = await generateText(assistantRequest(messages, ctx))
     const text = result.text.trim()
     if (text) return text
     return 'Не удалось сформулировать ответ: модель не уложилась в отведённые шаги. Уточните вопрос, например период или остановку.'
+}
+
+/** Потоковый ответ для окна чата: текст по мере генерации и шаги с инструментами. */
+export function streamVectorAssistant(messages: UIMessage[], ctx: VectorToolContext) {
+    if (!lastIsQuestion(messages)) return null
+    return streamText(assistantRequest(messages, ctx))
 }

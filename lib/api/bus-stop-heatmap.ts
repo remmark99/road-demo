@@ -21,9 +21,11 @@ export interface BusStopHeatmapResult {
  * 2. Count alerts from those cameras within the given time window
  * 3. Aggregate by bus_stop_id
  */
+/** `at` — момент слайдера карты: окно [at − hoursBack, at); без него — до текущего момента. */
 export async function fetchBusStopHeatmapData(
     hoursBack: number = 24,
-    alertTypes?: string[]
+    alertTypes?: string[],
+    at?: Date,
 ): Promise<BusStopHeatmapResult> {
     // 1. Get camera -> busStopId mapping
     const { data: cameraRows, error: camError } = await supabase
@@ -50,7 +52,8 @@ export async function fetchBusStopHeatmapData(
         : ALERT_CATEGORIES.bus_stop_monitoring.types
 
     // 3. Fetch alerts from those cameras within the time window
-    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString()
+    const until = at ?? new Date()
+    const since = new Date(until.getTime() - hoursBack * 60 * 60 * 1000).toISOString()
 
     const { data: alerts, error: alertError } = await supabase
         .from('alerts')
@@ -58,6 +61,7 @@ export async function fetchBusStopHeatmapData(
         .in('camera_index', busStopCameraIndexes)
         .in('alert_type', busStopAlertTypes)
         .gte('timestamp', since)
+        .lt('timestamp', until.toISOString())
 
     if (alertError) {
         console.error('Error fetching alerts for heatmap:', alertError)
@@ -124,9 +128,11 @@ export interface BusStopOccupancyHeatmapResult {
  * 2. Aggregate average and peak people by bus_stop_id (derived from location_id).
  */
 export async function fetchBusStopOccupancyHeatmapData(
-    hoursBack: number = 24
+    hoursBack: number = 24,
+    at?: Date,
 ): Promise<BusStopOccupancyHeatmapResult> {
-    const since = new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString()
+    const until = at ?? new Date()
+    const since = new Date(until.getTime() - hoursBack * 60 * 60 * 1000).toISOString()
     let queryDate = since
 
     const { data: initialCheck, error: checkError } = await supabase
@@ -159,6 +165,7 @@ export async function fetchBusStopOccupancyHeatmapData(
         .from('busyness_windows')
         .select('location_id, person_count_avg, person_count_max, sample_count')
         .gte('window_start', queryDate)
+        .lt('window_start', until.toISOString())
 
     if (error) {
         console.error('Error fetching busyness windows for heatmap:', error)

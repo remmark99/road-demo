@@ -7,6 +7,7 @@ import {
     ToolInputError, boolArg, enumArg, enumListArg, intArg, localDay, localTime, minutesBetween, optionalText,
     parseMoment, periodArgs, type ToolArgs,
 } from './args'
+import { VECTOR_TOOL_TITLES } from './titles'
 import { loadDirectory, readAll, resolveStop, searchStops, stopLabel, stopSummary, type Directory } from './directory'
 
 export interface VectorToolContext {
@@ -91,7 +92,7 @@ function countBy<T>(items: T[], key: (item: T) => string) {
 export const VECTOR_TOOLS: VectorTool[] = [
     {
         name: 'system_overview',
-        title: 'Сводка по системе',
+        title: VECTOR_TOOL_TITLES.system_overview,
         description: 'Главный экран ситуации по остановочным павильонам Сургута: сколько остановок, камер и датчиков, сколько из них сейчас в сети, '
             + 'события безопасности за сутки, открытые переполнения урн, состояние остановок (норма / нарушения) и нормы температуры и влажности. '
             + 'Начинай с него вопросы «как дела», «что происходит», «сводка».',
@@ -123,7 +124,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
     },
     {
         name: 'find_stops',
-        title: 'Поиск остановок',
+        title: VECTOR_TOOL_TITLES.find_stops,
         description: 'Ищет остановки по словам из названия, направления, адреса, номера или микрорайона. Без query — все остановки с фильтрами. '
             + 'Возвращает id (нужен другим инструментам), оснащение и статус связи.',
         inputSchema: schema({
@@ -149,7 +150,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
     },
     {
         name: 'get_stop',
-        title: 'Карточка остановки',
+        title: VECTOR_TOOL_TITLES.get_stop,
         description: 'Всё об одной остановке: оснащение и статус каждой камеры и контроллера, текущие показания датчиков, состояние по нормам, '
             + 'события безопасности и урна за сутки, отключения за неделю, люди на остановке сейчас.',
         inputSchema: schema({ stop: stopParam }, ['stop']),
@@ -197,7 +198,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
     },
     {
         name: 'equipment_status',
-        title: 'Связь оборудования сейчас',
+        title: VECTOR_TOOL_TITLES.equipment_status,
         description: 'Текущий статус связи камер и контроллеров датчиков по таблице мониторинга: что не в сети, с какого времени и сколько минут.',
         inputSchema: schema({
             kind: { type: 'string', enum: ['camera', 'controller', 'all'], default: 'all' },
@@ -228,7 +229,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
     },
     {
         name: 'equipment_outages',
-        title: 'Отключения оборудования за период',
+        title: VECTOR_TOOL_TITLES.equipment_outages,
         description: 'История отключений камер и контроллеров за период: сколько раз и сколько минут каждое устройство было не в сети. '
             + 'Короткие обрывы связи (меньше min_minutes) не считаются.',
         inputSchema: schema({ ...period, kind: { type: 'string', enum: ['camera', 'controller', 'all'], default: 'all' }, stop: stopParam,
@@ -274,7 +275,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
     },
     {
         name: 'security_events',
-        title: 'События безопасности',
+        title: VECTOR_TOOL_TITLES.security_events,
         description: 'События видеоаналитики на остановках за период: лежачий человек, курение, оставленный предмет, собаки без людей. '
             + 'Считает по типам и группирует по остановкам, дням или часам суток, показывает последние случаи.',
         inputSchema: schema({ ...period,
@@ -310,7 +311,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
     },
     {
         name: 'stop_conditions',
-        title: 'Состояние остановок по нормам',
+        title: VECTOR_TOOL_TITLES.stop_conditions,
         description: 'Состояние каждой остановки на момент времени, как слой «Состояние остановок» на карте: норма, одно нарушение, два и больше. '
             + 'Нарушения: температура или влажность вне норм из настроек, переполненная урна, событие безопасности или разбитие стекла за последний час.',
         inputSchema: schema({ at: { type: 'string', maxLength: 40, description: 'Момент YYYY-MM-DD или ISO 8601, по умолчанию сейчас' },
@@ -339,7 +340,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
     },
     {
         name: 'stop_climate',
-        title: 'Температура и влажность',
+        title: VECTOR_TOOL_TITLES.stop_climate,
         description: 'Температура и влажность в павильонах. Без stop — последние показания всех остановок с сортировкой (самые холодные, тёплые, влажные) '
             + 'и отметкой выхода за нормы. Со stop и периодом — почасовая история этой остановки.',
         inputSchema: schema({ stop: stopParam, sort: { type: 'string', enum: ['coldest', 'warmest', 'most_humid', 'name'], default: 'coldest' },
@@ -385,7 +386,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
     },
     {
         name: 'passenger_load',
-        title: 'Пассажиропоток',
+        title: VECTOR_TOOL_TITLES.passenger_load,
         description: 'Сколько людей видят камеры на остановках за период: среднее одновременное количество и пик. Это люди в кадре, а не уникальные пассажиры. '
             + 'Группировка по остановкам или по часам суток.',
         inputSchema: schema({ ...period, stop: stopParam, group_by: { type: 'string', enum: ['stop', 'hour_of_day'], default: 'stop' }, limit: limit(20) }),
@@ -415,7 +416,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
     },
     {
         name: 'bin_episodes',
-        title: 'Переполнение урн',
+        title: VECTOR_TOOL_TITLES.bin_episodes,
         description: 'Эпизоды переполнения урн за период: где, когда началось, когда убрали и сколько длилось. Открытые эпизоды — урна переполнена сейчас.',
         inputSchema: schema({ ...period, status: { type: 'string', enum: ['open', 'closed', 'all'], default: 'all' }, stop: stopParam, limit: limit(30) }),
         async handler(ctx, args) {
@@ -436,7 +437,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
     },
     {
         name: 'districts_summary',
-        title: 'Микрорайоны',
+        title: VECTOR_TOOL_TITLES.districts_summary,
         description: 'Сводка по микрорайонам: сколько остановок, сколько с камерами и датчиками, сколько из них сейчас на связи.',
         inputSchema: schema({ limit: limit(60) }),
         async handler(ctx, args) {
