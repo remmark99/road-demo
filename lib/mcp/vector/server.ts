@@ -1,5 +1,6 @@
 import { ToolInputError } from './args'
-import { VECTOR_TOOLS, type VectorToolContext } from './tools'
+import { REPORT_TOOL } from './report-tool'
+import { VECTOR_TOOLS, runVectorTool, type VectorTool, type VectorToolContext } from './tools'
 
 /**
  * MCP «Вектор города»: только чтение данных остановочных павильонов Сургута.
@@ -23,11 +24,15 @@ export const INSTRUCTIONS = `Платформа «Вектор города», �
 6. «Урны»: bin_episodes (status=open — переполнены сейчас).
 7. «Сколько людей / загруженность»: passenger_load — это люди в кадре, а не уникальные пассажиры.
 8. «По микрорайонам»: districts_summary.
+9. «Сделай отчёт / сводку для руководства / документ / выгрузку»: сначала данные (обычно system_overview и 1–3 инструмента по теме запроса за его период), затем один вызов create_report с периодом from/to. Таблицы в отчёт добавляй полем table раздела, а не текстом.
 
 Правила ответа: только цифры из инструментов, без догадок; если данных нет — так и скажи. Называй остановки по имени и направлению, время — по Сургуту.
 Периоды: from/to в формате YYYY-MM-DD (день по Сургуту) или ISO 8601; «вчера» — from и to на вчерашнюю дату.`
 
-const TOOL_LIST = VECTOR_TOOLS.map(tool => ({
+/** Инструменты данных и оформление отчёта. */
+export const ALL_VECTOR_TOOLS: VectorTool[] = [...VECTOR_TOOLS, REPORT_TOOL]
+
+const TOOL_LIST = ALL_VECTOR_TOOLS.map(tool => ({
     name: tool.name,
     title: tool.title,
     description: tool.description,
@@ -50,13 +55,13 @@ export interface ToolCallResult {
 
 /** Вызов инструмента: ошибки параметров — понятным текстом модели, внутренние — без подробностей. */
 export async function callVectorTool(ctx: VectorToolContext, name: string, args: unknown): Promise<ToolCallResult> {
-    const tool = VECTOR_TOOLS.find(t => t.name === name)
+    const tool = ALL_VECTOR_TOOLS.find(t => t.name === name)
     if (!tool) throw new RpcError(-32602, 'Неизвестный инструмент')
     if (args !== undefined && args !== null && (typeof args !== 'object' || Array.isArray(args))) {
         return { isError: true, content: [{ type: 'text', text: 'Параметры инструмента должны быть объектом' }] }
     }
     try {
-        const result = await tool.handler(ctx, (args ?? {}) as Record<string, unknown>)
+        const result = await runVectorTool(ctx, tool, (args ?? {}) as Record<string, unknown>)
         return { content: [{ type: 'text', text: JSON.stringify(result) }] }
     } catch (error) {
         if (error instanceof ToolInputError) return { isError: true, content: [{ type: 'text', text: error.message }] }

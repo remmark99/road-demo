@@ -6,6 +6,8 @@ import type { UIMessage } from 'ai'
 export const MAX_STORED_MESSAGES = 200
 const MAX_TEXT_CHARS = 20_000
 const TITLE_CHARS = 80
+/** Отчёты в истории (кнопки скачивания): самые новые, в пределах лимита размера диалога. */
+const MAX_STORED_REPORT_CHARS = 1_200_000
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 export interface ConversationSummary { id: string; title: string; updated_at: string }
@@ -17,8 +19,19 @@ export function isConversationId(value: unknown): value is string {
 /**
  * Что храним: текст и шаги с инструментами без их входов и выводов —
  * для продолжения разговора модели нужен только текст, а выводы бывают большими.
+ * Исключение — готовые отчёты: их можно скачать и из истории.
  */
 export function storableMessages(messages: UIMessage[]): UIMessage[] {
+    let reportBudget = MAX_STORED_REPORT_CHARS
+    const keptReports = new Set<unknown>()
+    for (const message of [...messages.slice(-MAX_STORED_MESSAGES)].reverse()) {
+        for (const part of [...message.parts].reverse()) {
+            const tool = part as { type: string; state?: string; output?: { report?: unknown } }
+            if (tool.type !== 'tool-create_report' || tool.state !== 'output-available' || !tool.output?.report) continue
+            const size = JSON.stringify(tool.output.report).length
+            if (size <= reportBudget) { reportBudget -= size; keptReports.add(part) }
+        }
+    }
     return messages.slice(-MAX_STORED_MESSAGES).flatMap(message => {
         if (message.role !== 'user' && message.role !== 'assistant') return []
         const parts: unknown[] = []
@@ -27,7 +40,8 @@ export function storableMessages(messages: UIMessage[]): UIMessage[] {
             else if (part.type.startsWith('tool-') || part.type === 'dynamic-tool') {
                 const tool = part as { type: string; toolCallId?: string; toolName?: string; state?: string }
                 const state = tool.state === 'output-error' ? 'output-error' : 'output-available'
-                parts.push({ type: tool.type, toolCallId: tool.toolCallId ?? '', ...(tool.toolName ? { toolName: tool.toolName } : {}), state, input: {}, output: null, ...(state === 'output-error' ? { errorText: 'Ошибка' } : {}) })
+                const output = keptReports.has(part) ? { report: (part as { output: { report: unknown } }).output.report } : null
+                parts.push({ type: tool.type, toolCallId: tool.toolCallId ?? '', ...(tool.toolName ? { toolName: tool.toolName } : {}), state, input: {}, output, ...(state === 'output-error' ? { errorText: 'Ошибка' } : {}) })
             }
         }
         return parts.length ? [{ id: message.id, role: message.role, parts: parts as UIMessage['parts'] }] : []
