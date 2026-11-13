@@ -5,6 +5,8 @@ import {
     type UIMessage,
 } from "ai"
 import { getAuthenticatedUser, jsonError } from "@/lib/notifications/http"
+import { createClient } from "@/lib/supabase/server"
+import { answerWithVectorAssistant, assistantConfigured } from "@/lib/assistant/vector-assistant"
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -3090,6 +3092,18 @@ function sanitizeError(error: unknown) {
     return "Ошибка ассистента: неизвестная ошибка."
 }
 
+/** Новый ассистент: RouterAI + MCP «Вектор города»; без ключа в окружении остаётся прежний путь через GigaChat. */
+async function answerWithConfiguredAssistant(messages: UIMessage[], mode: AssistantMode) {
+    if (!assistantConfigured()) return answerWithGigaChat(messages, mode)
+    const db = await createClient()
+    const { data: { user } } = await db.auth.getUser()
+    const profile = user ? await db.from("profiles").select("role,modules").eq("id", user.id).single() : null
+    if (!profile?.data || (profile.data.role !== "admin" && !profile.data.modules?.includes("stops"))) {
+        return "Ассистент отвечает по модулю «Остановочные павильоны», а он вашей учётной записи не назначен."
+    }
+    return answerWithVectorAssistant(messages, { db, now: Date.now() })
+}
+
 export async function POST(req: Request) {
     // Ассистент ходит в GigaChat и в БД под service-role — только для вошедших.
     const user = await getAuthenticatedUser()
@@ -3105,7 +3119,7 @@ export async function POST(req: Request) {
             writer.write({ type: "text-start", id: TEXT_PART_ID })
 
             try {
-                const answer = await answerWithGigaChat(messages, mode)
+                const answer = await answerWithConfiguredAssistant(messages, mode)
                 writer.write({ type: "text-delta", id: TEXT_PART_ID, delta: normalizeDateTimesForUser(answer) })
             } catch (error) {
                 writer.write({ type: "text-delta", id: TEXT_PART_ID, delta: normalizeDateTimesForUser(sanitizeError(error)) })
