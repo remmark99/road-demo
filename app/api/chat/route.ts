@@ -7,6 +7,7 @@ import {
 import { getAuthenticatedUser, jsonError } from "@/lib/notifications/http"
 import { createClient } from "@/lib/supabase/server"
 import { answerWithVectorAssistant, assistantConfigured, streamVectorAssistant } from "@/lib/assistant/vector-assistant"
+import { isConversationId, saveConversation } from "@/lib/assistant/conversations"
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -3095,7 +3096,7 @@ function sanitizeError(error: unknown) {
 const NO_STOPS_ACCESS = "Ассистент отвечает по модулю «Остановочные павильоны», а он вашей учётной записи не назначен."
 
 /** Поток нового ассистента: текст по мере генерации и шаги с инструментами MCP «Вектор города». */
-async function streamConfiguredAssistant(messages: UIMessage[]) {
+async function streamConfiguredAssistant(messages: UIMessage[], conversationId: string | null) {
     const db = await createClient()
     const { data: { user } } = await db.auth.getUser()
     const profile = user ? await db.from("profiles").select("role,modules").eq("id", user.id).single() : null
@@ -3104,7 +3105,13 @@ async function streamConfiguredAssistant(messages: UIMessage[]) {
         execute: async ({ writer }) => {
             const result = allowed ? streamVectorAssistant(messages, { db, now: Date.now() }) : null
             if (result) {
-                writer.merge(result.toUIMessageStream({ sendReasoning: false }))
+                writer.merge(result.toUIMessageStream({
+                    sendReasoning: false,
+                    originalMessages: messages,
+                    onFinish: async ({ messages: conversation }) => {
+                        if (conversationId && user) await saveConversation(db, user.id, conversationId, conversation)
+                    },
+                }))
                 return
             }
             writer.write({ type: "start" })
@@ -3142,7 +3149,8 @@ export async function POST(req: Request) {
     const messages = Array.isArray(body.messages) ? body.messages as UIMessage[] : []
     const mode = getAssistantMode(body.mode)
 
-    if (assistantConfigured()) return streamConfiguredAssistant(messages)
+    // id — диалог окна чата: после ответа он сохраняется в историю.
+    if (assistantConfigured()) return streamConfiguredAssistant(messages, isConversationId(body.id) ? body.id : null)
 
     const stream = createUIMessageStream<UIMessage>({
         execute: async ({ writer }) => {
