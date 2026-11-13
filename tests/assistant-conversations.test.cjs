@@ -52,3 +52,19 @@ test('saving upserts the cleaned conversation under the signed-in user and swall
   await history.saveConversation(db, 'user-1', '6f1c2d3e-4b5a-4c6d-8e9f-0a1b2c3d4e5f', [])
   assert.equal(calls.length, 2)
 })
+
+test('готовые отчёты остаются в истории для кнопок скачивания, в пределах лимита', () => {
+  const report = { title: 'Отчёт', generatedAt: '2026-11-13 18:40', summary: ['ok'], metrics: [], sections: [] }
+  const withReport = { id: 'a1', role: 'assistant', parts: [
+    { type: 'tool-create_report', toolCallId: 'r1', state: 'output-available', input: { title: 'Отчёт', sections: [] }, output: { report, formats: ['pdf'] } },
+    { type: 'tool-system_overview', toolCallId: 's1', state: 'output-available', input: {}, output: '{"big":true}' },
+    { type: 'text', text: 'Готово.' },
+  ] }
+  const [, stored] = history.storableMessages([user('Сделай отчёт'), withReport])
+  assert.deepEqual(stored.parts[0].output, { report })
+  assert.deepEqual(stored.parts[0].input, {})
+  assert.equal(stored.parts[1].output, null)
+  const huge = { ...report, summary: ['x'.repeat(1_300_000)] }
+  const [, trimmed] = history.storableMessages([user('Сделай отчёт'), { ...withReport, parts: [{ ...withReport.parts[0], output: { report: huge } }] }])
+  assert.equal(trimmed.parts[0].output, null)
+})

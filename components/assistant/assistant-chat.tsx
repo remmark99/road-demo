@@ -7,10 +7,12 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
     AlertTriangle, ArrowUp, AudioLines, Bot, Check, CircleAlert, Copy, History, Loader2, MessageSquarePlus, Mic, PanelLeft, Snowflake, Square, Volume2, X,
-    Thermometer, Trash2, Users, Wifi, WifiOff, Sparkles,
+    Thermometer, Trash2, Users, Wifi, WifiOff, Sparkles, FileBarChart2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { ReportCard } from "@/components/assistant/report-card"
 import { VECTOR_TOOL_TITLES } from "@/lib/mcp/vector/titles"
+import type { ReportDocument } from "@/lib/reports/document"
 import { startRecording, type RecordingHandle } from "@/lib/speech/recorder"
 import { cn } from "@/lib/utils"
 
@@ -23,9 +25,21 @@ const SUGGESTIONS = [
     { icon: Wifi, text: "Какое оборудование чаще всего отключалось за неделю?" },
     { icon: Thermometer, text: "На каких остановках нарушены нормы температуры и влажности?" },
     { icon: Users, text: "На каких остановках больше всего людей сегодня?" },
+    { icon: FileBarChart2, text: "Сделай отчёт о состоянии павильонов за неделю" },
 ] as const
 
-type ToolPart = { type: string; toolName?: string; state?: string; toolCallId?: string }
+type ToolPart = { type: string; toolName?: string; state?: string; toolCallId?: string; output?: unknown }
+
+/** Отчёт из вывода create_report (в том числе из сохранённой истории). */
+function reportOf(part: ToolPart): ReportDocument | null {
+    if (toolName(part) !== "create_report" || part.state !== "output-available") return null
+    const report = (part.output as { report?: ReportDocument } | null)?.report
+    return report && typeof report.title === "string" && Array.isArray(report.sections) ? report : null
+}
+
+function toolFailed(part: ToolPart) {
+    return part.state === "output-error" || (toolName(part) === "create_report" && part.state === "output-available" && !reportOf(part) && part.output !== null)
+}
 
 function toolName(part: ToolPart) {
     return part.type === "dynamic-tool" ? part.toolName ?? "" : part.type.slice("tool-".length)
@@ -45,7 +59,7 @@ function ToolSteps({ parts }: { parts: ToolPart[] }) {
         <div className="mb-2 flex flex-wrap gap-1.5">
             {parts.map((part, index) => {
                 const done = part.state === "output-available"
-                const failed = part.state === "output-error"
+                const failed = toolFailed(part)
                 return (
                     <span
                         key={part.toolCallId ?? index}
@@ -107,6 +121,7 @@ function ListenButton({ id, text, speech }: { id: string; text: string; speech: 
 
 function AssistantMessage({ message, streaming, speech }: { message: UIMessage; streaming: boolean; speech: SpeechControls }) {
     const tools = message.parts.filter(isToolPart)
+    const reports = tools.map(reportOf).filter((report): report is ReportDocument => report !== null)
     const text = messageText(message)
     return (
         <div className="flex gap-3">
@@ -119,11 +134,12 @@ function AssistantMessage({ message, streaming, speech }: { message: UIMessage; 
                     <div className={MARKDOWN}>
                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: props => <a {...props} target="_blank" rel="noopener noreferrer" />, table: props => <div className="overflow-x-auto"><table {...props} /></div> }}>{text}</ReactMarkdown>
                     </div>
-                ) : streaming ? (
+                ) : streaming && !reports.length ? (
                     <div className="flex h-6 items-center gap-1" aria-label="Ассистент думает">
                         {[0, 1, 2].map(i => <span key={i} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/60" style={{ animationDelay: `${i * 150}ms` }} />)}
                     </div>
                 ) : null}
+                {reports.map((report, index) => <ReportCard key={`${report.generatedAt}-${index}`} report={report} />)}
                 {text && !streaming && (
                     <div className="mt-1 flex items-center gap-1">
                         <CopyButton text={text} />

@@ -13,6 +13,8 @@ import { loadDirectory, readAll, resolveStop, searchStops, stopLabel, stopSummar
 export interface VectorToolContext {
     db: SupabaseClient
     now: number
+    /** Результаты вызовов в пределах одного ответа: отчёт берёт таблицы из уже загруженных данных. */
+    cache?: Map<string, Promise<unknown>>
 }
 
 export const SECURITY_TYPES = ['lying_person', 'smoking', 'abandoned_object', 'dogs_without_people'] as const
@@ -462,3 +464,17 @@ export const VECTOR_TOOLS: VectorTool[] = [
 ]
 
 export const VECTOR_TOOL_NAMES = new Set(VECTOR_TOOLS.map(tool => tool.name))
+
+/** Вызов обработчика с памятью на ответ: одинаковые запросы к базе не повторяются. */
+export function runVectorTool(ctx: VectorToolContext, tool: VectorTool, args: ToolArgs): Promise<unknown> {
+    if (!ctx.cache) return tool.handler(ctx, args)
+    const key = `${tool.name}:${JSON.stringify(args)}`
+    let result = ctx.cache.get(key)
+    if (!result) {
+        result = tool.handler(ctx, args)
+        // Ошибку не запоминаем: модель может повторить вызов с теми же параметрами.
+        result.catch(() => ctx.cache?.delete(key))
+        ctx.cache.set(key, result)
+    }
+    return result
+}

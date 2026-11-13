@@ -6,8 +6,9 @@ import {
 } from "ai"
 import { getAuthenticatedUser, jsonError } from "@/lib/notifications/http"
 import { createClient } from "@/lib/supabase/server"
-import { answerWithVectorAssistant, assistantConfigured, streamVectorAssistant } from "@/lib/assistant/vector-assistant"
+import { answerWithVectorAssistant, assistantConfigured, streamVectorAssistant, cannedReply } from "@/lib/assistant/vector-assistant"
 import { isConversationId, saveConversation } from "@/lib/assistant/conversations"
+import { readReportPrompt } from "@/lib/assistant/report-prompt"
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -3099,11 +3100,14 @@ const NO_STOPS_ACCESS = "Ассистент отвечает по модулю �
 async function streamConfiguredAssistant(messages: UIMessage[], conversationId: string | null) {
     const db = await createClient()
     const { data: { user } } = await db.auth.getUser()
-    const profile = user ? await db.from("profiles").select("role,modules").eq("id", user.id).single() : null
+    const [profile, reportPrompt] = user
+        ? await Promise.all([db.from("profiles").select("role,modules").eq("id", user.id).single(), readReportPrompt(db, user.id)])
+        : [null, null]
     const allowed = Boolean(profile?.data && (profile.data.role === "admin" || profile.data.modules?.includes("stops")))
     const stream = createUIMessageStream<UIMessage>({
         execute: async ({ writer }) => {
-            const result = allowed ? streamVectorAssistant(messages, { db, now: Date.now() }) : null
+            const canned = allowed ? cannedReply(messages) : null
+            const result = allowed && !canned ? streamVectorAssistant(messages, { db, now: Date.now() }, { reportPrompt }) : null
             if (result) {
                 writer.merge(result.toUIMessageStream({
                     sendReasoning: false,
@@ -3116,9 +3120,12 @@ async function streamConfiguredAssistant(messages: UIMessage[], conversationId: 
             }
             writer.write({ type: "start" })
             writer.write({ type: "text-start", id: TEXT_PART_ID })
-            writer.write({ type: "text-delta", id: TEXT_PART_ID, delta: allowed ? "Напишите вопрос." : NO_STOPS_ACCESS })
+            writer.write({ type: "text-delta", id: TEXT_PART_ID, delta: canned ?? (allowed ? "Напишите вопрос." : NO_STOPS_ACCESS) })
             writer.write({ type: "text-end", id: TEXT_PART_ID })
             writer.write({ type: "finish", finishReason: "stop" })
+            if (canned && conversationId && user) {
+                await saveConversation(db, user.id, conversationId, [...messages, { id: crypto.randomUUID(), role: "assistant", parts: [{ type: "text", text: canned }] }])
+            }
         },
         onError: (error) => {
             console.error("Assistant stream failed:", error instanceof Error ? error.message : "unknown error")

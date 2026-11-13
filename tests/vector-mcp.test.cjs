@@ -97,7 +97,8 @@ test('protocol: initialize, read-only tool list, unknown method and tool', async
   assert.equal(init.protocolVersion, '2025-06-18'); assert.equal(init.serverInfo.name, 'vector-city'); assert.match(init.instructions, /Сургут/)
   assert.equal((await server.handleVectorRpc(ctx(), 'initialize', { protocolVersion: '1999-01-01' })).protocolVersion, '2025-11-25')
   const { tools } = await server.handleVectorRpc(ctx(), 'tools/list', {})
-  assert.equal(tools.length, 11)
+  assert.equal(tools.length, 12)
+  assert.ok(tools.some(t => t.name === 'create_report'))
   assert.ok(tools.every(t => t.annotations.readOnlyHint && !t.annotations.destructiveHint && t.inputSchema.additionalProperties === false))
   await assert.rejects(server.handleVectorRpc(ctx(), 'resources/list', {}), e => e.code === -32601)
   await assert.rejects(server.handleVectorRpc(ctx(), 'tools/call', { name: 'drop_table' }), e => e.code === -32602)
@@ -161,4 +162,32 @@ test('overview, conditions, climate, bins and passenger load run end to end', as
   assert.equal((await call('bin_episodes', { status: 'open' })).data.open_now, 1)
   const load = (await call('passenger_load', {}, { get_stop_load_hourly: () => ({ hours: [['73-24', iso(60), 40, 10, 7, 60], ['73-24', iso(120), 20, 10, 3, 60]], latest: [] }) })).data
   assert.deepEqual(load.rows[0], { key: 'Никольский (в центр)', average_people: 3, peak_people: 7 })
+})
+
+test('create_report: таблица раздела берётся из базы, а не из текста модели', async () => {
+  const result = await call('create_report', {
+    title: 'Связь оборудования', subtitle: 'на 13.11.2026', summary: ['Камера 131 не в сети полтора часа.'],
+    metrics: [{ label: 'Не в сети', value: '1' }],
+    from: '2026-11-13', to: '2026-11-13',
+    sections: [{ heading: 'Что не в сети', paragraphs: ['Список из мониторинга.'], table: 'equipment_offline_now' }, { heading: 'Отключения за день', table: 'equipment_outages' }],
+  })
+  assert.equal(result.error, null)
+  const table = result.data.report.sections[0].table
+  assert.equal(table.columns[0], 'Оборудование')
+  assert.ok(table.rows.some(row => row.includes(131) && row.includes('не в сети')))
+  assert.equal(result.data.report.generatedAt, '2026-11-13 18:40')
+  assert.ok(Array.isArray(result.data.report.sections[1].table.rows))
+  assert.match((await call('create_report', { title: 'Отчёт', summary: ['x'], sections: [{ heading: 'Погода', table: 'weather' }] })).error, /table должен быть/)
+  assert.match((await call('create_report', { summary: ['x'] })).error, /title/)
+})
+
+test('вежливые фразы — готовым ответом без модели, вопросы — модели', () => {
+  const assistant = load('lib/assistant/vector-assistant.ts', { '@/lib/notifications/admin': admin })
+  const ask = text => assistant.cannedReply([{ id: '1', role: 'user', parts: [{ type: 'text', text }] }])
+  assert.match(ask('Привет!'), /^Здравствуйте!/)
+  assert.equal(ask('Что ты умеешь?'), assistant.ABILITIES_REPLY)
+  assert.match(ask('Спасибо большое'), /^Пожалуйста/)
+  assert.equal(ask('Привет, что с урнами?'), null)
+  assert.equal(ask('Дай рецепт печенья'), null)
+  assert.match(assistant.OFF_TOPIC_REPLY, /только по остановочным павильонам/)
 })
