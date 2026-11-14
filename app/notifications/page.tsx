@@ -7,7 +7,7 @@ import { PeriodFilter } from '@/components/notifications/period-filter'
 import { CameraPlaceFilter } from '@/components/notifications/camera-place-filter'
 import { buildCameraPlaces, buildStopPlaces, findStopPlace, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
 import { fetchStopDirectory, type BusStopProperties } from '@/lib/api/bus-stops'
-import { formatCameraConfidence, closedEpisodeImage } from '@/lib/notifications/camera-evidence'
+import { formatCameraConfidence, binEpisodeConfidences, formatConfidencePercent, closedEpisodeImage } from '@/lib/notifications/camera-evidence'
 import { getBinEpisode } from "@/lib/bin-episodes"
 import { fetchEquipmentOutagesByIds, type EquipmentOutage } from "@/lib/api/equipment"
 import { CAMERA_OFFLINE, CAMERA_ONLINE, getCameraOutageEpisode, getCameraOutageIds, mergeCameraLinkTypes, withoutOutageDuration } from "@/lib/notifications/camera-outage"
@@ -1500,6 +1500,9 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             const episodeIsOpen = episode?.status === "open"
             const abandonedEpisode = getAbandonedEpisode(alert)
             const binEpisode = getBinEpisode(alert) || abandonedEpisode
+            // Boundary scores exist for bin episodes only (abandoned reuses the
+            // same shape); they come from our trained classifier, not the VLM.
+            const binConfidence = binEpisode ? binEpisodeConfidences(alert) : null
             const outageEpisode = getCameraOutageEpisode(alert, cameraOutages)
             const outageIsOpen = outageEpisode?.status === "open"
             const shownMessage = outageEpisode ? withoutOutageDuration(message) : message
@@ -1531,7 +1534,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
                       <div className="min-w-0">
                         <div className="text-muted-foreground md:text-foreground">
-                          {binEpisode ? `Начало: ${formatBinTime(binEpisode.object_first_seen_at || binEpisode.started_at)}`
+                          {binEpisode ? `Начало: ${formatBinTime(binEpisode.object_first_seen_at || binEpisode.started_at)}${binConfidence?.start != null ? ` · уверенность ${formatConfidencePercent(binConfidence.start)}` : ''}`
                             : outageEpisode ? `Начало: ${formatBinTime(outageEpisode.started_at)}`
                             : formatTimeAgo(alert.timestamp)}
                         </div>
@@ -1570,9 +1573,10 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                           <Badge variant="outline">
                             {binEpisode.status === "open" ? "Продолжается" : "Завершено"}
                           </Badge>
-                          <span>
+                          <span title={binConfidence?.end != null && binConfidence.samples
+                            ? `Среднее по ${binConfidence.samples} наблюдениям` : undefined}>
                             {binEpisode.ended_at
-                              ? `Завершено: ${formatBinTime(binEpisode.ended_at)}`
+                              ? `Завершено: ${formatBinTime(binEpisode.ended_at)}${binConfidence?.end != null ? ` · уверенность ${formatConfidencePercent(binConfidence.end)}` : ''}`
                               : `Последнее обнаружение: ${formatBinTime(binEpisode.last_seen_at)}`}
                           </span>
                         </div>
