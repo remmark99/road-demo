@@ -1,10 +1,25 @@
 import type { Alert } from '@/lib/types'
+import { getBinEpisode } from '@/lib/bin-episodes'
 
 function record(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
 }
 function probability(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null
+}
+
+export function formatConfidencePercent(score: number): string {
+  return `${Number((score * 100).toFixed(1)).toLocaleString('ru-RU')} %`
+}
+
+// Existing bin alerts predate structured scores; this is the classifier's
+// actual recorded probability, not the alert's fixed severity. Only the
+// "overfilled" decision describes the start of the episode.
+function recordedClassifierScore(alert: Pick<Alert, 'metadata' | 'alert_type'>): number | null {
+  const metadata = record(alert.metadata)
+  if (alert.alert_type !== 'bin_full' || typeof metadata.model_response !== 'string') return null
+  const match = /^YOLO Classifier: label=overfilled, confidence=(\d+(?:\.\d+)?)$/.exec(metadata.model_response.trim())
+  return match ? probability(Number(match[1])) : null
 }
 
 // Severity is a configured priority, not a model score. Never convert it to accuracy.
@@ -15,12 +30,8 @@ export function cameraConfidence(alert: Pick<Alert, 'metadata' | 'alert_type'>):
     const score = probability(value)
     if (score !== null) return score
   }
-  // Existing bin alerts predate structured scores; this is the classifier's
-  // actual recorded probability, not the alert's fixed severity.
-  if (alert.alert_type === 'bin_full' && typeof metadata.model_response === 'string') {
-    const match = /^YOLO Classifier: label=overfilled, confidence=(\d+(?:\.\d+)?)$/.exec(metadata.model_response.trim())
-    if (match) return probability(Number(match[1]))
-  }
+  // A bin episode carries a score per boundary; this column shows the start.
+  if (alert.alert_type === 'bin_full') return binEpisodeConfidences(alert).start
   const detections = Array.isArray(metadata.detections) ? metadata.detections : []
   const scores = detections.map(item => {
     const detection = record(item)
@@ -33,7 +44,32 @@ export function cameraConfidence(alert: Pick<Alert, 'metadata' | 'alert_type'>):
 
 export function formatCameraConfidence(alert: Pick<Alert, 'metadata' | 'alert_type'>): string {
   const score = cameraConfidence(alert)
-  return score === null ? 'Нет данных' : `${Number((score * 100).toFixed(1)).toLocaleString('ru-RU')} %`
+  return score === null ? 'Нет данных' : formatConfidencePercent(score)
+}
+
+export interface BinEpisodeConfidences {
+  // Confidence that the bin WAS full, measured on the observation that opened
+  // the episode.
+  start: number | null
+  // Confidence that the bin was CLEAN again, averaged over the whole closing
+  // streak: one over-confident frame must not decide the end. Null while the
+  // episode is still open, and when no frame of the streak carried a score.
+  end: number | null
+  // How many scored frames the end average was built from.
+  samples: number | null
+}
+
+// Only our trained classifier yields a probability; the Stage 2 VLM answers
+// yes/no, so its score is simply not shown. Alerts written before the structured
+// fields keep the recorded classifier line for the start and no end score.
+export function binEpisodeConfidences(alert: Pick<Alert, 'metadata' | 'alert_type'>): BinEpisodeConfidences {
+  const episode = getBinEpisode(alert)
+  if (!episode) return { start: recordedClassifierScore(alert), end: null, samples: null }
+  return {
+    start: episode.start_confidence ?? recordedClassifierScore(alert),
+    end: episode.end_confidence ?? null,
+    samples: episode.end_confidence_samples ?? null,
+  }
 }
 
 // The last positive observation is not proof that the incident has ended.

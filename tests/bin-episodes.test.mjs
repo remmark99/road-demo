@@ -34,14 +34,19 @@ test('camera-scoped episodes, retries, closure, pagination and permissions', asy
     `)
     const migration = readFileSync(new URL('../sql/bin_episodes_migration.sql', import.meta.url), 'utf8')
     await db.exec(migration)
-    const observe = async (camera, minute, full, image = full ? null : 'clean.jpg') => (await db.query(
-      `SELECT record_bin_observation($1, $2, $3, $4) AS result`,
-      [camera, new Date(Date.UTC(2026, 0, 1, 18, minute)).toISOString(), full, image])).rows[0].result
+    await db.exec(readFileSync(new URL('../sql/bin_first_clear_evidence_migration.sql', import.meta.url), 'utf8'))
+    const confidenceMigration = readFileSync(new URL('../sql/bin_episode_confidence_migration.sql', import.meta.url), 'utf8')
+    await db.exec(confidenceMigration)
+    // Only our trained classifier sends a score; `confidence` stands in for it.
+    const observe = async (camera, minute, full, image = full ? null : 'clean.jpg', confidence = null) => (await db.query(
+      `SELECT record_bin_observation($1, $2, $3, $4, $5) AS result`,
+      [camera, new Date(Date.UTC(2026, 0, 1, 18, minute)).toISOString(), full, image,
+       confidence === null ? {} : { confidence }])).rows[0].result
     const rows = async (sql) => (await db.query(sql)).rows
-    const first = await observe(153, 0, true, 'first.jpg')
+    const first = await observe(153, 0, true, 'first.jpg', .97)
     assert.equal(first.action, 'opened')
     for (const minute of [30, 60, 90]) {
-      assert.equal((await observe(153, minute, true, 'latest.jpg')).alert_id, first.alert_id)
+      assert.equal((await observe(153, minute, true, 'latest.jpg', .90)).alert_id, first.alert_id)
     }
     const duplicate = await observe(153, 90, false)
     assert.equal(duplicate.action, 'ignored')
@@ -50,17 +55,24 @@ test('camera-scoped episodes, retries, closure, pagination and permissions', asy
     assert.equal(alert.timestamp.toISOString(), '2026-01-01T18:00:00.000Z')
     assert.equal(alert.clip_path, 'latest.jpg')
     assert.equal(getBinEpisode(alert).observation_count, 4)
+    // The opening score survives every later confirmation, and an open episode
+    // has no end score yet.
+    assert.equal(getBinEpisode(alert).start_confidence, .97)
+    assert.equal(getBinEpisode(alert).end_confidence, null)
+    // The score is episode-scoped: it never leaks into the shared alert key.
+    assert.equal(alert.metadata.confidence, undefined)
     const other = await observe(132, 100, true)
     assert.notEqual(other.alert_id, first.alert_id)
     assert.equal((await rows('SELECT * FROM alerts')).length, 2)
-    await observe(153, 95, false, 'discarded-clean.jpg')
+    await observe(153, 95, false, 'discarded-clean.jpg', .80)
     assert.equal((await observe(153, 95, false)).action, 'ignored')
     await observe(153, 100, true) // A positive resets the clear streak.
-    assert.equal((await observe(153, 105, false, 'first-clean.jpg')).action, 'updated')
-    // A restart/redeployment between clear observations must retain the candidate.
-    await db.exec(readFileSync(new URL('../sql/bin_first_clear_evidence_migration.sql', import.meta.url), 'utf8'))
+    assert.equal((await observe(153, 105, false, 'first-clean.jpg', .90)).action, 'updated')
+    // A restart/redeployment between clear observations re-applies the current
+    // migrations and must retain the candidate.
+    await db.exec(confidenceMigration)
     assert.equal((await observe(153, 105, false, 'replacement.jpg')).action, 'ignored')
-    assert.equal((await observe(153, 110, false, 'second-clean.jpg')).action, 'closed')
+    assert.equal((await observe(153, 110, false, 'second-clean.jpg', .80)).action, 'closed')
     alert = (await rows(`SELECT * FROM alerts WHERE id='${first.alert_id}'`))[0]
     assert.equal(getBinEpisode(alert).status, 'closed')
     assert.equal(getBinEpisode(alert).first_image_url, 'first.jpg')
@@ -69,6 +81,11 @@ test('camera-scoped episodes, retries, closure, pagination and permissions', asy
     assert.equal((await observe(153, 109, true)).action, 'ignored')
     assert.equal(new Date(getBinEpisode(alert).closed_image_at).toISOString(), '2026-01-01T19:45:00.000Z')
     assert.equal(new Date(alert.metadata.bin_episode.confirmed_at).toISOString(), '2026-01-01T19:50:00.000Z')
+    // The end score averages the whole clean streak that closed the episode; the
+    // discarded candidate from the previous streak is not part of it.
+    assert.equal(getBinEpisode(alert).end_confidence, .85)
+    assert.equal(getBinEpisode(alert).end_confidence_samples, 2)
+    assert.equal(getBinEpisode(alert).start_confidence, .97)
     const next = await observe(153, 115, true)
     assert.notEqual(next.alert_id, first.alert_id)
     assert.equal((await observe(153, 119, false, null)).action, 'ignored')
@@ -99,6 +116,20 @@ test('camera-scoped episodes, retries, closure, pagination and permissions', asy
     assert.equal((await rows('SELECT * FROM bin_camera_state WHERE camera_index=999')).length, 0)
     await db.exec('ALTER TABLE alerts DROP CONSTRAINT reject_test_camera')
     assert.equal((await observe(999, 0, true)).action, 'opened')
+    // Applying the confidence migration to a LIVE system: a clear streak that
+    // started under the previous function version must still close. The frame
+    // that predates the upgrade carries no score, so the average covers only
+    // the scored frames and the start stays unscored.
+    const legacyFunction = readFileSync(new URL('../sql/bin_first_clear_evidence_migration.sql', import.meta.url), 'utf8')
+    await db.exec(legacyFunction)
+    assert.equal((await observe(154, 0, true, 'legacy-full.jpg', .9)).action, 'opened')
+    assert.equal((await observe(154, 5, false, 'legacy-clean.jpg')).action, 'updated')
+    await db.exec(confidenceMigration)
+    assert.equal((await observe(154, 10, false, 'fresh-clean.jpg', .70)).action, 'closed')
+    const upgraded = (await rows(`SELECT * FROM alerts WHERE camera_index=154`))[0]
+    assert.equal(getBinEpisode(upgraded).end_confidence, .70)
+    assert.equal(getBinEpisode(upgraded).end_confidence_samples, 1)
+    assert.equal(getBinEpisode(upgraded).start_confidence, null)
   } finally { await db.close() }
 })
 
@@ -112,4 +143,29 @@ test('legacy and malformed metadata remain safe to render', () => {
   assert.equal(getBinEpisode(alert).status, 'open')
   assert.equal(getBinEpisode({ ...alert, alert_type: 'lying_person' }), null)
   assert.equal(getBinEpisode({ ...alert, metadata: { ...alert.metadata, bin_episode: { ...episode, started_at: 'bad' } } }), null)
+})
+
+test('boundary confidences are validated per episode state', () => {
+  const closed = { status: 'closed', started_at: '2026-01-01T00:00:00Z', last_seen_at: '2026-01-02T00:00:00Z',
+    ended_at: '2026-01-03T00:00:00Z', observation_count: 3, start_confidence: .97, end_confidence: .85,
+    end_confidence_samples: 2 }
+  const read = (episode) => getBinEpisode({ alert_type: 'bin_full', metadata: { episode_schema: 'bin_episode_v1', bin_episode: episode } })
+  assert.equal(read(closed).start_confidence, .97)
+  assert.equal(read(closed).end_confidence, .85)
+  assert.equal(read(closed).end_confidence_samples, 2)
+  // Scores are probabilities; anything else is reported as unmeasured.
+  for (const bad of [1.1, -0.1, '0.9', NaN, Infinity, null, undefined]) {
+    const scored = read({ ...closed, start_confidence: bad, end_confidence: bad })
+    assert.equal(scored.start_confidence, null)
+    assert.equal(scored.end_confidence, null)
+  }
+  for (const bad of [0, -1, 1.5, '2', null]) assert.equal(read({ ...closed, end_confidence_samples: bad }).end_confidence_samples, null)
+  // An open episode cannot claim an end score, and a VLM episode has neither.
+  const open = read({ ...closed, status: 'open', ended_at: null })
+  assert.equal(open.start_confidence, .97)
+  assert.equal(open.end_confidence, null)
+  assert.equal(open.end_confidence_samples, null)
+  const vlm = read({ ...closed, start_confidence: null, end_confidence: null, end_confidence_samples: null })
+  assert.equal(vlm.start_confidence, null)
+  assert.equal(vlm.end_confidence, null)
 })

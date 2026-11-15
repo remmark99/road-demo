@@ -64,7 +64,7 @@ test('sensor filter uses the same date boundaries before pagination', async()=>{
   assert.ok(calls.some(c=>c[0]==='range' && c[1]===20 && c[2]===29))
 })
 
-const {cameraConfidence, formatCameraConfidence, closedEpisodeImage} = load('lib/notifications/camera-evidence.ts')
+const {cameraConfidence, formatCameraConfidence, binEpisodeConfidences, closedEpisodeImage} = load('lib/notifications/camera-evidence.ts')
 test('accuracy uses recorded model scores, never priority or appearance matching', () => {
   const alert={alert_type:'bin_full', severity:.7, metadata:{model_response:'YOLO Classifier: label=overfilled, confidence=0.999'}}
   assert.equal(formatCameraConfidence(alert), '99,9 %')
@@ -76,6 +76,28 @@ test('accuracy uses recorded model scores, never priority or appearance matching
   assert.equal(cameraConfidence({alert_type:'lying_person',metadata:{spatial_evidence:{pose_evidence:{detection_confidence:.91}},lying_subject:{appearance_confidence:1}}}),.91)
   assert.equal(cameraConfidence({alert_type:'smoking',metadata:{detections:[{class:'person',confidence:.99},{class:'smoking',confidence:.87}]}}),.87)
   assert.equal(formatCameraConfidence({alert_type:'smoking',metadata:{detections:[{class:'cigarette',conf:.6816961765289307}]}}),'68,2 %')
+})
+test('bin episodes report a score per boundary and never borrow the VLM answer', () => {
+  const episode = {status:'closed', started_at:'2026-01-01T00:00:00Z', last_seen_at:'2026-01-01T01:00:00Z',
+    ended_at:'2026-01-01T02:00:00Z', observation_count:3, start_confidence:.97, end_confidence:.85, end_confidence_samples:2}
+  const bin = (bin_episode, extra={}) => ({alert_type:'bin_full', severity:.7, metadata:{episode_schema:'bin_episode_v1', bin_episode, ...extra}})
+  assert.deepEqual(binEpisodeConfidences(bin(episode)), {start:.97, end:.85, samples:2})
+  // The episode's own boundary score outranks the shared legacy key.
+  assert.equal(binEpisodeConfidences(bin(episode, {model_response:'YOLO Classifier: label=overfilled, confidence=0.55'})).start, .97)
+  // Open episodes have no end score yet; abandoned objects reuse the shape.
+  assert.equal(binEpisodeConfidences(bin({...episode, status:'open', ended_at:null})).end, null)
+  assert.deepEqual(binEpisodeConfidences({alert_type:'abandoned_object', metadata:{episode_schema:'abandoned_episode_v1',
+    abandoned_episode:episode}}), {start:null, end:null, samples:null})
+  // Alerts written before the structured fields keep the recorded classifier
+  // line for the start and show no end score.
+  const legacy = {alert_type:'bin_full', severity:.7, metadata:{model_response:'YOLO Classifier: label=overfilled, confidence=0.999'}}
+  assert.deepEqual(binEpisodeConfidences(legacy), {start:.999, end:null, samples:null})
+  // The column is defined for bin episodes: the start score, not the last frame.
+  assert.equal(cameraConfidence(bin(episode)), .97)
+  // A VLM episode (no probability) shows no number rather than a guess.
+  const vlm = bin({...episode, start_confidence:null, end_confidence:null, end_confidence_samples:null})
+  assert.deepEqual(binEpisodeConfidences(vlm), {start:null, end:null, samples:null})
+  assert.equal(formatCameraConfidence(vlm), 'Нет данных')
 })
 test('last positive frame is never substituted for recovery evidence', () => {
   assert.equal(closedEpisodeImage({latest_image_url:'incident.jpg',image_url:'incident.jpg'}),null)
