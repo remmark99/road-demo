@@ -31,7 +31,7 @@ const verifyAdmin = async () => {
 
     if (authError && (authError.status === 0 || (authError.status ?? 0) >= 500)) throw authError
     if (authError || !user) {
-        return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 })
+        return { denial: NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 }) }
     }
 
     const adminClient = getAdminSupabase()
@@ -39,20 +39,20 @@ const verifyAdmin = async () => {
         .from('profiles')
         .select('role')
         .eq('id', user.id)
-        .single()
+        .maybeSingle()
 
     if (dbError) throw dbError
     if (profile?.role !== 'admin') {
-        return NextResponse.json({ error: 'Нет доступа (требуются права admin)' }, { status: 403 })
+        return { denial: NextResponse.json({ error: 'Нет доступа (требуются права admin)' }, { status: 403 }) }
     }
 
-    return null
+    return { userId: user.id }
 }
 
 // GET all users (profiles)
 export async function GET() {
     try {
-        const denial = await verifyAdmin()
+        const { denial } = await verifyAdmin()
         if (denial) return denial
 
         const adminClient = getAdminSupabase()
@@ -82,7 +82,7 @@ export async function GET() {
 // POST create a new user
 export async function POST(request: Request) {
     try {
-        const denial = await verifyAdmin()
+        const { denial } = await verifyAdmin()
         if (denial) return denial
 
         const body = await request.json()
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
 // PUT update an existing user's modules and role
 export async function PUT(request: Request) {
     try {
-        const denial = await verifyAdmin()
+        const { denial } = await verifyAdmin()
         if (denial) return denial
 
         const body = await request.json()
@@ -152,6 +152,91 @@ export async function PUT(request: Request) {
         }
 
         return NextResponse.json(data)
+    } catch (error: any) {
+        return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+}
+
+// profiles.id is a uuid, and Postgres compares uuid values without regard to case
+// or hyphenation. The requested id is therefore canonicalised and format-checked
+// before it is used by the guards or in the service-role request.
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+// DELETE permanently remove a user account (auth user + cascading profile data)
+export async function DELETE(request: Request) {
+    try {
+        const { denial, userId } = await verifyAdmin()
+        if (denial) return denial
+
+        // Accept the target id from a JSON body (like PUT) or a ?id= query parameter.
+        let id = ''
+        try {
+            const body = await request.json()
+            if (body && typeof body.id === 'string') id = body.id
+        } catch {
+            // No JSON body supplied; fall back to the query string below.
+        }
+        if (!id.trim()) {
+            try {
+                id = new URL(request.url).searchParams.get('id') || ''
+            } catch {
+                // request.url missing or malformed; treat as no id supplied.
+            }
+        }
+        id = id.trim().toLowerCase()
+        if (!id) {
+            return NextResponse.json({ error: 'Не указан идентификатор пользователя для удаления' }, { status: 400 })
+        }
+
+        if (!UUID_PATTERN.test(id)) {
+            return NextResponse.json({ error: 'Некорректный идентификатор пользователя' }, { status: 400 })
+        }
+
+        // An administrator must never lock themselves out.
+        if (id === userId.toLowerCase()) {
+            return NextResponse.json({ error: 'Нельзя удалить собственную учётную запись' }, { status: 403 })
+        }
+
+        const adminClient = getAdminSupabase()
+
+        const { data: target, error: lookupError } = await adminClient
+            .from('profiles')
+            .select('id, role')
+            .eq('id', id)
+            .maybeSingle()
+
+        if (lookupError) throw lookupError
+        if (!target) {
+            return NextResponse.json({ error: 'Пользователь не найден' }, { status: 404 })
+        }
+
+        // Authoritative self-check: compare the stored id, not the requested text,
+        // so another encoding of the same uuid cannot slip past the guard above.
+        if (String(target.id).toLowerCase() === userId.toLowerCase()) {
+            return NextResponse.json({ error: 'Нельзя удалить собственную учётную запись' }, { status: 403 })
+        }
+
+        const { count, error: countError } = await adminClient
+            .from('profiles')
+            .select('id', { count: 'exact', head: true })
+            .eq('role', 'admin')
+
+        if (countError) throw countError
+        if (target.role === 'admin' && (count ?? 0) <= 1) {
+            return NextResponse.json({ error: 'Нельзя удалить последнего администратора' }, { status: 409 })
+        }
+
+        // Deleting the auth user cascades to the profile and all dependent rows.
+        const { error: deleteError } = await adminClient.auth.admin.deleteUser(id)
+        if (deleteError) {
+            const status = deleteError.status ?? 0
+            return NextResponse.json(
+                { error: deleteError.message },
+                { status: status >= 400 && status < 500 ? 400 : 500 }
+            )
+        }
+
+        return NextResponse.json({ success: true })
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 })
     }

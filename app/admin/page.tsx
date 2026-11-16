@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { Navigation } from "@/components/navigation"
-import { Shield, Plus, Edit2, Loader2, Save, X, AlertCircle, Users, Camera, SlidersHorizontal } from "lucide-react"
+import { Shield, Plus, Edit2, Trash2, Loader2, Save, X, AlertCircle, Users, Camera, SlidersHorizontal } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
+import { createClient } from "@/lib/supabase/client"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { CamerasTab } from "@/components/admin/cameras-tab"
 import { PipelineSettingsTab } from "@/components/admin/pipeline-settings-tab"
@@ -51,8 +52,18 @@ export default function AdminPage() {
     const [editModules, setEditModules] = useState<Module[]>([])
     const [editRole, setEditRole] = useState('user')
 
+    // Delete User State
+    const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+    const [deleteTarget, setDeleteTarget] = useState<Profile | null>(null)
+    const [deleteAck, setDeleteAck] = useState(false)
+    const [deleting, setDeleting] = useState(false)
+
     useEffect(() => {
         fetchUsers()
+        createClient()
+            .auth.getUser()
+            .then(({ data }) => setCurrentUserId(data?.user?.id ?? null))
+            .catch(() => setCurrentUserId(null))
     }, [])
 
     const fetchUsers = async () => {
@@ -142,6 +153,52 @@ export default function AdminPage() {
             setError(err.message)
         }
     }
+
+    const openDeleteDialog = (user: Profile) => {
+        setError(null)
+        setDeleteAck(false)
+        setDeleteTarget(user)
+    }
+
+    const closeDeleteDialog = () => {
+        setDeleteTarget(null)
+        setDeleteAck(false)
+    }
+
+    const confirmDelete = async () => {
+        if (!deleteTarget) return
+        setDeleting(true)
+        setError(null)
+
+        try {
+            const res = await fetch('/api/admin/users', {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: deleteTarget.id }),
+            })
+
+            const data = await res.json().catch(() => ({}))
+            if (!res.ok) throw new Error(data.error || 'Не удалось удалить пользователя')
+
+            setDeleteTarget(null)
+            setDeleteAck(false)
+            fetchUsers() // Reload list
+        } catch (err: any) {
+            setError(err.message)
+        } finally {
+            setDeleting(false)
+        }
+    }
+
+    const adminCount = users.filter(u => u.role === 'admin').length
+
+    const deleteDisabledReason = (user: Profile): string | undefined => {
+        if (currentUserId !== null && user.id === currentUserId) return 'Нельзя удалить собственную учётную запись'
+        if (user.role === 'admin' && adminCount <= 1) return 'Нельзя удалить последнего администратора'
+        return undefined
+    }
+
+    const isDeleteDisabled = (user: Profile): boolean => deleteDisabledReason(user) !== undefined
 
     const toggleModule = (modArray: Module[], setModArray: (arr: Module[]) => void, mod: Module) => {
         if (modArray.includes(mod)) {
@@ -326,13 +383,24 @@ export default function AdminPage() {
                                                                 </button>
                                                             </div>
                                                         ) : (
-                                                            <button
-                                                                onClick={() => startEditing(u)}
-                                                                className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-foreground rounded-md transition-colors"
-                                                                title="Редактировать модули"
-                                                            >
-                                                                <Edit2 className="h-4 w-4" />
-                                                            </button>
+                                                            <div className="flex items-center justify-end gap-2">
+                                                                <button
+                                                                    onClick={() => startEditing(u)}
+                                                                    className="p-1.5 text-muted-foreground hover:bg-white/10 hover:text-foreground rounded-md transition-colors"
+                                                                    title="Редактировать модули"
+                                                                >
+                                                                    <Edit2 className="h-4 w-4" />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => openDeleteDialog(u)}
+                                                                    disabled={isDeleteDisabled(u)}
+                                                                    className="p-1.5 text-muted-foreground hover:bg-red-500/10 hover:text-red-400 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                                                                    aria-label="Удалить пользователя"
+                                                                    title={deleteDisabledReason(u)}
+                                                                >
+                                                                    <Trash2 className="h-4 w-4" />
+                                                                </button>
+                                                            </div>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -438,6 +506,47 @@ export default function AdminPage() {
                                 </Button>
                             </div>
                         </form>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) closeDeleteDialog() }}>
+                <DialogContent className="sm:max-w-md text-foreground">
+                    <DialogHeader>
+                        <DialogTitle>Удалить пользователя?</DialogTitle>
+                        <DialogDescription>
+                            Вы удаляете учётную запись {deleteTarget?.email}. Действие необратимо: вместе с аккаунтом
+                            будут безвозвратно удалены профиль, активные сессии, настройки и история уведомлений,
+                            ссылки MAX и чаты ассистента. Восстановить эти данные невозможно.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <label className="flex items-start gap-3 p-3 border border-border rounded-xl cursor-pointer hover:bg-muted transition-colors">
+                        <input
+                            type="checkbox"
+                            checked={deleteAck}
+                            onChange={(e) => setDeleteAck(e.target.checked)}
+                            className="h-4 w-4 mt-0.5 accent-red-500"
+                        />
+                        <span className="text-sm font-medium">Понимаю, что действие необратимо</span>
+                    </label>
+                    <div className="flex gap-3 pt-4 border-t border-border">
+                        <Button
+                            variant="outline"
+                            type="button"
+                            onClick={closeDeleteDialog}
+                            disabled={deleting}
+                            className="flex-1"
+                        >
+                            Отмена
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={confirmDelete}
+                            disabled={!deleteAck || deleting}
+                            className="flex-1 gap-2 bg-red-500 hover:bg-red-600 text-white"
+                        >
+                            {deleting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Удалить'}
+                        </Button>
+                    </div>
                 </DialogContent>
             </Dialog>
 
