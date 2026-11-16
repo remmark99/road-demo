@@ -66,6 +66,7 @@ export default function AdminPage() {
             }
 
             setUsers(data)
+            setError(null)
         } catch (err: any) {
             setError(err.message)
         } finally {
@@ -245,7 +246,7 @@ export default function AdminPage() {
                                                 </td>
                                             </tr>
                                         ) : users.length === 0 ? (
-                                            <tr>
+                                            !error && <tr>
                                                 <td colSpan={4} className="px-6 py-8 text-center text-muted-foreground">
                                                     Нет зарегистрированных пользователей
                                                 </td>

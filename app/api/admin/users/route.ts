@@ -1,7 +1,6 @@
 import { getSupabaseUrl } from '@/lib/supabase/endpoint'
 import { NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 
 // Create a Supabase client with the Service Role Key to bypass RLS and use Admin Auth methods
@@ -24,56 +23,37 @@ const getAdminSupabase = () => {
 
 // Ensure the request is coming from an authenticated admin
 const verifyAdmin = async () => {
-    try {
-        const cookieStore = await cookies()
-        const supabase = createServerClient(
-            getSupabaseUrl(),
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            {
-                cookies: {
-                    getAll() {
-                        return cookieStore.getAll()
-                    },
-                    setAll() { },
-                },
-            }
-        )
+    const supabase = await createClient()
+    const {
+        data: { user },
+        error: authError,
+    } = await supabase.auth.getUser()
 
-        const {
-            data: { user },
-            error: authError,
-        } = await supabase.auth.getUser()
-
-        if (authError || !user) return null
-
-        const adminClient = getAdminSupabase()
-
-        // Fallback: If `profiles` table does not exist or user plays a normal role, 
-        // return null. We gracefully handle table absence by catching the error.
-        const { data: profile, error: dbError } = await adminClient
-            .from('profiles')
-            .select('role')
-            .eq('id', user.id)
-            .single()
-
-        if (dbError || profile?.role !== 'admin') {
-            return null
-        }
-
-        return user
-    } catch (error) {
-        console.error('Verify admin error:', error)
-        return null
+    if (authError && (authError.status === 0 || (authError.status ?? 0) >= 500)) throw authError
+    if (authError || !user) {
+        return NextResponse.json({ error: 'Требуется авторизация' }, { status: 401 })
     }
+
+    const adminClient = getAdminSupabase()
+    const { data: profile, error: dbError } = await adminClient
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+
+    if (dbError) throw dbError
+    if (profile?.role !== 'admin') {
+        return NextResponse.json({ error: 'Нет доступа (требуются права admin)' }, { status: 403 })
+    }
+
+    return null
 }
 
 // GET all users (profiles)
 export async function GET() {
     try {
-        const adminUser = await verifyAdmin()
-        if (!adminUser) {
-            return NextResponse.json({ error: 'Нет доступа (требуются права admin)' }, { status: 403 })
-        }
+        const denial = await verifyAdmin()
+        if (denial) return denial
 
         const adminClient = getAdminSupabase()
 
@@ -102,10 +82,8 @@ export async function GET() {
 // POST create a new user
 export async function POST(request: Request) {
     try {
-        const adminUser = await verifyAdmin()
-        if (!adminUser) {
-            return NextResponse.json({ error: 'Нет доступа (требуются права addmin)' }, { status: 403 })
-        }
+        const denial = await verifyAdmin()
+        if (denial) return denial
 
         const body = await request.json()
         const { email, password, modules, role } = body
@@ -148,10 +126,8 @@ export async function POST(request: Request) {
 // PUT update an existing user's modules and role
 export async function PUT(request: Request) {
     try {
-        const adminUser = await verifyAdmin()
-        if (!adminUser) {
-            return NextResponse.json({ error: 'Нет доступа (требуются права admin)' }, { status: 403 })
-        }
+        const denial = await verifyAdmin()
+        if (denial) return denial
 
         const body = await request.json()
         const { id, modules, role } = body
