@@ -26,7 +26,34 @@ export async function GET(request: Request) {
         )
     }
 
-    serverCache = { data: data as BusStopsGeoJSON, at: Date.now() }
+    const [inventory, cameras] = await Promise.all([
+        supabase.from('bus_stops').select('id,has_controller,ip_address').limit(10000),
+        supabase.from('cameras').select('bus_stop_id').limit(10000),
+    ])
+    if (inventory.error || cameras.error) {
+        return NextResponse.json({ error: 'Equipment inventory unavailable' }, { status: 503 })
+    }
+    const controllers = new Map((inventory.data ?? []).map(stop => [stop.id, stop.has_controller === true || Boolean(stop.ip_address?.trim())]))
+    const cameraCounts = new Map<number, number>()
+    for (const camera of cameras.data ?? []) {
+        if (camera.bus_stop_id != null) cameraCounts.set(camera.bus_stop_id, (cameraCounts.get(camera.bus_stop_id) ?? 0) + 1)
+    }
+    const geometry = data as BusStopsGeoJSON
+    const enriched: BusStopsGeoJSON = {
+        ...geometry,
+        features: geometry.features.map(feature => {
+            const id = feature.properties.id
+            const hasController = controllers.get(id) ?? false
+            const cameraCount = cameraCounts.get(id) ?? 0
+            return { ...feature, properties: { ...feature.properties, sensor_data: {
+                activity_status: 'unknown', sensors_online: false, cameras_online: false,
+                online_camera_count: 0, total_camera_count: cameraCount,
+                has_controller: hasController, has_equipment: hasController || cameraCount > 0,
+                is_online: false, is_partly_equipped: false,
+            } } }
+        }),
+    }
+    serverCache = { data: enriched, at: Date.now() }
 
     return NextResponse.json(serverCache.data, { headers: CACHE_HEADERS })
 }

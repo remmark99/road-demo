@@ -40,6 +40,8 @@ export interface StopActivityEntry {
     /** Stop has a controller and/or cameras attached at all. */
     has_equipment: boolean
     activity_status: StopActivityStatus
+    sensors_history_known?: boolean
+    cameras_history_known?: boolean
     last_ping_at: string | null
     last_sensor_at: string | null
     /**
@@ -96,7 +98,7 @@ export function isFresh(
     if (!timestamp) return false
     const parsed = Date.parse(timestamp)
     if (Number.isNaN(parsed)) return false
-    return now - parsed <= freshnessMs
+    return parsed <= now && now - parsed <= freshnessMs
 }
 
 /** Любое состояние тревоги, кроме «норма», считается отклонением. */
@@ -105,7 +107,7 @@ export function isDeviation(alarm: string | null | undefined): boolean {
 }
 
 export const ACTIVITY_STATUS_LABELS: Record<StopActivityStatus, string> = {
-    unknown: 'Нет истории',
+    unknown: 'Нет данных',
     active: 'Активна',
     partial: 'Частично активна',
     inactive: 'Неактивна',
@@ -136,6 +138,7 @@ export interface BusStopStatusRow {
     id: number
     controller_status?: string | null
     last_ping_at?: string | null
+    last_ok_at?: string | null
     ip_address?: string | null
     /** Контроллер смонтирован; собственный адрес может быть ещё не выдан. */
     has_controller?: boolean | null
@@ -161,6 +164,7 @@ export interface BuildStopActivityInput {
     cameraRows: CameraStatusRow[]
     /** Rows of `equipment_state`; empty when the monitor is not deployed. */
     equipmentRows?: EquipmentStatusRow[]
+    controllerOutageIds?: number[]
     windowMs?: number
     now?: number
 }
@@ -174,6 +178,7 @@ export function buildStopActivity({
     sensorRows,
     cameraRows,
     equipmentRows,
+    controllerOutageIds = [],
     windowMs = STOP_ACTIVITY_FRESHNESS_MS,
     now = Date.now(),
 }: BuildStopActivityInput): Record<string, StopActivityEntry> {
@@ -228,9 +233,9 @@ export function buildStopActivity({
         const lastPingAt = stop.last_ping_at ?? null
         const lastSensorAt = latestSensorAt.get(stop.id) ?? null
 
-        const controllerOnline = stop.controller_status === 'online' && isFresh(lastPingAt, windowMs, now)
-        const sensorsOnline = monitoredOnline(monitored.controllers, stop.id)
-            ?? (controllerOnline || isFresh(lastSensorAt, windowMs, now))
+        const sensorsOnline = !controllerOutageIds.includes(stop.id)
+            && isFresh(stop.last_ok_at, windowMs, now)
+            && (monitoredOnline(monitored.controllers, stop.id) ?? true)
 
         const onlineCameraCount = onlineCameras.get(stop.id) ?? 0
         const totalCameraCount = totalCameras.get(stop.id) ?? 0
@@ -242,6 +247,7 @@ export function buildStopActivity({
         // а на controller_status — тем более: в схеме у него DEFAULT 'offline',
         // поэтому он непустой у всех строк, включая остановки без контроллера.
         const hasController = stop.has_controller === true
+            || isFresh(stop.last_ok_at, Number.MAX_SAFE_INTEGER, now)
             || Boolean(stop.ip_address?.trim())
             || lastSensorAt !== null
             || monitored.controllers.has(stop.id)

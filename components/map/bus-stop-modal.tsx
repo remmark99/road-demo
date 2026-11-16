@@ -76,8 +76,9 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
     const [realAlerts, setRealAlerts] = useState<ControllerAlert[]>([])
     const [loading, setLoading] = useState(false)
 
+    const busStopId = busStop?.id
     useEffect(() => {
-        if (!busStop || historicalAt) {
+        if (busStopId == null || historicalAt) {
             setRealReadings([])
             setRealAlerts([])
             return
@@ -91,8 +92,8 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
         async function loadData() {
             try {
                 const [readings, alertsResult] = await Promise.all([
-                    fetchLatestMeasurements(busStop?.id),
-                    fetchControllerAlerts({ busStopId: busStop?.id, limit: 10 }),
+                    fetchLatestMeasurements(busStopId),
+                    fetchControllerAlerts({ busStopId, limit: 10 }),
                 ])
                 if (isMounted) {
                     setRealReadings(readings)
@@ -109,13 +110,13 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
 
         const unsubscribe = subscribeMeasurements(() => {
             loadData()
-        }, busStop.id)
+        }, busStopId)
 
         return () => {
             isMounted = false
             unsubscribe()
         }
-    }, [busStop, historicalAt])
+    }, [busStopId, historicalAt])
 
     if (!busStop) return null
 
@@ -127,7 +128,7 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
         </DialogContent>
     </Dialog>
 
-    // Determine equipment presence and online status based strictly on real readings & database status
+    // Показания определяют наличие оборудования, сервер — состояние связи.
     // На остановке два датчика: разбитие стекла и температура + влажность.
     const climate = realReadings.find((r) => r.element === CLIMATE_ELEMENT)
     const glass = realReadings.find((r) => r.element === GLASS_BREAK_ELEMENT)
@@ -142,14 +143,13 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
             r.glassBreakAlarm !== null
     )
 
-    // Датчики считаются рабочими, если контроллер прислал свежие показания;
-    // камеры — если хотя бы одна привязанная к остановке камера в сети.
-    const sensorsOnline = hasRealReadings || Boolean(busStop.sensor_data?.sensors_online)
+    // Связь определяет сервер; сохранённые показания не отменяют offline.
+    const sensorsOnline = Boolean(busStop.sensor_data?.sensors_online)
     const camerasOnline = Boolean(busStop.sensor_data?.cameras_online)
     const onlineCameraCount = busStop.sensor_data?.online_camera_count ?? 0
     // Учётка «только датчики»: без камер, статус — только по контроллеру
     const sensorsOnlyView = busStop.sensor_data?.sensors_only === true
-    const activityStatus = sensorsOnlyView
+    const activityStatus = !busStop.sensor_data || busStop.sensor_data.activity_status === 'unknown' ? 'unknown' : sensorsOnlyView
         ? (sensorsOnline ? "active" : "inactive")
         : resolveActivityStatus(sensorsOnline, camerasOnline)
     const hasEquipment = hasRealReadings || cameras.length > 0 || camerasOnline || Boolean(busStop.sensor_data?.has_equipment)
@@ -190,7 +190,7 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                     </DialogTitle>
                     <DialogDescription className="flex items-center gap-2">
                         {busStop.address || busStop.description || "Нет адреса"}
-                        {!hasEquipment ? (
+                        {!hasEquipment && activityStatus !== "unknown" ? (
                             <Badge variant="secondary" className="ml-auto text-blue-500 bg-blue-500/10 border-blue-500/20">
                                 Без оборудования
                             </Badge>
@@ -204,7 +204,7 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                             </Badge>
                         ) : (
                             <Badge variant="secondary" className="ml-auto">
-                                <WifiOff className="h-3 w-3 mr-1" /> {ACTIVITY_STATUS_LABELS.inactive}
+                                <WifiOff className="h-3 w-3 mr-1" /> {ACTIVITY_STATUS_LABELS[activityStatus]}
                             </Badge>
                         )}
                     </DialogDescription>
@@ -236,7 +236,7 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                     </TabsContent>
                     <TabsContent value="sensors">
                 <div className="py-4">
-                    {!hasEquipment ? (
+                    {!hasEquipment && activityStatus !== "unknown" ? (
                         <div className="flex flex-col items-center justify-center p-8 text-center bg-muted/50 rounded-lg border border-dashed">
                             <BusFront className="h-10 w-10 text-muted-foreground mb-3 opacity-50" />
                             <p className="text-muted-foreground font-medium">Оборудование не установлено</p>
@@ -249,10 +249,10 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                             {/* Какие именно источники дают остановке её статус */}
                             <div className="flex flex-wrap gap-2 text-xs">
                                 <span className={`px-2 py-1 rounded-md border ${sensorsOnline ? "text-green-500 border-green-500/30 bg-green-500/10" : "text-muted-foreground border-border bg-muted/50"}`}>
-                                    Датчики: {sensorsOnline ? "в сети" : "не в сети"}
+                                    Датчики: {activityStatus === "unknown" ? "нет данных" : sensorsOnline ? "в сети" : "не в сети"}
                                 </span>
                                 {!sensorsOnlyView && <span className={`px-2 py-1 rounded-md border ${camerasOnline ? "text-green-500 border-green-500/30 bg-green-500/10" : "text-muted-foreground border-border bg-muted/50"}`}>
-                                    Камеры: {camerasOnline ? `в сети (${onlineCameraCount})` : "не в сети"}
+                                    Камеры: {activityStatus === "unknown" ? "нет данных" : camerasOnline ? `в сети (${onlineCameraCount})` : "не в сети"}
                                 </span>}
                             </div>
 
@@ -282,20 +282,26 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                 </div>
                             )}
 
+                            {!sensorsOnline && (temperature !== undefined || humidity !== undefined) && (
+                                <p className="text-xs text-muted-foreground">
+                                    Последние известные показания, не текущая телеметрия.
+                                    {busStop.sensor_data?.last_sensor_at && ` Обновлено: ${new Date(busStop.sensor_data.last_sensor_at).toLocaleString("ru-RU")}`}
+                                </p>
+                            )}
                             {/* Sensor Grid */}
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
                                     <Thermometer className="h-5 w-5 text-sky-500 mb-2" />
                                     <div className="text-xs text-muted-foreground">Температура</div>
                                     <div className="font-medium mt-0.5">
-                                        {sensorsOnline && temperature !== undefined ? `${temperature.toFixed(1)}°C` : '—'}
+                                        {temperature !== undefined ? `${temperature.toFixed(1)}°C` : '—'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
                                     <Droplets className="h-5 w-5 text-blue-400 mb-2" />
                                     <div className="text-xs text-muted-foreground">Влажность</div>
                                     <div className="font-medium mt-0.5">
-                                        {sensorsOnline && humidity !== undefined ? `${humidity.toFixed(1)}%` : '—'}
+                                        {humidity !== undefined ? `${humidity.toFixed(1)}%` : '—'}
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">
