@@ -286,3 +286,14 @@ test('DELETE reports a target-profile lookup outage as a server error without de
     assert.equal(response.body.error, 'Target lookup unavailable')
     assert.deepEqual(api.deletes, [])
 })
+
+test('DELETE refuses the signed-in account when the stored profile row is the caller under any encoding', async () => {
+    // Defence in depth: the guard compares the row actually returned by the
+    // database, so relaxing the request-id canonicalisation cannot drop it.
+    const api = route({ target: { id: SELF_ID.toUpperCase(), role: 'user' }, elevatedCount: 2 })
+    const response = await api.DELETE(api.writeRequest(OTHER_ID))
+    assert.equal(response.status, 403)
+    assert.equal(response.body.error, 'Нельзя удалить собственную учётную запись')
+    assert.deepEqual(api.deletes, [])
+    assert.equal(api.calls.writes, 0)
+})
