@@ -2,10 +2,19 @@ const test = require('node:test')
 const assert = require('node:assert/strict')
 const fs = require('node:fs'), path = require('node:path'), ts = require('typescript')
 
+// profiles.id is a uuid. Postgres matches a uuid column without regard to case or
+// hyphenation, so fixtures are canonical and the mock resolves rows the same way.
+const SELF_ID = 'a1b2c3d4-1111-4111-8111-111111111111'
+const OTHER_ID = 'b1c2d3e4-2222-4222-8222-222222222222'
+const ELEVATED_ID = 'c1d2e3f4-3333-4333-8333-333333333333'
+const UNKNOWN_ID = 'd1e2f3a4-4444-4444-8444-444444444444'
+const canonical = value => String(value).replace(/[{}-]/g, '').toLowerCase()
+
 // Exercise the real route, shared server client and cookie-option helper; only
 // framework boundaries and Supabase's network/database transport are mocked.
-function route({ authenticated = true, role = 'admin', authError = null, profileError = null } = {}) {
+function route({ authenticated = true, role = 'admin', authError = null, profileError = null, target = null, targetId = OTHER_ID, targetError = null, elevatedCount = 2, deleteError = null } = {}) {
     const calls = { getUser: 0, profileIds: [], lists: 0, bodies: 0, writes: 0 }
+    const deletes = []
     const env = {
         SUPABASE_INTERNAL_URL: 'http://vector125-supabase:8000',
         NEXT_PUBLIC_SUPABASE_COOKIE_NAME: 'sb-vector125-auth-token',
@@ -13,17 +22,41 @@ function route({ authenticated = true, role = 'admin', authError = null, profile
         SUPABASE_SERVICE_ROLE_KEY: 'test-service',
     }
     const cookies = authenticated ? [{ name: env.NEXT_PUBLIC_SUPABASE_COOKIE_NAME, value: 'test-session' }] : []
+    // A uuid column matches the same value in any encoding; a missing row is null
+    // for maybeSingle() and a PGRST116 error for single().
+    const resolve = value => {
+        if (canonical(value) === canonical(SELF_ID)) {
+            return { data: role === null ? null : { id: SELF_ID, role }, error: profileError }
+        }
+        return { data: target ? { id: value, ...target } : null, error: targetError }
+    }
     const service = { from(table) {
         assert.equal(table, 'profiles')
+        let lastId = null
         const query = {
             select() { return query },
-            eq(key, id) { assert.equal(key, 'id'); calls.profileIds.push(id); return query },
-            async single() { return { data: role === null ? null : { role }, error: profileError } },
-            async order() { calls.lists++; return { data: [{ id: 'verified-user', email: 'admin@example.test', role: 'admin' }], error: null } },
+            eq(key, value) {
+                if (key === 'id') { lastId = value; calls.profileIds.push(value) }
+                else if (key !== 'role') throw new Error(`Unexpected filter: ${key}`)
+                return query
+            },
+            async maybeSingle() { return resolve(lastId) },
+            async single() {
+                return resolve(lastId) || {
+                    data: null,
+                    error: { code: 'PGRST116', message: 'JSON object requested, multiple (or no) rows returned' },
+                }
+            },
+            async order() { calls.lists++; return { data: [{ id: SELF_ID, email: 'admin@example.test', role: 'admin' }], error: null } },
             update() { calls.writes++; throw new Error('Unexpected profile write') },
+            delete() { calls.writes++; throw new Error('Unexpected profile delete') },
+            then(resolve) { resolve({ count: elevatedCount, data: null, error: null }) },
         }
         return query
-    }, auth: { admin: { createUser() { calls.writes++; throw new Error('Unexpected account write') } } } }
+    }, auth: { admin: {
+        async deleteUser(id) { deletes.push(id); return { data: deleteError ? null : { user: { id } }, error: deleteError } },
+        createUser() { calls.writes++; throw new Error('Unexpected account write') },
+    } } }
     const mocks = {
         'next/server': { NextResponse: { json: (body, options = {}) => ({ status: 200, body, ...options }) } },
         'next/headers': { cookies: async () => ({ getAll: () => cookies, set() {} }) },
@@ -35,7 +68,7 @@ function route({ authenticated = true, role = 'admin', authError = null, profile
                     calls.getUser++
                     const name = options.cookieOptions?.name || 'sb-vector125-supabase-auth-token'
                     const hasSession = options.cookies.getAll().some(cookie => cookie.name === name)
-                    return { data: { user: hasSession ? { id: 'verified-user' } : null }, error: authError }
+                    return { data: { user: hasSession ? { id: SELF_ID } : null }, error: authError }
                 },
                 getSession() { throw new Error('Must verify identity using getUser') },
             } }
@@ -60,8 +93,10 @@ function route({ authenticated = true, role = 'admin', authError = null, profile
         return module.exports
     }
     return {
-        ...load('app/api/admin/users/route.ts'), calls,
+        ...load('app/api/admin/users/route.ts'), calls, deletes,
         request: { async json() { calls.bodies++; throw new Error('Stopped after authorization; no write requested') } },
+        writeRequest: (id) => ({ url: 'http://localhost/api/admin/users', async json() { calls.bodies++; return { id } } }),
+        queryRequest: (id) => ({ url: `http://localhost/api/admin/users?id=${encodeURIComponent(id)}`, async json() { calls.bodies++; throw new Error('No request body') } }),
     }
 }
 
@@ -71,7 +106,7 @@ test('GET accepts a server-verified admin session stored under the configured cu
     assert.equal(response.status, 200)
     assert.equal(response.body[0].email, 'admin@example.test')
     assert.equal(api.calls.getUser, 1)
-    assert.deepEqual(api.calls.profileIds, ['verified-user'])
+    assert.deepEqual(api.calls.profileIds, [SELF_ID])
     assert.equal(api.calls.lists, 1)
 })
 
@@ -84,7 +119,7 @@ for (const method of ['GET', 'POST', 'PUT']) {
     test(`${method} forbids a verified non-admin before listing users or processing writes`, async () => {
         const api = route({ role: 'user' })
         assert.equal((await api[method](api.request)).status, 403)
-        assert.deepEqual(api.calls, { getUser: 1, profileIds: ['verified-user'], lists: 0, bodies: 0, writes: 0 })
+        assert.deepEqual(api.calls, { getUser: 1, profileIds: [SELF_ID], lists: 0, bodies: 0, writes: 0 })
     })
 }
 
@@ -125,6 +160,140 @@ for (const method of ['POST', 'PUT']) {
         const response = await api[method](api.request)
         assert.equal(response.status, 500)
         assert.match(response.body.error, /Stopped after authorization/)
-        assert.deepEqual(api.calls, { getUser: 1, profileIds: ['verified-user'], lists: 0, bodies: 1, writes: 0 })
+        assert.deepEqual(api.calls, { getUser: 1, profileIds: [SELF_ID], lists: 0, bodies: 1, writes: 0 })
     })
 }
+
+test('DELETE rejects anonymous requests with 401 before parsing a target id', async () => {
+    const api = route({ authenticated: false })
+    const response = await api.DELETE(api.writeRequest(OTHER_ID))
+    assert.equal(response.status, 401)
+    assert.deepEqual(api.calls, { getUser: 1, profileIds: [], lists: 0, bodies: 0, writes: 0 })
+    assert.deepEqual(api.deletes, [])
+})
+
+test('DELETE forbids a verified non-admin before parsing a target id', async () => {
+    const api = route({ role: 'user' })
+    const response = await api.DELETE(api.writeRequest(OTHER_ID))
+    assert.equal(response.status, 403)
+    assert.deepEqual(api.calls, { getUser: 1, profileIds: [SELF_ID], lists: 0, bodies: 0, writes: 0 })
+    assert.deepEqual(api.deletes, [])
+})
+
+test('DELETE preserves the missing-session 401 classification', async () => {
+    const api = route({ authenticated: false, authError: { name: 'AuthSessionMissingError', message: 'Auth session missing!', status: 400 } })
+    const response = await api.DELETE(api.writeRequest(OTHER_ID))
+    assert.equal(response.status, 401)
+    assert.deepEqual(api.deletes, [])
+})
+
+test('DELETE requires a target id and answers 400 in Russian without deleting', async () => {
+    const api = route()
+    const response = await api.DELETE(api.writeRequest(undefined))
+    assert.equal(response.status, 400)
+    assert.match(response.body.error, /идентификатор/)
+    assert.deepEqual(api.deletes, [])
+    assert.equal(api.calls.writes, 0)
+})
+
+test('DELETE refuses to delete the signed-in admin own account before touching any profile', async () => {
+    const api = route()
+    const response = await api.DELETE(api.writeRequest(SELF_ID))
+    assert.equal(response.status, 403)
+    assert.deepEqual(api.calls.profileIds, [SELF_ID])
+    assert.deepEqual(api.deletes, [])
+    assert.equal(api.calls.writes, 0)
+})
+
+test('DELETE refuses to delete the last remaining administrator', async () => {
+    const api = route({ target: { role: 'admin' }, targetId: ELEVATED_ID, elevatedCount: 1 })
+    const response = await api.DELETE(api.writeRequest(ELEVATED_ID))
+    assert.equal(response.status, 409)
+    assert.deepEqual(api.deletes, [])
+    assert.equal(api.calls.writes, 0)
+})
+
+test('DELETE answers 404 for an unknown target without deleting', async () => {
+    const api = route({ target: null, targetId: UNKNOWN_ID })
+    const response = await api.DELETE(api.writeRequest(UNKNOWN_ID))
+    assert.equal(response.status, 404)
+    assert.deepEqual(api.deletes, [])
+    assert.equal(api.calls.writes, 0)
+})
+
+test('DELETE removes another user exactly once, without listing users or writing profiles', async () => {
+    const api = route({ target: { role: 'user' }, targetId: OTHER_ID, elevatedCount: 2 })
+    const response = await api.DELETE(api.writeRequest(OTHER_ID))
+    assert.equal(response.status, 200)
+    assert.deepEqual(api.deletes, [OTHER_ID])
+    assert.equal(api.calls.lists, 0)
+    assert.equal(api.calls.writes, 0)
+})
+
+test('DELETE accepts the target id from a query parameter', async () => {
+    const api = route({ target: { role: 'user' }, targetId: OTHER_ID, elevatedCount: 2 })
+    const response = await api.DELETE(api.queryRequest(OTHER_ID))
+    assert.equal(response.status, 200)
+    assert.deepEqual(api.deletes, [OTHER_ID])
+})
+
+test('DELETE reports a profile lookup outage as a server error without deleting', async () => {
+    const api = route({ profileError: { message: 'Profiles unavailable', code: '42P01' } })
+    const response = await api.DELETE(api.writeRequest(OTHER_ID))
+    assert.equal(response.status, 500)
+    assert.equal(response.body.error, 'Profiles unavailable')
+    assert.deepEqual(api.deletes, [])
+})
+
+test('DELETE maps an auth deletion failure carrying a client status to 400', async () => {
+    const api = route({ target: { role: 'user' }, targetId: OTHER_ID, elevatedCount: 2, deleteError: { message: 'User not found', status: 404 } })
+    const response = await api.DELETE(api.writeRequest(OTHER_ID))
+    assert.equal(response.status, 400)
+    assert.equal(response.body.error, 'User not found')
+    assert.deepEqual(api.deletes, [OTHER_ID])
+})
+
+test('DELETE reports an auth deletion failure without a client status as a server error', async () => {
+    const api = route({ target: { role: 'user' }, targetId: OTHER_ID, elevatedCount: 2, deleteError: { message: 'Auth unavailable' } })
+    const response = await api.DELETE(api.writeRequest(OTHER_ID))
+    assert.equal(response.status, 500)
+    assert.equal(response.body.error, 'Auth unavailable')
+    assert.deepEqual(api.deletes, [OTHER_ID])
+})
+
+test('DELETE rejects a target id that is not a uuid without deleting', async () => {
+    const api = route({ target: { role: 'user' }, elevatedCount: 2 })
+    const response = await api.DELETE(api.writeRequest('not-a-uuid'))
+    assert.equal(response.status, 400)
+    assert.equal(response.body.error, 'Некорректный идентификатор пользователя')
+    assert.deepEqual(api.deletes, [])
+    assert.equal(api.calls.writes, 0)
+})
+
+test('DELETE refuses the signed-in account even when the same uuid is sent in a different case', async () => {
+    const api = route()
+    const response = await api.DELETE(api.writeRequest(SELF_ID.toUpperCase()))
+    assert.equal(response.status, 403)
+    assert.equal(response.body.error, 'Нельзя удалить собственную учётную запись')
+    assert.deepEqual(api.deletes, [])
+    assert.equal(api.calls.writes, 0)
+})
+
+test('DELETE reports a target-profile lookup outage as a server error without deleting', async () => {
+    const api = route({ target: null, targetError: { message: 'Target lookup unavailable', code: '42P01' } })
+    const response = await api.DELETE(api.writeRequest(OTHER_ID))
+    assert.equal(response.status, 500)
+    assert.equal(response.body.error, 'Target lookup unavailable')
+    assert.deepEqual(api.deletes, [])
+})
+
+test('DELETE refuses the signed-in account when the stored profile row is the caller under any encoding', async () => {
+    // Defence in depth: the guard compares the row actually returned by the
+    // database, so relaxing the request-id canonicalisation cannot drop it.
+    const api = route({ target: { id: SELF_ID.toUpperCase(), role: 'user' }, elevatedCount: 2 })
+    const response = await api.DELETE(api.writeRequest(OTHER_ID))
+    assert.equal(response.status, 403)
+    assert.equal(response.body.error, 'Нельзя удалить собственную учётную запись')
+    assert.deepEqual(api.deletes, [])
+    assert.equal(api.calls.writes, 0)
+})
