@@ -777,7 +777,7 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
                   ${props.name || 'Остановка'}
                 </div>
                 ${props.address ? `<div class="text-muted-foreground text-xs">${props.address}</div>` : ''}
-                <div class="text-muted-foreground text-xs mt-1">${props.has_equipment === false ? 'Без оборудования' : props.sensors_only ? (props.sensors_history_known === false ? 'Нет истории датчиков' : props.sensors_online ? 'Датчики в сети' : 'Датчики не в сети') : `${ACTIVITY_STATUS_LABELS[props.activity_status as StopActivityStatus] ?? 'Неактивна'} — ${props.sensors_history_known === false ? 'нет истории датчиков' : props.sensors_online ? 'датчики в сети' : 'датчики не в сети'}, ${props.cameras_history_known === false ? 'нет истории камер' : props.cameras_online ? `камеры в сети (${props.online_camera_count})` : 'камеры не в сети'}`}</div>
+                <div class="text-muted-foreground text-xs mt-1">${props.activity_status === 'unknown' ? 'Нет данных' : props.has_equipment === false ? 'Без оборудования' : props.sensors_only ? (props.sensors_history_known === false ? 'Нет истории датчиков' : props.sensors_online ? 'Датчики в сети' : 'Датчики не в сети') : `${ACTIVITY_STATUS_LABELS[props.activity_status as StopActivityStatus] ?? 'Неактивна'} — ${props.sensors_history_known === false ? 'нет истории датчиков' : props.sensors_online ? 'датчики в сети' : 'датчики не в сети'}, ${props.cameras_history_known === false ? 'нет истории камер' : props.cameras_online ? `камеры в сети (${props.online_camera_count})` : 'камеры не в сети'}`}</div>
               </div>`
               )
               .addTo(map.current!)
@@ -2881,7 +2881,10 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
       <BusStopModal
         key={selectedBusStop?.id ?? "closed"}
         historicalAt={historySnapshot?.at}
-        busStop={selectedBusStop}
+        busStop={selectedBusStop && {
+          ...selectedBusStop,
+          sensor_data: busStopsData?.features.find(feature => feature.properties.id === selectedBusStop.id)?.properties.sensor_data ?? selectedBusStop.sensor_data,
+        }}
         cameras={cameras.filter(camera => camera.busStopId === selectedBusStop?.id)}
         onClose={() => { setSelectedBusStop(null); setSelectedCamera(null) }}
       />

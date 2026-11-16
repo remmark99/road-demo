@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 
 import {
-    STOP_ACTIVITY_FRESHNESS_MS,
     buildStopActivity,
     type BusStopStatusRow,
     type CameraStatusRow,
@@ -11,66 +10,53 @@ import {
 import type { EquipmentStatusRow } from '@/lib/equipment-status'
 import { getAuthenticatedUser, jsonError } from '@/lib/notifications/http'
 import { createClient } from '@/lib/supabase/server'
+import { createNotificationAdminClient } from '@/lib/notifications/admin'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-const MISSING_COLUMN = '42703'
-
 // Карту опрашивают все открытые вкладки каждые несколько секунд. Один общий
-// результат на короткое окно снимает с БД повторные 4 запроса на каждый опрос,
+// результат на короткое окно снимает с БД повторные запросы на каждый опрос,
 // а свежесть при этом остаётся в пределах тика поллера датчиков (~2–3 с).
 const SHARED_CACHE_MS = 2000
 let sharedCache: { at: number; body: StopActivityResponse } | null = null
 let inflight: Promise<StopActivityResponse> | null = null
 
-function freshnessMs() {
-    const raw = Number(process.env.STOP_ACTIVITY_FRESHNESS_MINUTES)
-    return Number.isFinite(raw) && raw > 0 ? raw * 60 * 1000 : STOP_ACTIVITY_FRESHNESS_MS
+async function freshnessMs() {
+    const admin = createNotificationAdminClient()
+    // Env-only startup value, published by monitor itself; not an editable override.
+    const { data, error } = await admin.from('pipeline_settings_agents')
+        .select('applied')
+        .eq('service', 'equipment-monitor')
+        .order('synced_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    if (error) throw new Error('Controller heartbeat TTL unavailable')
+    const raw = (data?.applied as { equipment_stale_sec?: unknown } | null)?.equipment_stale_sec
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+        throw new Error('Controller heartbeat TTL missing or invalid')
+    }
+    return raw * 1000
 }
 
-/**
- * `has_controller` arrives with sql/stop_equipment_flag_migration.sql, and
- * `controller_status` / `last_ping_at` / `ip_address` are written by the external
- * controller worker — both may be absent on older deployments, so drop the
- * missing columns rather than blanking the map.
- */
+/** Missing heartbeat schema is unavailable data, never proof of an outage. */
 async function loadBusStops(supabase: Awaited<ReturnType<typeof createClient>>): Promise<BusStopStatusRow[]> {
     const { data, error } = await supabase
         .from('bus_stops')
-        .select('id,controller_status,last_ping_at,ip_address,has_controller')
+        .select('id,controller_status,last_ping_at,last_ok_at,ip_address,has_controller')
         .limit(10000)
 
     if (!error) return (data ?? []) as BusStopStatusRow[]
 
-    if (error.code !== MISSING_COLUMN) {
-        console.error('Error fetching bus stop controller status:', error)
-        return []
-    }
-
-    console.warn('bus_stops is missing has_controller, falling back to ip_address')
-    const legacy = await supabase
-        .from('bus_stops')
-        .select('id,controller_status,last_ping_at,ip_address')
-        .limit(10000)
-
-    if (!legacy.error) return (legacy.data ?? []) as BusStopStatusRow[]
-
-    if (legacy.error.code === MISSING_COLUMN) {
-        console.warn('bus_stops is missing controller columns, falling back to ids only')
-        const fallback = await supabase.from('bus_stops').select('id').limit(10000)
-        if (!fallback.error) return (fallback.data ?? []) as BusStopStatusRow[]
-    }
-
-    console.error('Error fetching bus stop controller status:', legacy.error)
-    return []
+    console.error('Error fetching bus stop controller status:', error)
+    throw new Error('Controller heartbeat unavailable')
 }
 
 async function buildBody(): Promise<StopActivityResponse> {
     const supabase = await createClient()
-    const windowMs = freshnessMs()
+    const windowMs = await freshnessMs()
 
-    const [busStops, sensorStates, cameras, equipment] = await Promise.all([
+    const [busStops, sensorStates, cameras, equipment, outages] = await Promise.all([
         loadBusStops(supabase),
         supabase
             .from('stop_sensor_states')
@@ -79,11 +65,12 @@ async function buildBody(): Promise<StopActivityResponse> {
         supabase.from('cameras').select('camera_index,bus_stop_id,status').limit(10000),
         // Тот же статус, что на вкладке «Оборудование».
         supabase.from('equipment_state').select('equipment_type,equipment_id,status').limit(10000),
+        supabase.from('equipment_outages').select('equipment_id').eq('equipment_type', 'controller').is('ended_at', null).limit(10000),
     ])
 
-    if (sensorStates.error) console.error('Error fetching sensor states:', sensorStates.error)
-    if (cameras.error) console.error('Error fetching cameras:', cameras.error)
-    if (equipment.error) console.warn('equipment_state unavailable, falling back to legacy status:', equipment.error.message)
+    if (sensorStates.error) throw new Error('Sensor state unavailable')
+    if (cameras.error) throw new Error('Camera connectivity unavailable')
+    if (equipment.error || outages.error) throw new Error('Equipment connectivity unavailable')
 
     return {
         freshnessMs: windowMs,
@@ -92,6 +79,7 @@ async function buildBody(): Promise<StopActivityResponse> {
             sensorRows: (sensorStates.data ?? []) as SensorStateRow[],
             cameraRows: (cameras.data ?? []) as CameraStatusRow[],
             equipmentRows: (equipment.data ?? []) as EquipmentStatusRow[],
+            controllerOutageIds: (outages.data ?? []).map(row => row.equipment_id),
             windowMs,
         }),
     }
@@ -116,7 +104,11 @@ export async function GET() {
             })
             .finally(() => { inflight = null })
     }
-    const body = await inflight
-
-    return NextResponse.json(body, { headers: { 'Cache-Control': 'no-store' } })
+    try {
+        const body = await inflight
+        return NextResponse.json(body, { headers: { 'Cache-Control': 'no-store' } })
+    } catch (error) {
+        console.error('Stop activity unavailable:', error)
+        return jsonError('Статус оборудования временно недоступен', 503)
+    }
 }

@@ -58,8 +58,8 @@ export interface BusStopsGeoJSON {
     }[]
 }
 
-const OFFLINE_SENSOR_DATA: BusStopSensorData = {
-    activity_status: 'inactive',
+const UNKNOWN_SENSOR_DATA: BusStopSensorData = {
+    activity_status: 'unknown',
     sensors_online: false,
     cameras_online: false,
     online_camera_count: 0,
@@ -74,14 +74,21 @@ const OFFLINE_SENSOR_DATA: BusStopSensorData = {
 
 
 
-export function toSensorData(entry: StopActivityEntry | undefined): BusStopSensorData {
-    if (!entry) return { ...OFFLINE_SENSOR_DATA }
+export function toSensorData(entry: StopActivityEntry | undefined, fallback?: BusStopSensorData): BusStopSensorData {
+    if (!entry) return {
+        ...UNKNOWN_SENSOR_DATA,
+        has_controller: fallback?.has_controller ?? false,
+        has_equipment: fallback?.has_equipment ?? false,
+        total_camera_count: fallback?.total_camera_count ?? 0,
+    }
 
     const status = entry.activity_status
         ?? resolveActivityStatus(entry.sensors_online, entry.cameras_online)
 
     return {
         activity_status: status,
+        sensors_history_known: entry.sensors_history_known,
+        cameras_history_known: entry.cameras_history_known,
         sensors_online: entry.sensors_online,
         cameras_online: entry.cameras_online,
         online_camera_count: entry.online_camera_count,
@@ -109,7 +116,7 @@ export function toSensorsOnlyStops(geoJSON: BusStopsGeoJSON): BusStopsGeoJSON {
             .filter(feature => feature.properties.sensor_data?.has_controller === true)
             .map(feature => {
                 const sd = feature.properties.sensor_data!
-                const status = sd.sensors_history_known === false ? 'unknown' : sd.sensors_online ? 'active' : 'inactive'
+                const status = sd.activity_status === 'unknown' || sd.sensors_history_known === false ? 'unknown' : sd.sensors_online ? 'active' : 'inactive'
                 return {
                     ...feature,
                     properties: {
@@ -156,7 +163,7 @@ export async function fetchBusStopsGeoJSON(): Promise<BusStopsGeoJSON> {
                 ...feature,
                 properties: {
                     ...feature.properties,
-                    sensor_data: toSensorData(activity.stops[String(feature.properties.id)]),
+                    sensor_data: toSensorData(activity.stops[String(feature.properties.id)], feature.properties.sensor_data),
                 },
             })),
         }
