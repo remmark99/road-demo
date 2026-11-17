@@ -362,7 +362,9 @@ export async function GET(request: Request) {
     }
 
     try {
+        const started = Date.now()
         const payload = await buildPayload(from, to)
+        console.info(`stop-load-analytics built in ${Date.now() - started} ms`)
         responseCache.set(cacheKey, {
             expiresAt: Date.now() + CACHE_TTL_MS,
             payload,

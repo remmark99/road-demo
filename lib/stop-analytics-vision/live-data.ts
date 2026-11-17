@@ -9,6 +9,7 @@ import { fetchEquipmentState } from "@/lib/api/equipment"
 import { fetchStopSafetyAlerts } from "@/lib/api/alerts"
 import { fetchStopLoadAnalytics } from "@/lib/api/stop-load-analytics"
 import { getStopComplexByLocationId } from "@/lib/stop-analytics-config"
+import { analyticsClimateChunks } from "@/lib/stop-analytics-vision/chunks"
 import type { StopConditionsResponse } from "@/lib/stop-conditions"
 import {
     DAY,
@@ -31,8 +32,6 @@ import {
 const HISTORY_DAYS = 62
 /** Климат и загруженность — за 31 день (столько отдают их API за раз). */
 const SERIES_DAYS = 31
-/** Шаг запросов климата: при 8 днях сервер отдаёт почасовые срезы. */
-const CLIMATE_CHUNK_DAYS = 8
 /** Показание климата описывает момент, если оно не старше двух часов. */
 const CLIMATE_MAX_AGE = 2 * HOUR
 /** Отключения нескольких остановок, начавшиеся в пределах 5 минут, считаем аварией на сети. */
@@ -57,10 +56,7 @@ async function fetchClimate(now: number) {
     const climate = new Map<number, ClimatePoint[]>()
     const glass = new Map<number, number[]>()
     let thresholds: StopConditionsResponse["thresholds"] | null = null
-    const chunks: [number, number][] = []
-    for (let to = now; to > now - SERIES_DAYS * DAY; to -= CLIMATE_CHUNK_DAYS * DAY) {
-        chunks.push([Math.max(to - CLIMATE_CHUNK_DAYS * DAY, now - SERIES_DAYS * DAY), to])
-    }
+    const chunks = analyticsClimateChunks(now)
     const responses = await Promise.all(chunks.map(async ([from, to]) => {
         const params = new URLSearchParams({ from: new Date(from).toISOString(), to: new Date(to).toISOString() })
         const response = await fetch(`/api/stop-conditions?${params}`, { cache: "no-store", signal: AbortSignal.timeout(120_000) })
@@ -168,7 +164,7 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
             supabase.from("alerts").select("id,alert_type,camera_index,metadata").eq("alert_type", "bin_full")
                 .gte("timestamp", new Date(historyFrom - 30 * DAY).toISOString()).order("id").range(a, b)),
         fetchClimate(now),
-        fetchStopLoadAnalytics({ from: new Date(now - SERIES_DAYS * DAY), to: new Date(now) }),
+        fetchStopLoadAnalytics({ from: new Date(Math.floor((now - SERIES_DAYS * DAY) / 300_000) * 300_000), to: new Date(Math.floor(now / 300_000) * 300_000) }),
     ])
 
     // Камера → остановка: и номер из справочника, и номер VMS, которым пишутся события.
