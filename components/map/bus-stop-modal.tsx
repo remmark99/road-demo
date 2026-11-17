@@ -146,8 +146,8 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt, outdoorT
             r.glassBreakAlarm !== null
     )
 
-    // Связь определяется сервером, сохранённые измерения её не подтверждают.
-    const sensorsOnline = busStop.sensor_data?.sensors_online === true
+    // Связь определяет сервер; сохранённые показания не отменяют offline.
+    const sensorsOnline = Boolean(busStop.sensor_data?.sensors_online)
     const camerasOnline = Boolean(busStop.sensor_data?.cameras_online)
     const onlineCameraCount = busStop.sensor_data?.online_camera_count ?? 0
     // Учётка «только датчики»: без камер, статус — только по контроллеру

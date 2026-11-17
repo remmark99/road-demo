@@ -67,7 +67,7 @@ test('map shares outdoor sample with modal; readout preserves historical measure
   assert.match(map, /fetch\("\/api\/sokol-temperature"/)
   const modal = fs.readFileSync(path.join(__dirname, '../components/map/bus-stop-modal.tsx'), 'utf8')
   assert.match(modal, /indoor=\{sensorsOnline && !historicalAt \? temperature : undefined\}/)
-  assert.match(modal, /const sensorsOnline = busStop.sensor_data\?\.sensors_online === true/)
+  assert.match(modal, /const sensorsOnline = Boolean\(busStop.sensor_data\?\.sensors_online\)/)
   assert.match(modal, /measuredAt=\{climate\?\.temperatureUpdatedAt\}/)
   assert.match(modal, /<PavilionTemperatureDelta/)
 })
