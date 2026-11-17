@@ -2683,7 +2683,6 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
         <Checkbox id="stop-conditions" checked={showStopConditions} onCheckedChange={(checked) => setShowStopConditions(!!checked)} />
         <Label htmlFor="stop-conditions" className="text-sm cursor-pointer font-medium">Показать на карте</Label>
       </div>
-      <div className="text-xs text-muted-foreground">Температура, влажность и целостность стекла. Урны и события видеоаналитики — инциденты.</div>
       {showStopConditions && (
         <div className="space-y-1 text-xs text-muted-foreground">
           {conditionError ? <div className="text-destructive">{conditionError}</div> : !conditionHistory ? <div>Загрузка…</div> : (
