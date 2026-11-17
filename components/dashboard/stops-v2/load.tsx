@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react"
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
-import { CalendarClock, Clock3, GitCompareArrows, Grid3X3, Trophy, UserPlus, Users2 } from "lucide-react"
+import { CalendarClock, ChevronLeft, ChevronRight, Clock3, GitCompareArrows, Grid3X3, Plus, Trophy, UserPlus, Users2, X } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 import { Button } from "@/components/ui/button"
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
@@ -57,7 +59,12 @@ function hourRange(hour: number) {
 export function StopsLoad() {
     const scope = useScope()
     const [side, setSide] = useState<"top" | "bottom">("top")
-    const [picked, setPicked] = useState<Set<number> | null>(null)
+    // Сравнение: до пяти любых остановок, по умолчанию три самые загруженные.
+    const [picked, setPicked] = useState<number[] | null>(null)
+    // Тепловая карта по страницам: 15 остановок за раз, а не все в одном полотне.
+    const [heatPage, setHeatPage] = useState(0)
+    const [addOpen, setAddOpen] = useState(false)
+    const [addQuery, setAddQuery] = useState("")
 
     const data = useMemo(() => {
         const { stops, from, to } = scope
@@ -124,15 +131,20 @@ export function StopsLoad() {
         { key: "peak", header: "Пик, чел.", align: "right", cell: (row) => fmtInt(row.peak), value: (row) => row.peak },
         { key: "hour", header: "Самый загруженный час", align: "right", cell: (row) => row.avg > 0 ? `${String(busiestHour(row)).padStart(2, "0")}:00` : "—", value: (row) => busiestHour(row) },
     ]
-    const chosen = picked ?? new Set(candidates.slice(0, 3).map((row) => row.stop.id))
+    const byId = new Map(data.perStop.map((row) => [row.stop.id, row]))
+    const chosenIds = (picked ?? candidates.slice(0, 3).map((row) => row.stop.id)).filter((id) => byId.has(id))
+    const chosenRows = chosenIds.map((id) => byId.get(id)!)
     const compareRows = Array.from({ length: 24 }, (_, hour) => {
         const row: Record<string, number | string> = { hour: String(hour).padStart(2, "0") }
-        candidates.forEach((item) => { if (chosen.has(item.stop.id)) row[`s${item.stop.id}`] = Number(item.byHour[hour].toFixed(1)) })
+        chosenRows.forEach((item) => { row[`s${item.stop.id}`] = Number(item.byHour[hour].toFixed(1)) })
         return row
     })
     const compareConfig = Object.fromEntries(
-        candidates.map((item, index) => [`s${item.stop.id}`, { label: item.stop.name, color: COMPARE_COLORS[index] }]),
+        chosenRows.map((item, index) => [`s${item.stop.id}`, { label: item.stop.name, color: COMPARE_COLORS[index] }]),
     ) satisfies ChartConfig
+    const addMatches = data.sorted
+        .filter((row) => !chosenIds.includes(row.stop.id))
+        .filter((row) => !addQuery.trim() || `${row.stop.name} ${row.stop.code} ${districtName(row.stop.districtId)}`.toLowerCase().includes(addQuery.trim().toLowerCase()))
 
     const rankSource = side === "top" ? data.sorted.slice(0, 10) : data.sorted.slice(-10).reverse()
     const ranking: RankRow[] = rankSource.map((row) => ({
@@ -150,18 +162,17 @@ export function StopsLoad() {
     }))
 
     const busiest = data.sorted[0]
-    const heatRows = data.sorted.slice(0, 12).map((row) => ({
+    const HEAT_PAGE = 15
+    const heatPages = Math.max(1, Math.ceil(data.sorted.length / HEAT_PAGE))
+    const heatPageSafe = Math.min(heatPage, heatPages - 1)
+    const heatRows = data.sorted.slice(heatPageSafe * HEAT_PAGE, (heatPageSafe + 1) * HEAT_PAGE).map((row) => ({
         key: row.stop.name,
         label: <StopLink stop={row.stop} sub={`в среднем ${fmtNum(row.avg)} чел.`} />,
         values: row.byHour,
     }))
 
-    const togglePick = (stopId: number) => {
-        const next = new Set(chosen)
-        if (next.has(stopId)) next.delete(stopId)
-        else next.add(stopId)
-        setPicked(next)
-    }
+    const removePick = (stopId: number) => setPicked(chosenIds.filter((id) => id !== stopId))
+    const addPick = (stopId: number) => { setPicked([...chosenIds, stopId].slice(-COMPARE_COLORS.length)); setAddOpen(false); setAddQuery("") }
 
     return (
         <SectionShell title="Загруженность">
@@ -217,7 +228,18 @@ export function StopsLoad() {
                 </ChartCard>
             </div>
 
-            <ChartCard title="Когда загружена каждая остановка?" icon={Grid3X3} iconClassName="text-sky-500" hint="Двенадцать самых загруженных остановок. Строка открывает карточку остановки.">
+            <ChartCard
+                title="Когда загружена каждая остановка?"
+                icon={Grid3X3}
+                iconClassName="text-sky-500"
+                action={
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span>{heatPageSafe * HEAT_PAGE + 1}–{Math.min((heatPageSafe + 1) * HEAT_PAGE, data.sorted.length)} из {data.sorted.length}</span>
+                        <Button variant="outline" size="icon" className="h-7 w-7" disabled={heatPageSafe === 0} onClick={() => setHeatPage(heatPageSafe - 1)} aria-label="Предыдущие остановки"><ChevronLeft className="h-4 w-4" /></Button>
+                        <Button variant="outline" size="icon" className="h-7 w-7" disabled={heatPageSafe >= heatPages - 1} onClick={() => setHeatPage(heatPageSafe + 1)} aria-label="Следующие остановки"><ChevronRight className="h-4 w-4" /></Button>
+                    </div>
+                }
+            >
                 <HourHeatmap rows={heatRows} unit="чел. в среднем" digits={0} labelWidth="12rem" />
             </ChartCard>
 
@@ -230,23 +252,40 @@ export function StopsLoad() {
                     hint="Людей на остановке по часам суток. Включайте и выключайте остановки кнопками."
                     action={
                         <div className="flex flex-wrap gap-1.5">
-                            {candidates.map((item, index) => {
-                                const on = chosen.has(item.stop.id)
-                                return (
-                                    <Button
-                                        key={item.stop.id}
-                                        type="button"
-                                        variant="outline"
-                                        size="sm"
-                                        aria-pressed={on}
-                                        className={cn("h-7 gap-1.5 px-2 text-xs font-normal", on ? "border-primary/40 bg-primary/10" : "text-muted-foreground opacity-70")}
-                                        onClick={() => togglePick(item.stop.id)}
-                                    >
-                                        <span className="h-2 w-2 rounded-[2px]" style={{ backgroundColor: COMPARE_COLORS[index] }} />
-                                        {item.stop.name}
-                                    </Button>
-                                )
-                            })}
+                            {chosenRows.map((item, index) => (
+                                <Button
+                                    key={item.stop.id}
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 gap-1.5 border-primary/40 bg-primary/10 px-2 text-xs font-normal"
+                                    onClick={() => removePick(item.stop.id)}
+                                    title="Убрать из сравнения"
+                                >
+                                    <span className="h-2 w-2 rounded-[2px]" style={{ backgroundColor: COMPARE_COLORS[index] }} />
+                                    {item.stop.name}
+                                    <X className="h-3 w-3 opacity-60" />
+                                </Button>
+                            ))}
+                            {chosenRows.length < COMPARE_COLORS.length && (
+                                <Popover open={addOpen} onOpenChange={setAddOpen}>
+                                    <PopoverTrigger asChild>
+                                        <Button type="button" variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs"><Plus className="h-3 w-3" />Остановка</Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-80 p-2" align="end">
+                                        <Input autoFocus value={addQuery} onChange={(event) => setAddQuery(event.target.value)} placeholder="Название, номер или микрорайон" aria-label="Добавить остановку в сравнение" />
+                                        <div className="mt-2 max-h-72 space-y-0.5 overflow-auto">
+                                            {addMatches.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">Ничего не найдено</p>}
+                                            {addMatches.map((row) => (
+                                                <button key={row.stop.id} type="button" className="flex w-full flex-col rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent" onClick={() => addPick(row.stop.id)}>
+                                                    <span className="font-medium">{row.stop.name}</span>
+                                                    <span className="text-xs text-muted-foreground">№ {row.stop.code} · {districtName(row.stop.districtId)} · в среднем {fmtNum(row.avg)} чел.</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </PopoverContent>
+                                </Popover>
+                            )}
                         </div>
                     }
                 >
@@ -257,7 +296,7 @@ export function StopsLoad() {
                             <YAxis tickLine={false} axisLine={false} tickMargin={8} width={28} />
                             <ChartTooltip content={<ChartTooltipContent />} />
                             <ChartLegend content={<ChartLegendContent />} />
-                            {candidates.filter((item) => chosen.has(item.stop.id)).map((item) => (
+                            {chosenRows.map((item) => (
                                 <Line key={item.stop.id} dataKey={`s${item.stop.id}`} stroke={`var(--color-s${item.stop.id})`} strokeWidth={2} dot={false} type="monotone" isAnimationActive={false} />
                             ))}
                         </LineChart>
