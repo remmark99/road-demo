@@ -8,7 +8,7 @@ import { notificationPeriodBounds, buildCameraPlaces, filteredCameraIndexes } fr
 import { cameraEventSheet, sensorEventSheet } from '@/lib/exports/notification-events'
 import { createXlsx } from '@/lib/exports/xlsx'
 import { ALERT_TYPE_CONFIG, type LyingPersonEpisode } from '@/lib/api/alerts'
-import { ALARM_CONFIG, controllerAlertMessage, expandCategoryFilter, type ControllerAlert } from '@/lib/api/controller-alerts'
+import { ALARM_CONFIG, controllerAlertMessage, expandCategoryFilter, isControllerLinkAlert, type ControllerAlert } from '@/lib/api/controller-alerts'
 import type { Alert, Camera } from '@/lib/types'
 
 export const runtime='nodejs'
@@ -76,7 +76,9 @@ export async function GET(request:NextRequest){
     if(categories.length)q=q.in('category',expandCategoryFilter(categories))
     return q
    })
-   sheet=sensorEventSheet(rows,a=>{const place=stopNames.get(a.bus_stop_id??-1);if(!place)throw new Error(`Для события датчика ${a.id} не найдено место остановки №${a.bus_stop_id}. Заполните справочник.`);return place},a=>controllerAlertMessage(a),alarm=>ALARM_CONFIG[alarm]?.label||'Зафиксировано')
+   // Место — как в ленте: остановка из справочника, иначе её номер; массовое отключение
+   // контроллеров («Несколько остановок») не привязано к одной остановке и не должно ронять выгрузку.
+   sheet=sensorEventSheet(rows,a=>{const place=stopNames.get(a.bus_stop_id??-1);if(place)return place;if(a.bus_stop_id!=null)return `Остановка № ${a.bus_stop_id}`;return isControllerLinkAlert(a)?'Несколько остановок':'Остановка не указана'},a=>controllerAlertMessage(a),alarm=>ALARM_CONFIG[alarm]?.label||'Зафиксировано')
   }
   const day=(v:string)=>v.split('-').reverse().join('.')
   const period=from&&to?`с ${day(from)} по ${day(to)}`:from?`с ${day(from)}`:to?`по ${day(to)}`:'за всё время'
