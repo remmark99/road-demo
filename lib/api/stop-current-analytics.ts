@@ -132,7 +132,7 @@ function compareLocationId(a: string, b: string) {
 export const UNKNOWN_DISTRICT = "Район не определен"
 
 /** Индекс камеры на VMS: в cameras остановочные камеры лежат под camera_index + 10000. */
-function toVmsCameraIndex(cameraIndex: number) {
+export function toVmsCameraIndex(cameraIndex: number) {
     return cameraIndex >= STOP_CAMERA_INDEX_OFFSET ? cameraIndex - STOP_CAMERA_INDEX_OFFSET : cameraIndex
 }
 

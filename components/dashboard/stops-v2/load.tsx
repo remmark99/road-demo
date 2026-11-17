@@ -79,7 +79,7 @@ export function StopsLoad() {
                 sum += value
                 hours += 1
                 if (top > peak) peak = top
-                if (top > stop.capacity) overloadHours += 1
+                if (stop.capacity !== null && top > stop.capacity) overloadHours += 1
                 hourSum[hour] += value
                 hourCount[hour] += 1
                 matrixSum[dow][hour] += value
@@ -130,7 +130,7 @@ export function StopsLoad() {
     const overloadRanking: RankRow[] = data.overloaded.slice(0, 8).map((row) => ({
         id: row.stop.id,
         stop: row.stop,
-        sub: `пик ${fmtInt(row.peak)} чел. · вместимость ${row.stop.capacity}`,
+        sub: `пик ${fmtInt(row.peak)} чел.${row.stop.capacity !== null ? ` · вместимость ${row.stop.capacity}` : ""}`,
         parts: [row.overloadHours],
         valueText: `${fmtInt(row.overloadHours)} ч`,
     }))
