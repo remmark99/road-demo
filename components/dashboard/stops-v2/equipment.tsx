@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from "react"
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
-import { Activity, Camera, Cctv, CircleHelp, Gauge, ListX, TimerReset, Unplug, Wrench } from "lucide-react"
+import { Activity, Camera, Cctv, CircleHelp, Download, Gauge, ListX, TimerReset, Unplug, Wrench } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { isLiveVisionData } from "@/lib/mock/stop-analytics-vision-data"
 
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { Label } from "@/components/ui/label"
@@ -149,14 +151,25 @@ export function StopsEquipment() {
         <SectionShell
             title="Оборудование"
             filters={
-                <Segmented<VDeviceType>
-                    value={device}
-                    onChange={setDevice}
-                    options={[
-                        { value: "camera", label: "Камеры" },
-                        { value: "controller", label: "Датчики" },
-                    ]}
-                />
+                <>
+                    <Segmented<VDeviceType>
+                        value={device}
+                        onChange={setDevice}
+                        options={[
+                            { value: "camera", label: "Камеры" },
+                            { value: "controller", label: "Датчики" },
+                        ]}
+                    />
+                    {isLiveVisionData() && (
+                        <Button asChild variant="outline" size="sm" className="h-9 gap-2">
+                            {/* Статусы — на момент нажатия, отключения — за выбранный период. */}
+                            <a href={`/api/equipment/status-report?from=${new Date(scope.from).toISOString()}&to=${new Date(scope.to).toISOString()}`} download>
+                                <Download className="h-4 w-4" />
+                                Скачать Excel
+                            </a>
+                        </Button>
+                    )}
+                </>
             }
         >
             <Insight>
