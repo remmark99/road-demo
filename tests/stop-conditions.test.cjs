@@ -10,28 +10,35 @@ function load(file) {
 }
 const { stopConditionAt, resolveThresholds, climateSampleHours, DEFAULT_CONDITION_THRESHOLDS: norms } = load('lib/stop-conditions.ts')
 const H = 3_600_000, T = Date.parse('2026-11-10T12:30:00Z')
-const series = (over = {}) => ({ climate: [[T - 30 * 60_000, 18, 50]], bins: [], incidents: [], ...over })
+const series = (over = {}) => ({ climate: [[T - 30 * 60_000, 18, 50]], incidents: [], ...over })
 
-test('all four criteria in norm give green, one violation orange, two or more red', () => {
-  assert.equal(stopConditionAt(series(), norms, T, { hasCameras: true }).level, 'ok')
-  const hot = stopConditionAt(series({ climate: [[T - 60_000, 35, 50]] }), norms, T, { hasCameras: true })
+test('state is sensors only: temperature, humidity, glass; one violation orange, two or more red', () => {
+  assert.equal(stopConditionAt(series(), norms, T).level, 'ok')
+  const hot = stopConditionAt(series({ climate: [[T - 60_000, 35, 50]] }), norms, T)
   assert.deepEqual([hot.level, hot.issues], ['warn', ['Температура вне нормы']])
-  const bad = stopConditionAt(series({ climate: [[T - 60_000, 35, 90]], bins: [[T - H, null]], incidents: [T - 10 * 60_000] }), norms, T, { hasCameras: true })
-  assert.deepEqual([bad.level, bad.issues], ['bad', ['Температура вне нормы', 'Влажность вне нормы', 'Урна переполнена', 'Инцидент']])
+  const bad = stopConditionAt(series({ climate: [[T - 60_000, 35, 90]], incidents: [T - 10 * 60_000] }), norms, T)
+  assert.deepEqual([bad.level, bad.issues], ['bad', ['Температура вне нормы', 'Влажность вне нормы', 'Стекло: сработал датчик']])
 })
 
-test('history is judged at the slider moment: closed bins, old incidents and future data do not count', () => {
-  const s = series({ climate: [[T - 2 * H, 18, 50], [T + 10 * 60_000, 40, 50]], bins: [[T - 3 * H, T - H], [T + H, null]], incidents: [T - 2 * H, T + 60_000] })
-  const at = stopConditionAt(s, norms, T, { hasCameras: true })
+test('bins and cameras no longer affect the state: a stop with cameras only has no data', () => {
+  const s = { climate: [], bins: [[T - H, null]], incidents: [] }
+  assert.equal(stopConditionAt(s, norms, T, { hasCameras: true }).level, 'unknown')
+  assert.equal(stopConditionAt(undefined, norms, T, { hasCameras: true }).level, 'unknown')
+})
+
+test('history is judged at the slider moment: old glass alarms and future data do not count', () => {
+  const s = series({ climate: [[T - 2 * H, 18, 50], [T + 10 * 60_000, 40, 50]], incidents: [T - 2 * H, T + 60_000] })
+  const at = stopConditionAt(s, norms, T)
   assert.deepEqual([at.level, at.temperature], ['ok', 18])
-  assert.equal(stopConditionAt(s, norms, T - 2 * H, { hasCameras: true }).level, 'bad')
+  assert.equal(stopConditionAt(s, norms, T - 2 * H).level, 'warn')
 })
 
 test('missing data is grey, not green; stale climate older than two hours is ignored', () => {
-  assert.equal(stopConditionAt(undefined, norms, T, { hasCameras: false }).level, 'unknown')
-  const stale = stopConditionAt(series({ climate: [[T - 3 * H, 40, 99]] }), norms, T, { hasCameras: false })
+  assert.equal(stopConditionAt(undefined, norms, T).level, 'unknown')
+  const stale = stopConditionAt(series({ climate: [[T - 3 * H, 40, 99]] }), norms, T)
   assert.deepEqual([stale.level, stale.temperature], ['unknown', null])
-  assert.equal(stopConditionAt(undefined, norms, T, { hasCameras: true }).level, 'ok')
+  const glassOnly = stopConditionAt({ climate: [], incidents: [T - 5 * 60_000] }, norms, T)
+  assert.deepEqual([glassOnly.level, glassOnly.issues], ['warn', ['Стекло: сработал датчик']])
 })
 
 test('a switched-off metric is not judged', () => {

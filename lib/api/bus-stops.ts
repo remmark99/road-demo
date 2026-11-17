@@ -29,8 +29,12 @@ export interface BusStopSensorData {
     temperature_in?: number
     temperature_out?: number
     humidity?: number
-    /** Что-то отклонилось от нормы; причина не уточняется. */
+    /** Инцидент: тревога стекла или переполненная урна. */
     incident?: boolean
+    /** Инцидент только по датчику стекла. */
+    glass_incident?: boolean
+    /** Открыт эпизод переполнения урны. */
+    bin_full?: boolean
     /** Отфильтрованный статус датчика стекла (см. StopActivityEntry.glass_status). */
     glass_status?: GlassSensorStatus | null
     /** Статус посчитан только по датчикам (учётка подрядчика, см. toSensorsOnlyStops). */
@@ -100,6 +104,8 @@ export function toSensorData(entry: StopActivityEntry | undefined, fallback?: Bu
         last_ping_at: entry.last_ping_at,
         last_sensor_at: entry.last_sensor_at,
         incident: entry.incident,
+        glass_incident: entry.glass_incident,
+        bin_full: entry.bin_full,
         glass_status: entry.glass_status ?? null,
     }
 }
@@ -130,6 +136,9 @@ export function toSensorsOnlyStops(geoJSON: BusStopsGeoJSON): BusStopsGeoJSON {
                             total_camera_count: 0,
                             is_online: status === 'active',
                             is_partly_equipped: false,
+                            // Урну видят камеры: в режиме «только датчики» инцидент — только стекло.
+                            incident: sd.glass_incident ?? sd.incident,
+                            bin_full: false,
                             sensors_only: true,
                         },
                     },
