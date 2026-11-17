@@ -94,8 +94,8 @@ function MapPageContent() {
             {hasModule('stops') && <BusStopsStats onFocusStop={setFocusTarget} historySnapshot={snapshot} stopClass={stopClass} onStopClassChange={setStopClass} />}
             <Legend />
             {hasModule('stops') && !sensorsOnly && (
-              <Card className="mt-3">
-                <CardHeader className="pb-3">
+              <Card className="mt-3 gap-3">
+                <CardHeader className="pb-0">
                   <CardTitle className="text-base flex items-center gap-2">
                     <Thermometer className="h-4 w-4" />
                     Состояние остановок
