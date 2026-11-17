@@ -2,10 +2,12 @@
  * Слой «Состояние остановок» на карте: зелёный — всё в норме, оранжевый — одно
  * нарушение, красный — два и больше, серый — данных нет.
  *
- * Критерии: температура и влажность в пределах норм из настроек анализа,
- * урна не переполнена, за последний час не было событий безопасности и
- * разбития стекла. Всё считается на выбранный момент слайдера, поэтому модуль
- * чистый и работает в браузере на заранее загруженной истории.
+ * Критерии — только датчики остановки: температура и влажность в пределах норм
+ * из настроек анализа и целостность стекла (за последний час не было
+ * срабатывания датчика стекла). Переполненная урна и события видеоаналитики —
+ * инциденты, в состояние не входят. Всё считается на выбранный момент
+ * слайдера, поэтому модуль чистый и работает в браузере на заранее
+ * загруженной истории.
  */
 
 export type ConditionLevel = 'ok' | 'warn' | 'bad' | 'unknown'
@@ -34,11 +36,9 @@ export const THRESHOLD_SETTING_KEYS: Record<keyof ConditionThresholds, string> =
     humidityMax: 'sensor_humidity_max',
 }
 
-/** События безопасности, которые делают остановку «с инцидентом». */
-export const CONDITION_INCIDENT_ALERT_TYPES = ['lying_person', 'smoking', 'abandoned_object', 'dogs_without_people'] as const
 export const CONDITION_GLASS_CATEGORIES = ['incident', 'glass_break'] as const
 
-/** Сколько после события остановка считается «с инцидентом». */
+/** Сколько после срабатывания датчика стекла остановка считается со стеклом в тревоге. */
 export const INCIDENT_WINDOW_MS = 60 * 60_000
 /** Насколько старое показание климата ещё описывает момент. */
 export const CLIMATE_MAX_AGE_MS = 2 * 60 * 60_000
@@ -49,9 +49,7 @@ export type ClimatePoint = [number, number | null, number | null]
 export interface StopConditionSeries {
     /** Почасовые срезы показаний, по возрастанию времени. */
     climate: ClimatePoint[]
-    /** Эпизоды переполнения урны: [начало, конец или null, если ещё открыт]. */
-    bins: [number, number | null][]
-    /** Время событий безопасности и разбития стекла. */
+    /** Время срабатываний датчика стекла. */
     incidents: number[]
 }
 
@@ -101,7 +99,8 @@ export function stopConditionAt(
     series: StopConditionSeries | undefined,
     thresholds: ConditionThresholds,
     at: number,
-    { hasCameras }: { hasCameras: boolean },
+    // Камеры на состояние больше не влияют: параметр оставлен для совместимости вызовов.
+    _options?: { hasCameras: boolean },
 ): StopCondition {
     const issues: string[] = []
     let known = 0
@@ -117,13 +116,11 @@ export function stopConditionAt(
         known++
         if (outside(humidity, thresholds.humidityMin, thresholds.humidityMax)) issues.push('Влажность вне нормы')
     }
-    if (hasCameras) {
+    // Стекло оцениваем там, где есть контроллер: его выдают свежие показания или само срабатывание.
+    const glassAlarm = series?.incidents.some(time => time <= at && at - time < INCIDENT_WINDOW_MS) ?? false
+    if (climate || glassAlarm) {
         known++
-        if (series?.bins.some(([start, end]) => start <= at && (end === null || at < end))) issues.push('Урна переполнена')
-    }
-    if (hasCameras || climate) {
-        known++
-        if (series?.incidents.some(time => time <= at && at - time < INCIDENT_WINDOW_MS)) issues.push('Инцидент')
+        if (glassAlarm) issues.push('Стекло: сработал датчик')
     }
 
     const level: ConditionLevel = known === 0 ? 'unknown' : issues.length === 0 ? 'ok' : issues.length === 1 ? 'warn' : 'bad'

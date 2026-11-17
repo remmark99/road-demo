@@ -65,6 +65,10 @@ export interface StopActivityEntry {
      * выводится по сырому входу, как раньше.
      */
     glass_status: GlassSensorStatus | null
+    /** Открыт эпизод переполнения урны на одной из камер остановки. */
+    bin_full: boolean
+    /** Инцидент только по датчику стекла — для режима «только датчики», где камер не видно. */
+    glass_incident: boolean
 }
 
 export type GlassSensorStatus = 'normal' | 'alarm' | 'noisy' | 'stuck'
@@ -164,6 +168,8 @@ export interface BuildStopActivityInput {
     cameraRows: CameraStatusRow[]
     /** Rows of `equipment_state`; empty when the monitor is not deployed. */
     equipmentRows?: EquipmentStatusRow[]
+    /** Камеры с открытым эпизодом переполнения урны: такая остановка — с инцидентом. */
+    binFullCameraIndexes?: number[]
     controllerOutageIds?: number[]
     windowMs?: number
     now?: number
@@ -178,6 +184,7 @@ export function buildStopActivity({
     sensorRows,
     cameraRows,
     equipmentRows,
+    binFullCameraIndexes = [],
     controllerOutageIds = [],
     windowMs = STOP_ACTIVITY_FRESHNESS_MS,
     now = Date.now(),
@@ -227,6 +234,13 @@ export function buildStopActivity({
         }
     }
 
+    // Переполненная урна — инцидент остановки, как и тревога стекла.
+    const binFull = new Set<number>()
+    const binCameras = new Set(binFullCameraIndexes)
+    for (const row of cameraRows) {
+        if (row.bus_stop_id !== null && row.bus_stop_id !== undefined && row.camera_index != null && binCameras.has(row.camera_index)) binFull.add(row.bus_stop_id)
+    }
+
     const stops: Record<string, StopActivityEntry> = {}
 
     for (const stop of busStops) {
@@ -252,6 +266,10 @@ export function buildStopActivity({
             || lastSensorAt !== null
             || monitored.controllers.has(stop.id)
 
+        const glassIncident = glassStatus.has(stop.id)
+            ? glassStatus.get(stop.id) === 'alarm'
+            : incidents.has(stop.id)
+
         stops[String(stop.id)] = {
             sensors_online: sensorsOnline,
             cameras_online: camerasOnline,
@@ -262,9 +280,9 @@ export function buildStopActivity({
             activity_status: resolveActivityStatus(sensorsOnline, camerasOnline),
             last_ping_at: lastPingAt,
             last_sensor_at: lastSensorAt,
-            incident: glassStatus.has(stop.id)
-                ? glassStatus.get(stop.id) === 'alarm'
-                : incidents.has(stop.id),
+            incident: binFull.has(stop.id) || glassIncident,
+            glass_incident: glassIncident,
+            bin_full: binFull.has(stop.id),
             glass_status: glassStatus.get(stop.id) ?? null,
         }
     }

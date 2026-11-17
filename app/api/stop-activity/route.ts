@@ -56,7 +56,7 @@ async function buildBody(): Promise<StopActivityResponse> {
     const supabase = await createClient()
     const windowMs = await freshnessMs()
 
-    const [busStops, sensorStates, cameras, equipment, outages] = await Promise.all([
+    const [busStops, sensorStates, cameras, equipment, outages, binEpisodes] = await Promise.all([
         loadBusStops(supabase),
         supabase
             .from('stop_sensor_states')
@@ -66,11 +66,16 @@ async function buildBody(): Promise<StopActivityResponse> {
         // Тот же статус, что на вкладке «Оборудование».
         supabase.from('equipment_state').select('equipment_type,equipment_id,status').limit(10000),
         supabase.from('equipment_outages').select('equipment_id').eq('equipment_type', 'controller').is('ended_at', null).limit(10000),
+        // Открытые эпизоды переполнения урн: переполненная урна — инцидент остановки.
+        supabase.from('alerts').select('camera_index').eq('alert_type', 'bin_full')
+            .eq('metadata->bin_episode->>status', 'open').limit(10000),
     ])
 
     if (sensorStates.error) throw new Error('Sensor state unavailable')
     if (cameras.error) throw new Error('Camera connectivity unavailable')
     if (equipment.error || outages.error) throw new Error('Equipment connectivity unavailable')
+    // Урны дополняют инциденты; если запрос не прошёл, статусы всё равно отдаём.
+    if (binEpisodes.error) console.error('Open bin episodes unavailable:', binEpisodes.error)
 
     return {
         freshnessMs: windowMs,
@@ -80,6 +85,7 @@ async function buildBody(): Promise<StopActivityResponse> {
             cameraRows: (cameras.data ?? []) as CameraStatusRow[],
             equipmentRows: (equipment.data ?? []) as EquipmentStatusRow[],
             controllerOutageIds: (outages.data ?? []).map(row => row.equipment_id),
+            binFullCameraIndexes: (binEpisodes.data ?? []).map(row => row.camera_index).filter((index): index is number => typeof index === 'number'),
             windowMs,
         }),
     }

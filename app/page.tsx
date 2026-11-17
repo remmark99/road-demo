@@ -6,6 +6,8 @@ import { SurgutMap } from "@/components/map/surgut-map"
 import { TimelineSlider } from "@/components/map/timeline-slider"
 import { useStopHistory } from "@/lib/hooks/use-stop-history"
 import { Legend } from "@/components/map/legend"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Thermometer } from "lucide-react"
 import { BusStopsStats } from "@/components/map/bus-stops-stats"
 import { Navigation } from "@/components/navigation"
 import { useModuleAccess } from "@/components/providers/module-context"
@@ -91,6 +93,18 @@ function MapPageContent() {
           <div className="hidden md:block w-72 p-3 border-l border-border overflow-y-auto flex-shrink-0">
             {hasModule('stops') && <BusStopsStats onFocusStop={setFocusTarget} historySnapshot={snapshot} stopClass={stopClass} onStopClassChange={setStopClass} />}
             <Legend />
+            {hasModule('stops') && !sensorsOnly && (
+              <Card className="mt-3">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Thermometer className="h-4 w-4" />
+                    Состояние остановок
+                  </CardTitle>
+                </CardHeader>
+                {/* Сюда карта выводит блок «Состояние остановок» (components/map/surgut-map.tsx). */}
+                <CardContent id="stop-conditions-slot" />
+              </Card>
+            )}
           </div>
         </div>
 

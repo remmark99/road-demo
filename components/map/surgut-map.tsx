@@ -5,6 +5,7 @@ import type { OutdoorTemperature } from "@/lib/sokol-temperature"
 import { SokolTemperature } from "./sokol-temperature"
 
 import { useCallback, useEffect, useRef, useState, useMemo } from "react"
+import { createPortal } from "react-dom"
 import { historicalCameras, historicalStops, type StopHistorySnapshot } from "@/lib/stop-history"
 import { useMapPreference } from "@/lib/hooks/use-map-preference"
 import { useStopConditions } from "@/lib/hooks/use-stop-conditions"
@@ -798,6 +799,7 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
                 </div>
                 ${props.address ? `<div class="text-muted-foreground text-xs">${props.address}</div>` : ''}
                 <div class="text-muted-foreground text-xs mt-1">${props.activity_status === 'unknown' ? 'Нет данных' : props.has_equipment === false ? 'Без оборудования' : props.sensors_only ? (props.sensors_history_known === false ? 'Нет истории датчиков' : props.sensors_online ? 'Датчики в сети' : 'Датчики не в сети') : `${ACTIVITY_STATUS_LABELS[props.activity_status as StopActivityStatus] ?? 'Неактивна'} — ${props.sensors_history_known === false ? 'нет истории датчиков' : props.sensors_online ? 'датчики в сети' : 'датчики не в сети'}, ${props.cameras_history_known === false ? 'нет истории камер' : props.cameras_online ? `камеры в сети (${props.online_camera_count})` : 'камеры не в сети'}`}</div>
+                ${props.incident && props.has_equipment !== false ? `<div class="text-red-500 text-xs mt-1">${props.bin_full && props.glass_incident ? 'Урна переполнена, сработал датчик стекла' : props.bin_full ? 'Инцидент: урна переполнена' : 'Инцидент: сработал датчик стекла'}</div>` : ''}
               </div>`
               )
               .addTo(map.current!)
@@ -2668,6 +2670,39 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
     }
   }, [cameras, cameraFilters, showAllFov, stopsOnly, hoveredCamera, mapLoaded])
 
+  // Блок «Состояние остановок» живёт в правой панели страницы (слот #stop-conditions-slot),
+  // а не в «Слоях». Без слота (мобильная раскладка) остаётся в «Слоях».
+  const [stopConditionsSlot, setStopConditionsSlot] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    const slot = document.getElementById("stop-conditions-slot")
+    setStopConditionsSlot(slot && slot.offsetParent !== null ? slot : null)
+  }, [])
+  const stopConditionsBlock = !sensorsOnly && hasModule("stops") ? (
+    <div className="space-y-2">
+      <div className="flex items-center space-x-2">
+        <Checkbox id="stop-conditions" checked={showStopConditions} onCheckedChange={(checked) => setShowStopConditions(!!checked)} />
+        <Label htmlFor="stop-conditions" className="text-sm cursor-pointer font-medium">Показать на карте</Label>
+      </div>
+      <div className="text-xs text-muted-foreground">Температура, влажность и целостность стекла. Урны и события видеоаналитики — инциденты.</div>
+      {showStopConditions && (
+        <div className="space-y-1 text-xs text-muted-foreground">
+          {conditionError ? <div className="text-destructive">{conditionError}</div> : !conditionHistory ? <div>Загрузка…</div> : (
+            (["ok", "warn", "bad", "unknown"] as const).map(level => (
+              <div key={level} className="flex items-center gap-2">
+                <span className="relative flex h-4 w-4 items-center justify-center">
+                  <span className="absolute inset-0 rounded-full opacity-40 blur-[2px]" style={{ backgroundColor: level === "unknown" ? "transparent" : CONDITION_COLORS[level] }} />
+                  <span className="relative h-2.5 w-2.5 rounded-full border-[3px] bg-white" style={{ borderColor: CONDITION_COLORS[level] }} />
+                </span>
+                <span className="flex-1">{CONDITION_LABELS[level]}</span>
+                <span className="tabular-nums">{conditionCounts[level]}</span>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  ) : null
+
   return (
     <>
       <div ref={mapContainer} className="w-full h-full rounded-lg" />
@@ -2816,26 +2851,7 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
                       : "Загруженность по датчикам пассажиропотока"}
                   </div>
                 )}
-                <div className="flex items-center space-x-2">
-                  <Checkbox id="stop-conditions" checked={showStopConditions} onCheckedChange={(checked) => setShowStopConditions(!!checked)} />
-                  <Label htmlFor="stop-conditions" className="text-sm cursor-pointer font-medium">Состояние остановок</Label>
-                </div>
-                {showStopConditions && (
-                  <div className="space-y-1 pl-6 -mt-1 text-xs text-muted-foreground">
-                    {conditionError ? <div className="text-destructive">{conditionError}</div> : !conditionHistory ? <div>Загрузка…</div> : (
-                      (["ok", "warn", "bad", "unknown"] as const).map(level => (
-                        <div key={level} className="flex items-center gap-2">
-                          <span className="relative flex h-4 w-4 items-center justify-center">
-                            <span className="absolute inset-0 rounded-full opacity-40 blur-[2px]" style={{ backgroundColor: level === "unknown" ? "transparent" : CONDITION_COLORS[level] }} />
-                            <span className="relative h-2.5 w-2.5 rounded-full border-[3px] bg-white" style={{ borderColor: CONDITION_COLORS[level] }} />
-                          </span>
-                          <span className="flex-1">{CONDITION_LABELS[level]}</span>
-                          <span className="tabular-nums">{conditionCounts[level]}</span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                )}
+                {!stopConditionsSlot && stopConditionsBlock}
                 <div className="flex items-center space-x-2">
                   <Checkbox id="smart-transport-stops" checked={showSmartTransportStops} onCheckedChange={(checked) => setShowSmartTransportStops(!!checked)} />
                   <Label htmlFor="smart-transport-stops" className="text-sm cursor-pointer font-medium">Остановки «Умного транспорта»</Label>
@@ -2894,6 +2910,7 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
         </Popover>
       </div>
 
+      {stopConditionsSlot && stopConditionsBlock && createPortal(stopConditionsBlock, stopConditionsSlot)}
       <VideoModal
         camera={selectedBusStop ? null : selectedCamera}
         onClose={() => setSelectedCamera(null)}

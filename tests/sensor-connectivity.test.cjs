@@ -85,3 +85,23 @@ test('heartbeat expiry uses supplied TTL; monitor offline and open outages win',
  assert.equal(activity({ last_ok_at: at(0) }, online, { controllerOutageIds: [151] }).sensors_online, false)
  assert.equal(activity({ last_ok_at: at(0) }, online, { controllerOutageIds: [] }).sensors_online, true)
 })
+
+test('an open overfilled-bin episode makes the stop an incident; sensors-only mode keeps only the glass part', () => {
+  const now = Date.parse('2026-11-17T10:00:00Z')
+  const stops = buildStopActivity({
+    busStops: [{ id: 1, last_ok_at: new Date(now - 1000).toISOString(), has_controller: true }, { id: 2 }],
+    sensorRows: [],
+    cameraRows: [{ camera_index: 140, bus_stop_id: 1, status: 'online' }, { camera_index: 158, bus_stop_id: 2, status: 'online' }],
+    binFullCameraIndexes: [140],
+    windowMs: 60_000,
+    now,
+  })
+  assert.equal(stops['1'].incident, true)
+  assert.equal(stops['1'].bin_full, true)
+  assert.equal(stops['1'].glass_incident, false)
+  assert.equal(stops['2'].incident, false)
+  const sd = toSensorData(stops['1'])
+  assert.equal(sd.bin_full, true)
+  const only = toSensorsOnlyStops({ type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [0, 0] }, properties: { id: 1, sensor_data: sd } }] })
+  assert.equal(only.features[0].properties.sensor_data.incident, false)
+})
