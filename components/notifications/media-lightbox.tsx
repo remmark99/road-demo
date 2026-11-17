@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { ChevronLeft, ChevronRight, Download } from "lucide-react"
+import { ChevronLeft, ChevronRight, Download, Maximize2, Minimize2 } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 
@@ -21,6 +22,9 @@ interface MediaLightboxProps {
 export function MediaLightbox({ images, index, onIndexChange, onClose }: MediaLightboxProps) {
   const open = images.length > 0
   const current = images[index]
+  // Развернуть на весь экран без скачивания; закрытие окна возвращает обычный размер.
+  const [expanded, setExpanded] = useState(false)
+  useEffect(() => { if (!open) setExpanded(false) }, [open])
 
   const goPrev = useCallback(() => {
     onIndexChange((index - 1 + images.length) % images.length)
@@ -45,18 +49,18 @@ export function MediaLightbox({ images, index, onIndexChange, onClose }: MediaLi
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose() }}>
       <DialogContent
-        className="gap-0 overflow-hidden p-0 sm:max-w-3xl"
+        className={cn("gap-0 overflow-hidden p-0", expanded ? "flex h-[100dvh] w-screen max-w-none flex-col rounded-none border-0 sm:max-w-none" : "sm:max-w-3xl")}
         onClick={(event) => event.stopPropagation()}
       >
         <DialogTitle className="sr-only">{current.label}</DialogTitle>
         <DialogDescription className="sr-only">{current.alt}</DialogDescription>
 
-        <div className="relative flex min-h-[50vh] max-h-[75vh] items-center justify-center bg-black">
+        <div className={cn("relative flex items-center justify-center bg-black", expanded ? "min-h-0 flex-1" : "min-h-[50vh] max-h-[75vh]")}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={current.src}
             alt={current.alt}
-            className="max-h-[75vh] w-full object-contain"
+            className={cn("w-full object-contain", expanded ? "h-full max-h-full" : "max-h-[75vh]")}
           />
           {images.length > 1 && (
             <>
@@ -91,12 +95,18 @@ export function MediaLightbox({ images, index, onIndexChange, onClose }: MediaLi
               </div>
             )}
           </div>
+          <div className="flex shrink-0 gap-2">
+          <Button variant="outline" size="sm" onClick={() => setExpanded((value) => !value)}>
+            {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+            {expanded ? "Свернуть" : "Развернуть"}
+          </Button>
           <Button variant="outline" size="sm" asChild>
             <a href={current.src} download target="_blank" rel="noopener noreferrer">
               <Download className="h-4 w-4" />
               Скачать фото
             </a>
           </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

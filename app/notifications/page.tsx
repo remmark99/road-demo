@@ -833,7 +833,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
 
   const [selectedTypes, setSelectedTypes] = useState<string[]>(querySelectedTypes)
   const [repairShortcutSelected, setRepairShortcutSelected] = useState(false)
-  const [feedKind, setFeedKind] = useState<FeedKind>('all')
+  const [feedKind, setFeedKind] = useState<FeedKind>('events')
   const [selectedCameras, setSelectedCameras] = useState<number[]>(querySelectedCameras)
   const [cameraSearch, setCameraSearch] = useState('')
   const effectiveCameras = useMemo(() => filteredCameraIndexes(places, cameraSearch, selectedCameras), [places, cameraSearch, selectedCameras])
@@ -1031,13 +1031,13 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
     setPage(0)
     setSelectedTypes([])
     setRepairShortcutSelected(false)
-    setFeedKind('all')
+    setFeedKind('events')
     setSelectedCameras([])
     setCameraSearch('')
   }
 
   const hasFilters =
-    selectedTypes.length > 0 || repairShortcutSelected || feedKind !== 'all' || selectedCameras.length > 0 || !!cameraSearch
+    selectedTypes.length > 0 || repairShortcutSelected || feedKind !== 'events' || selectedCameras.length > 0 || !!cameraSearch
   const onlineCameras = cameras.filter((c) => c.status === "online")
   const demoAlerts = useMemo<Alert[]>(() => {
     const resolveCameraIndex = (module: DemoAlertSeed["module"]) => {
@@ -1878,7 +1878,7 @@ function getControllerAlertStopDisplay(alert: ControllerAlert, places: CameraPla
 
 function ControllerAlertsTab({ stopPlaces, period, onPeriodChange }: { stopPlaces: CameraPlace[]; period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void }) {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
-  const [feedKind, setFeedKind] = useState<FeedKind>('all')
+  const [feedKind, setFeedKind] = useState<FeedKind>('events')
   const [selectedStops, setSelectedStops] = useState<number[]>([])
   const [stopSearch, setStopSearch] = useState('')
   const effectiveStops = useMemo(() => filteredCameraIndexes(stopPlaces, stopSearch, selectedStops), [stopPlaces, stopSearch, selectedStops])
@@ -1948,14 +1948,14 @@ function ControllerAlertsTab({ stopPlaces, period, onPeriodChange }: { stopPlace
     setLoading(true)
     setPage(0)
     setSelectedCategories([])
-    setFeedKind('all')
+    setFeedKind('events')
     setSelectedStops([])
     setStopSearch('')
   }
 
   const hasFilters =
     selectedCategories.length > 0 ||
-    feedKind !== 'all' ||
+    feedKind !== 'events' ||
     selectedStops.length > 0 ||
     !!stopSearch
 

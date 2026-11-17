@@ -230,7 +230,8 @@ function getSimulatedStatusAtTime(osmId: number, time: Date): RoadStatus {
   return "dirty";
 }
 
-const MAX_PINNED_STOPS = 6
+// Одно окно за раз: новое заменяет прежнее, иначе карточки копились и накладывались друг на друга.
+const MAX_PINNED_STOPS = 1
 const SURGUT_TIME = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Yekaterinburg", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })
 
 function formatMeasure(value: number | null | undefined, unit: string) {
@@ -341,7 +342,11 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
   const [pinnedStops, setPinnedStops] = useState<number[]>([])
   const pinnedPopups = useRef(new Map<number, maplibregl.Popup>())
   const pinModeRef = useRef(false)
-  useEffect(() => { pinModeRef.current = historySnapshot !== null || showStopConditions }, [historySnapshot, showStopConditions])
+  useEffect(() => {
+    pinModeRef.current = historySnapshot !== null || showStopConditions
+    // Режим выключили — закреплённая карточка не должна оставаться на карте.
+    if (!pinModeRef.current) setPinnedStops([])
+  }, [historySnapshot, showStopConditions])
   const conditionCounts = useMemo(() => {
     const counts: Record<ConditionLevel, number> = { ok: 0, warn: 0, bad: 0, unknown: 0 }
     for (const condition of stopConditions?.values() ?? []) counts[condition.level]++
@@ -2068,7 +2073,7 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
         existing.setDOMContent(content)
         continue
       }
-      const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, closeOnMove: false, offset: 12, maxWidth: "280px", className: "pinned-stop-popup" })
+      const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, closeOnMove: false, offset: 12, maxWidth: "280px", className: "pinned-stop-popup" })
         .setLngLat(feature.geometry.coordinates)
         .setDOMContent(content)
         .addTo(instance)
@@ -2673,9 +2678,24 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
   // Блок «Состояние остановок» живёт в правой панели страницы (слот #stop-conditions-slot),
   // а не в «Слоях». Без слота (мобильная раскладка) остаётся в «Слоях».
   const [stopConditionsSlot, setStopConditionsSlot] = useState<HTMLElement | null>(null)
+  // Карточка-слот в правой панели появляется после загрузки модулей, иногда позже карты:
+  // ждём её появления, иначе галочка терялась (карточка была пустой).
   useEffect(() => {
-    const slot = document.getElementById("stop-conditions-slot")
-    setStopConditionsSlot(slot && slot.offsetParent !== null ? slot : null)
+    const find = () => {
+      const slot = document.getElementById("stop-conditions-slot")
+      return slot && slot.offsetParent !== null ? slot : null
+    }
+    const initial = find()
+    setStopConditionsSlot(initial)
+    if (initial) return
+    const observer = new MutationObserver(() => {
+      const slot = find()
+      if (!slot) return
+      setStopConditionsSlot(slot)
+      observer.disconnect()
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
   }, [])
   const stopConditionsBlock = !sensorsOnly && hasModule("stops") ? (
     <div className="space-y-2">

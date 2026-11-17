@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import { SurgutMap } from "@/components/map/surgut-map"
-import { TimelineSlider } from "@/components/map/timeline-slider"
+import { MomentPicker } from "@/components/map/moment-picker"
 import { useStopHistory } from "@/lib/hooks/use-stop-history"
 import { Legend } from "@/components/map/legend"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -85,7 +85,7 @@ function MapPageContent() {
             {/* Учётка «только датчики» видит текущий статус, без истории */}
             {!sensorsOnly && <div className="absolute bottom-8 left-4 right-4 z-10 max-w-xl">
               {historyTime && (historyError || historyLoading) && <p className="mb-1 rounded border bg-background px-2 py-1 text-xs" role="status">{historyError || 'Загрузка истории…'}</p>}
-              <TimelineSlider onTimeChange={handleTimeChange} />
+              <MomentPicker onTimeChange={handleTimeChange} />
             </div>}
           </div>
 
