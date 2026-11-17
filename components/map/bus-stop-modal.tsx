@@ -1,6 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { type OutdoorTemperature } from "@/lib/sokol-temperature"
+import { PavilionTemperatureDelta } from "./sokol-temperature"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { CameraDetails } from "./video-modal"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -35,6 +37,7 @@ export interface SelectedBusStop {
 interface BusStopModalProps {
     busStop: SelectedBusStop | null
     cameras: Camera[]
+    outdoorTemperature?: OutdoorTemperature | null
     historicalAt?: string
     onClose: () => void
 }
@@ -67,7 +70,7 @@ function formatEventTime(isoString: string | null | undefined) {
     return `${date} ${event.time}`
 }
 
-export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusStopModalProps) {
+export function BusStopModal({ busStop, cameras, onClose, historicalAt, outdoorTemperature = null }: BusStopModalProps) {
     const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null)
     const activeCamera = cameras.find(camera => camera.id === selectedCameraId)
         ?? cameras.find(camera => camera.cameraIndex === busStop?.initialCameraIndex)
@@ -143,8 +146,8 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
             r.glassBreakAlarm !== null
     )
 
-    // Связь определяет сервер; сохранённые показания не отменяют offline.
-    const sensorsOnline = Boolean(busStop.sensor_data?.sensors_online)
+    // Связь определяется сервером, сохранённые измерения её не подтверждают.
+    const sensorsOnline = busStop.sensor_data?.sensors_online === true
     const camerasOnline = Boolean(busStop.sensor_data?.cameras_online)
     const onlineCameraCount = busStop.sensor_data?.online_camera_count ?? 0
     // Учётка «только датчики»: без камер, статус — только по контроллеру
@@ -295,6 +298,9 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt }: BusSto
                                     <div className="text-xs text-muted-foreground">Температура</div>
                                     <div className="font-medium mt-0.5">
                                         {temperature !== undefined ? `${temperature.toFixed(1)}°C` : '—'}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                        <PavilionTemperatureDelta indoor={sensorsOnline && !historicalAt ? temperature : undefined} measuredAt={climate?.temperatureUpdatedAt} outdoor={outdoorTemperature} />
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">

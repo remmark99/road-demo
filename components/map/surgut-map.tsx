@@ -1,6 +1,8 @@
 "use client"
 
 import { preserveMapOverlays } from "@/lib/map-style-overlays"
+import type { OutdoorTemperature } from "@/lib/sokol-temperature"
+import { SokolTemperature } from "./sokol-temperature"
 
 import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { historicalCameras, historicalStops, type StopHistorySnapshot } from "@/lib/stop-history"
@@ -264,6 +266,24 @@ function pinnedStopContent(properties: BusStopProperties, condition: StopConditi
 }
 
 export function SurgutMap({ selectedTime, timelineRange, statusOverride, hoveredSegmentId, onHoverSegment, focusTarget, historySnapshot = null, stopClass = "all" }: SurgutMapProps) {
+
+  const [outdoorTemperature, setOutdoorTemperature] = useState<OutdoorTemperature | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    async function refresh() {
+      try {
+        const response = await fetch("/api/sokol-temperature", { signal: controller.signal, cache: "no-store" })
+        if (!response.ok) throw new Error("Temperature unavailable")
+        const reading: OutdoorTemperature = await response.json()
+        if (!controller.signal.aborted) setOutdoorTemperature(reading)
+      } catch {
+        if (!controller.signal.aborted) setOutdoorTemperature(null)
+      }
+    }
+    void refresh()
+    const timer = setInterval(refresh, 300000)
+    return () => { controller.abort(); clearInterval(timer) }
+  }, [])
 
   const lastFocusRequest = useRef<number | null>(null)
   const mapContainer = useRef<HTMLDivElement>(null)
@@ -2670,6 +2690,7 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
           </Select>
         )}
 
+        <SokolTemperature reading={outdoorTemperature} />
         <Popover>
           <PopoverTrigger asChild>
             <button
@@ -2879,6 +2900,7 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
       />
 
       <BusStopModal
+        outdoorTemperature={outdoorTemperature}
         key={selectedBusStop?.id ?? "closed"}
         historicalAt={historySnapshot?.at}
         busStop={selectedBusStop && {
