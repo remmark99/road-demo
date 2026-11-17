@@ -8,8 +8,8 @@ export const DAY = 24 * HOUR
 export const CITY_OFFSET = 5 * HOUR
 
 /** «Сейчас» демо-набора: 13.11.2026, 14:20 по Сургуту. */
-export const V_NOW = Date.UTC(2026, 10, 13, 9, 20)
-export const V_HISTORY_DAYS = 62
+export let V_NOW = Date.UTC(2026, 10, 13, 9, 20)
+export let V_HISTORY_DAYS = 62
 
 export function cityDayStart(ts: number) {
     return Math.floor((ts + CITY_OFFSET) / DAY) * DAY - CITY_OFFSET
@@ -22,7 +22,7 @@ export function cityDow(ts: number) {
     return (new Date(ts + CITY_OFFSET).getUTCDay() + 6) % 7
 }
 
-export const V_START = cityDayStart(V_NOW) - (V_HISTORY_DAYS - 1) * DAY
+export let V_START = cityDayStart(V_NOW) - (V_HISTORY_DAYS - 1) * DAY
 
 /** Нормативы. В прототипе условные: настоящие значения задаёт администрация. */
 export const V_NORMS = {
@@ -59,7 +59,7 @@ export interface VDistrict {
     cityStops: number
 }
 
-export const V_DISTRICTS: VDistrict[] = [
+export let V_DISTRICTS: VDistrict[] = [
     { id: "c", name: "Центральный", cityStops: 21 },
     { id: "10", name: "10 микрорайон", cityStops: 14 },
     { id: "20a", name: "20А микрорайон", cityStops: 9 },
@@ -70,7 +70,7 @@ export const V_DISTRICTS: VDistrict[] = [
     { id: "old", name: "Старый Сургут", cityStops: 6 },
 ]
 
-export const V_CITY_STOP_TOTAL = 436
+export let V_CITY_STOP_TOTAL = 436
 
 export interface VStop {
     id: number
@@ -79,7 +79,8 @@ export interface VStop {
     direction: string
     districtId: string
     cameras: number[]
-    capacity: number
+    /** Вместимость павильона; null — норматив администрация ещё не задала. */
+    capacity: number | null
     busy: number
     binProne: number
     safetyProne: number
@@ -136,7 +137,7 @@ const STOP_SEEDS: [string, string, Traits?][] = [
     ["ул. Просвещения", "old", { busy: 0.35 }],
 ]
 
-export const V_STOPS: VStop[] = STOP_SEEDS.map(([name, districtId, traits], index) => {
+export let V_STOPS: VStop[] = STOP_SEEDS.map(([name, districtId, traits], index) => {
     const busy = traits?.busy ?? 1
     return {
         id: 601 + index * 7,
@@ -156,9 +157,9 @@ export const V_STOPS: VStop[] = STOP_SEEDS.map(([name, districtId, traits], inde
     }
 })
 
-const STOP_BY_NAME = new Map(V_STOPS.map((stop) => [stop.name, stop]))
-const STOP_BY_ID = new Map(V_STOPS.map((stop) => [stop.id, stop]))
-const DISTRICT_BY_ID = new Map(V_DISTRICTS.map((district) => [district.id, district]))
+let STOP_BY_NAME = new Map(V_STOPS.map((stop) => [stop.name, stop]))
+let STOP_BY_ID = new Map(V_STOPS.map((stop) => [stop.id, stop]))
+let DISTRICT_BY_ID = new Map(V_DISTRICTS.map((district) => [district.id, district]))
 
 export function stopById(id: number) {
     return STOP_BY_ID.get(id)
@@ -192,8 +193,9 @@ export interface VSafetyEvent {
     at: number
     /** null — эпизод ещё не закрыт. */
     durationMin: number | null
-    camera: number
-    confidence: number
+    camera: number | null
+    /** null — уверенность модели не записана. */
+    confidence: number | null
     verdict: "confirmed" | "rejected" | "pending" | null
 }
 
@@ -282,7 +284,7 @@ function buildSafetyEvents(): VSafetyEvent[] {
     return events.sort((a, b) => b.at - a.at)
 }
 
-export const V_SAFETY = buildSafetyEvents()
+export let V_SAFETY = buildSafetyEvents()
 
 // ---------------------------------------------------------------- урны
 
@@ -331,7 +333,7 @@ function buildBinEpisodes(): VBinEpisode[] {
     return episodes.sort((a, b) => b.startAt - a.startAt)
 }
 
-export const V_BINS = buildBinEpisodes()
+export let V_BINS = buildBinEpisodes()
 
 // ---------------------------------------------------------------- оборудование
 
@@ -362,7 +364,7 @@ export interface VOutage {
     cause: VOutageCause
 }
 
-export const V_DEVICES: VDevice[] = V_STOPS.flatMap((stop) => [
+export let V_DEVICES: VDevice[] = V_STOPS.flatMap((stop) => [
     ...stop.cameras.map((camera) => ({ key: `cam-${camera}`, stopId: stop.id, type: "camera" as const, label: `Камера ${camera}` })),
     { key: `ctl-${stop.id}`, stopId: stop.id, type: "controller" as const, label: "Контроллер" },
 ])
@@ -472,16 +474,21 @@ function buildOutages(): VOutage[] {
         .map((outage, index) => ({ ...outage, id: `o${index + 1}` }))
 }
 
-export const V_OUTAGES = buildOutages()
+export let V_OUTAGES = buildOutages()
 
-const CONTROLLER_OUTAGES = new Map<number, VOutage[]>()
-const STOP_WIDE_OUTAGES = new Map<number, VOutage[]>()
-for (const outage of V_OUTAGES) {
-    if (outage.device === "controller") {
-        CONTROLLER_OUTAGES.set(outage.stopId, [...(CONTROLLER_OUTAGES.get(outage.stopId) ?? []), outage])
-        if (outage.cause !== "device") STOP_WIDE_OUTAGES.set(outage.stopId, [...(STOP_WIDE_OUTAGES.get(outage.stopId) ?? []), outage])
+let CONTROLLER_OUTAGES = new Map<number, VOutage[]>()
+let STOP_WIDE_OUTAGES = new Map<number, VOutage[]>()
+function indexOutages() {
+    CONTROLLER_OUTAGES = new Map()
+    STOP_WIDE_OUTAGES = new Map()
+    for (const outage of V_OUTAGES) {
+        if (outage.device === "controller") {
+            CONTROLLER_OUTAGES.set(outage.stopId, [...(CONTROLLER_OUTAGES.get(outage.stopId) ?? []), outage])
+            if (outage.cause !== "device") STOP_WIDE_OUTAGES.set(outage.stopId, [...(STOP_WIDE_OUTAGES.get(outage.stopId) ?? []), outage])
+        }
     }
 }
+indexOutages()
 
 function covered(list: VOutage[] | undefined, ts: number) {
     if (!list) return false
@@ -557,6 +564,7 @@ export interface VClimate {
 }
 
 export function climateAt(stop: VStop, ts: number): VClimate {
+    if (live) return live.climateAt(stop, ts)
     if (stop.sensorFault === "silent" && ts > V_NOW - 20 * DAY) return { temp: null, humidity: null }
     if (stop.sensorFault === "empty" && ts > V_NOW - 27 * DAY) return { temp: null, humidity: null }
     if (covered(CONTROLLER_OUTAGES.get(stop.id), ts)) return { temp: null, humidity: null }
@@ -586,6 +594,7 @@ const WEEKEND_PROFILE = [0.08, 0.05, 0.03, 0.02, 0.03, 0.08, 0.2, 0.4, 0.6, 0.8,
 
 /** Среднее число людей на остановке за час, начинающийся в ts. */
 export function loadAt(stop: VStop, ts: number) {
+    if (live) return live.loadAt(stop, ts)
     const profile = cityDow(ts) >= 5 ? WEEKEND_PROFILE : WEEKDAY_PROFILE
     const hourIndex = Math.floor(ts / HOUR)
     return 3.1 * stop.busy * profile[cityHour(ts)] * (0.75 + 0.5 * hash2(stop.id, hourIndex + 17))
@@ -593,6 +602,7 @@ export function loadAt(stop: VStop, ts: number) {
 
 /** Наибольшее число людей на остановке за тот же час. */
 export function peakAt(stop: VStop, ts: number) {
+    if (live) return live.peakAt(stop, ts)
     const hourIndex = Math.floor(ts / HOUR)
     return Math.round(loadAt(stop, ts) * (1.3 + 0.5 * hash2(stop.id + 1, hourIndex)))
 }
@@ -646,3 +656,51 @@ export function overlapMs(aFrom: number, aTo: number, from: number, to: number) 
     return Math.max(0, Math.min(aTo, to) - Math.max(aFrom, from))
 }
 export const DOW_LABELS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"]
+
+// ---------------------------------------------------------------- живые данные
+
+/**
+ * Набор данных из базы. Пока он не установлен, модуль отдаёт детерминированные демо-данные
+ * (страница прототипа). Вкладка «Аналитика» ставит живой набор до первого рисования разделов.
+ */
+export interface VisionDataset {
+    now: number
+    historyDays: number
+    districts: VDistrict[]
+    cityStopTotal: number
+    stops: VStop[]
+    safety: VSafetyEvent[]
+    bins: VBinEpisode[]
+    devices: VDevice[]
+    outages: VOutage[]
+    norms: Partial<typeof V_NORMS>
+    climateAt: (stop: VStop, ts: number) => VClimate
+    loadAt: (stop: VStop, ts: number) => number
+    peakAt: (stop: VStop, ts: number) => number
+}
+
+let live: VisionDataset | null = null
+
+/** Есть ли у остановки живые показания загруженности или климата — для пустых состояний. */
+export function isLiveVisionData() {
+    return live !== null
+}
+
+export function installVisionDataset(dataset: VisionDataset) {
+    live = dataset
+    V_NOW = dataset.now
+    V_HISTORY_DAYS = dataset.historyDays
+    V_START = cityDayStart(V_NOW) - (V_HISTORY_DAYS - 1) * DAY
+    Object.assign(V_NORMS, dataset.norms)
+    V_DISTRICTS = dataset.districts
+    V_CITY_STOP_TOTAL = dataset.cityStopTotal
+    V_STOPS = dataset.stops
+    V_SAFETY = dataset.safety.slice().sort((a, b) => b.at - a.at)
+    V_BINS = dataset.bins.slice().sort((a, b) => b.startAt - a.startAt)
+    V_DEVICES = dataset.devices
+    V_OUTAGES = dataset.outages
+    STOP_BY_NAME = new Map(V_STOPS.map((stop) => [stop.name, stop]))
+    STOP_BY_ID = new Map(V_STOPS.map((stop) => [stop.id, stop]))
+    DISTRICT_BY_ID = new Map(V_DISTRICTS.map((district) => [district.id, district]))
+    indexOutages()
+}

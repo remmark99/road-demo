@@ -154,8 +154,8 @@ export function StopsSafety() {
             cell: (event) => event.durationMin === null ? <StatusBadge tone="high">не закрыт</StatusBadge> : `${event.durationMin} мин`,
             value: (event) => event.durationMin ?? 9999,
         },
-        { key: "confidence", header: "Уверенность", align: "right", cell: (event) => `${Math.round(event.confidence * 100)} %`, value: (event) => Math.round(event.confidence * 100) },
-        { key: "camera", header: "Камера", align: "right", cell: (event) => event.camera, value: (event) => event.camera },
+        { key: "confidence", header: "Уверенность", align: "right", cell: (event) => event.confidence === null ? "—" : `${Math.round(event.confidence * 100)} %`, value: (event) => event.confidence === null ? -1 : Math.round(event.confidence * 100) },
+        { key: "camera", header: "Камера", align: "right", cell: (event) => event.camera ?? "—", value: (event) => event.camera ?? -1 },
         {
             key: "open",
             header: "Уведомления",

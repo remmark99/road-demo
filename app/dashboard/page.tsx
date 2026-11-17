@@ -18,7 +18,6 @@ import {
   Map,
   Users2,
   ShieldAlert,
-  ClipboardCheck,
   AlertCircle,
   ShieldCheck,
   LifeBuoy,
@@ -26,7 +25,7 @@ import {
   Trash2,
   Route,
   DoorClosed,
-  Gauge,
+  LayoutDashboard,
   ChevronRight,
   type LucideIcon,
 } from "lucide-react"
@@ -37,17 +36,10 @@ import { useModuleAccess } from "@/components/providers/module-context"
 import { GlossaryDialog } from "@/components/dashboard/glossary-dialog"
 
 import { Skeleton } from "@/components/ui/skeleton"
+import type { VisionView } from "@/components/dashboard/stops-v2/kit"
 
-const PassengerAnalytics = dynamic(() => import("@/components/dashboard/passenger-analytics").then(m => m.PassengerAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const StopCurrentLoadAnalytics = dynamic(() => import("@/components/dashboard/stop-current-load-analytics").then(m => m.StopCurrentLoadAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const StopDistrictCurrentAnalytics = dynamic(() => import("@/components/dashboard/stop-district-current-analytics").then(m => m.StopDistrictCurrentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const StopKpiCurrentAnalytics = dynamic(() => import("@/components/dashboard/stop-kpi-current-analytics").then(m => m.StopKpiCurrentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const StopLyingPersonAnalytics = dynamic(() => import("@/components/dashboard/stop-lying-person-analytics").then(m => m.StopLyingPersonAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const StopConditionCurrentAnalytics = dynamic(() => import("@/components/dashboard/stop-condition-current-analytics").then(m => m.StopConditionCurrentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const StopSensorAnalytics = dynamic(() => import("@/components/dashboard/stop-sensor-analytics").then(m => m.StopSensorAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const StopEquipmentAnalytics = dynamic(() => import("@/components/dashboard/stop-equipment-analytics").then(m => m.StopEquipmentAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const SecurityAnalytics = dynamic(() => import("@/components/dashboard/security-analytics").then(m => m.SecurityAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
-const ConditionAnalytics = dynamic(() => import("@/components/dashboard/condition-analytics").then(m => m.ConditionAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
+const LiveStopsVision = dynamic(() => import("@/components/dashboard/stops-v2/live-shell").then(m => m.LiveStopsVision), { loading: () => <Skeleton className="h-64 w-full" /> })
+
 const ShoreSecurityAnalytics = dynamic(() => import("@/components/dashboard/shore-security-analytics").then(m => m.ShoreSecurityAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const ShoreSafetyAnalytics = dynamic(() => import("@/components/dashboard/shore-safety-analytics").then(m => m.ShoreSafetyAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
 const ShoreEmergencyAnalytics = dynamic(() => import("@/components/dashboard/shore-emergency-analytics").then(m => m.ShoreEmergencyAnalytics), { loading: () => <Skeleton className="h-64 w-full" /> })
@@ -67,11 +59,11 @@ type DashboardView =
   | "incidents"
   | "predictions"
   | "city"
-  | "stop_kpi"
+  | "stop_overview"
+  | "stop_clean"
   | "stop_districts"
   | "stop_security"
   | "stop_passenger"
-  | "stop_condition"
   | "stop_equipment"
   | "stop_sensors"
   | "shore_security"
@@ -94,6 +86,8 @@ interface DashboardDefinition {
   url?: string
   component?: DashboardComponent
   stopModes?: Partial<Record<StopAnalyticsMode, DashboardComponent>>
+  /** Раздел новой аналитики остановок (components/dashboard/stops-v2). */
+  vision?: VisionView
 }
 
 const STOP_ANALYTICS_MODES: { id: StopAnalyticsMode; label: string }[] = [
@@ -137,66 +131,13 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
     module: "roads",
     component: RoadCityAnalytics,
   },
-  {
-    id: "stop_kpi",
-    label: "Технический статус",
-    icon: BusFront,
-    module: "stops",
-    stopModes: {
-      current: StopKpiCurrentAnalytics,
-    },
-  },
-  {
-    id: "stop_equipment",
-    label: "Оборудование",
-    icon: Cctv,
-    module: "stops",
-    component: StopEquipmentAnalytics,
-  },
-  {
-    id: "stop_sensors",
-    label: "Датчики",
-    icon: Gauge,
-    module: "stops",
-    component: StopSensorAnalytics,
-  },
-  {
-    id: "stop_districts",
-    label: "Микрорайоны",
-    icon: Map,
-    module: "stops",
-    component: StopDistrictCurrentAnalytics,
-  },
-  {
-    id: "stop_security",
-    label: "События безопасности",
-    icon: ShieldAlert,
-    module: "stops",
-    stopModes: {
-      current: StopLyingPersonAnalytics,
-      plan: SecurityAnalytics,
-    },
-  },
-  {
-    id: "stop_passenger",
-    label: "Пассажирская аналитика",
-    icon: Users2,
-    module: "stops",
-    stopModes: {
-      current: StopCurrentLoadAnalytics,
-      plan: PassengerAnalytics,
-    },
-  },
-  {
-    id: "stop_condition",
-    label: "Состояние остановок",
-    icon: ClipboardCheck,
-    module: "stops",
-    stopModes: {
-      current: StopConditionCurrentAnalytics,
-      plan: ConditionAnalytics,
-    },
-  },
+  { id: "stop_overview", label: "Сводка", icon: LayoutDashboard, module: "stops", vision: "overview" },
+  { id: "stop_security", label: "События безопасности", icon: ShieldAlert, module: "stops", vision: "safety" },
+  { id: "stop_clean", label: "Чистота", icon: Trash2, module: "stops", vision: "clean" },
+  { id: "stop_equipment", label: "Оборудование", icon: Cctv, module: "stops", vision: "equipment" },
+  { id: "stop_sensors", label: "Датчики", icon: Thermometer, module: "stops", vision: "sensors" },
+  { id: "stop_passenger", label: "Загруженность", icon: Users2, module: "stops", vision: "load" },
+  { id: "stop_districts", label: "Микрорайоны", icon: Map, module: "stops", vision: "districts" },
   {
     id: "shore_security",
     label: "Охрана периметра",
@@ -249,7 +190,7 @@ const DASHBOARDS: readonly DashboardDefinition[] = [
 ] as const
 
 const ROADS_DASHBOARDS = ["general", "cleaning", "incidents", "predictions", "city"]
-const STOPS_DASHBOARDS = ["stop_condition", "stop_kpi", "stop_equipment", "stop_sensors", "stop_passenger", "stop_security", "stop_districts"]
+const STOPS_DASHBOARDS = ["stop_overview", "stop_security", "stop_clean", "stop_equipment", "stop_sensors", "stop_passenger", "stop_districts"]
 const SHORE_DASHBOARDS = ["shore_security", "shore_safety", "shore_emergency"]
 const PARK_DASHBOARDS = ["park_security", "park_operations"]
 const TRANSPORT_DASHBOARDS = ["transport_route", "transport_service"]
@@ -288,7 +229,7 @@ function getFirstAvailableStopMode(dashboard: DashboardDefinition | undefined) {
 function DashboardContent() {
   const searchParams = useSearchParams()
   // Вкладка хранится в адресе, чтобы кнопка «назад» возвращала на неё же.
-  const [activeView, setActiveView] = useState<DashboardView>(() => (searchParams.get("view") as DashboardView | null) ?? "stop_condition")
+  const [activeView, setActiveView] = useState<DashboardView>(() => (searchParams.get("view") as DashboardView | null) ?? "stop_overview")
   const [stopMode, setStopMode] = useState<StopAnalyticsMode>("current")
   const [expandedSections, setExpandedSections] = useState(SIDEBAR_SECTION_DEFAULTS)
   const { hasModule, loading: modulesLoading } = useModuleAccess()
@@ -500,7 +441,20 @@ function DashboardContent() {
                         </div>
                       )}
                       <div className="relative min-h-0 flex-1">
+                        {activeDashboard?.vision && (
+                          <div className="w-full h-full absolute inset-0 overflow-auto z-10">
+                            <LiveStopsVision
+                              view={activeDashboard.vision}
+                              onViewChange={(view) => {
+                                const target = filteredDashboards.find((dashboard) => dashboard.vision === view)
+                                if (target) handleDashboardSelect(target)
+                              }}
+                              viewToUrl={(view) => filteredDashboards.find((dashboard) => dashboard.vision === view)?.id ?? view}
+                            />
+                          </div>
+                        )}
                         {filteredDashboards.map((dashboard) => {
+                          if (dashboard.vision) return null
                           const isActive = resolvedActiveView === dashboard.id
                           const modeForDashboard = isActive
                             ? resolvedStopMode

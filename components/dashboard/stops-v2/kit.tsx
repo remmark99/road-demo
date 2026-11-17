@@ -44,6 +44,7 @@ import {
     fmtNum,
     stopById,
     type VStop,
+    isLiveVisionData,
 } from "@/lib/mock/stop-analytics-vision-data"
 import type { Scope } from "@/components/dashboard/stops-v2/selectors"
 
@@ -76,10 +77,12 @@ export interface VisionInitial {
     cardStopId?: number | null
 }
 
-export function VisionProvider({ children, view, onViewChange, initial }: {
+export function VisionProvider({ children, view, onViewChange, initial, viewToUrl }: {
     children: ReactNode
     view: VisionView
     onViewChange: (view: VisionView) => void
+    /** Как раздел пишется в ?view=; на вкладке «Аналитика» у разделов свои идентификаторы. */
+    viewToUrl?: (view: VisionView) => string
     /** Состояние из адреса страницы: ссылкой можно поделиться, кнопка «назад» вернёт в то же место. */
     initial?: VisionInitial
 }) {
@@ -91,13 +94,13 @@ export function VisionProvider({ children, view, onViewChange, initial }: {
     // Раздел, период, район и остановка живут в адресе страницы.
     useEffect(() => {
         const params = new URLSearchParams()
-        params.set("view", view)
+        params.set("view", viewToUrl ? viewToUrl(view) : view)
         if (timeRange.preset !== "week" && timeRange.preset !== "custom") params.set("period", timeRange.preset)
         if (districtId) params.set("district", districtId)
         if (stopId !== null) params.set("s", String(stopId))
         if (cardStopId !== null) params.set("stop", String(cardStopId))
         window.history.replaceState(null, "", `?${params.toString()}`)
-    }, [view, timeRange, districtId, stopId, cardStopId])
+    }, [view, timeRange, districtId, stopId, cardStopId, viewToUrl])
 
     const setDistrictId = useCallback((value: string | null) => {
         setDistrictIdState(value)
@@ -230,12 +233,12 @@ export function SectionShell({ title, children, filters, district = true, stop =
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">{title}</h2>
-                        <Badge variant="secondary">Демо-данные</Badge>
+                        {!isLiveVisionData() && <Badge variant="secondary">Демо-данные</Badge>}
                     </div>
                 </div>
                 <div className="text-sm text-muted-foreground lg:text-right">
                     <div>Период: {fmtDateTime(scope.from)} - {fmtDateTime(scope.to)}</div>
-                    <div>Последние данные: 2 мин назад · {fmtInt(scope.stops.length)} ост.</div>
+                    <div>{isLiveVisionData() ? `Данные на ${fmtDateTime(V_NOW)}` : "Последние данные: 2 мин назад"} · {fmtInt(scope.stops.length)} ост.</div>
                 </div>
             </div>
             <FilterBar district={district} stop={stop}>{filters}</FilterBar>

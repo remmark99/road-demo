@@ -197,7 +197,7 @@ function StopCardBody({ stop }: { stop: VStop }) {
                 <Badge variant="secondary">{stop.cameras.length} камеры</Badge>
                 <Badge variant="secondary">Контроллер</Badge>
                 <Badge variant="secondary">Датчики климата и стекла</Badge>
-                <Badge variant="outline">Вместимость {stop.capacity} чел.</Badge>
+                {stop.capacity !== null && <Badge variant="outline">Вместимость {stop.capacity} чел.</Badge>}
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
