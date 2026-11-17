@@ -6,20 +6,16 @@ export async function register() {
     const CITY_OFFSET = 5 * 3_600_000
     const warm = async () => {
         try {
-            const [{ createNotificationAdminClient }, { buildStopConditions }, { readSignificantOutagesCached }] = await Promise.all([
+            const [{ createNotificationAdminClient }, { buildStopConditions }, { readSignificantOutagesCached }, { analyticsClimateChunks }] = await Promise.all([
                 import('@/lib/notifications/admin'),
                 import('@/lib/stop-conditions-data'),
                 import('@/lib/exports/equipment-outages-read'),
+                import('@/lib/stop-analytics-vision/chunks'),
             ])
             const db = createNotificationAdminClient()
             const now = Date.now()
-            const hour = 3_600_000
-            // Те же окна, что запрашивает вкладка: 31 день кусками по 8 дней, срезы по часам.
-            for (let to = now; to > now - 31 * DAY; to -= 8 * DAY) {
-                const from = Math.max(to - 8 * DAY, now - 31 * DAY)
-                const start = Math.floor(from / hour) * hour, end = Math.ceil(to / hour) * hour
-                await buildStopConditions(db, start, end, Math.min(end, now))
-            }
+            // Те же окна, что запрашивает вкладка: общий модуль, одинаковые границы.
+            for (const [from, to] of analyticsClimateChunks(now)) await buildStopConditions(db, from, to, Math.min(to, now))
             // Начало окна отключений — как у вкладки: полночь по Сургуту 61 день назад.
             const historyFrom = Math.floor((now + CITY_OFFSET) / DAY) * DAY - CITY_OFFSET - 61 * DAY
             await readSignificantOutagesCached(db, historyFrom)

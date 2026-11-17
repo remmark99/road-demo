@@ -25,7 +25,10 @@ export async function GET(request: NextRequest) {
     const cached = cache.get(key)
     if (cached && cached.expiresAt > now) return NextResponse.json(cached.payload, { headers: { 'Cache-Control': 'private, no-store' } })
     try {
+        const started = Date.now()
         const payload = await buildStopConditions(db, window.start, window.end, window.liveEnd)
+        // Время сборки — в лог, чтобы видеть, где тормозит вкладка «Аналитика».
+        console.info(`stop-conditions ${new Date(window.start).toISOString()}..${new Date(window.end).toISOString()} built in ${Date.now() - started} ms`)
         cache.set(key, { expiresAt: now + CACHE_TTL_MS, payload })
         for (const [entryKey, entry] of cache) if (entry.expiresAt <= now) cache.delete(entryKey)
         return NextResponse.json(payload, { headers: { 'Cache-Control': 'private, no-store' } })

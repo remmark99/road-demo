@@ -23,7 +23,9 @@ export async function GET(request: Request) {
     try {
         // Окно «до сейчас» — из общего кэша процесса; произвольный период — прямым чтением.
         if (!params.get('to')) {
+            const started = Date.now()
             const rows = await readSignificantOutagesCached(await createClient(), from)
+            console.info(`stop-equipment-outages ${rows.length} rows in ${Date.now() - started} ms`)
             return NextResponse.json({ outages: rows, minOutageMinutes: MIN_OUTAGE_MS / 60_000 }, { headers: { 'Cache-Control': 'no-store' } })
         }
         if (!cache || cache.key !== key || Date.now() - cache.at > CACHE_MS) cache = { key, at: Date.now(), rows: await readSignificantOutages(await createClient(), from, to) }
