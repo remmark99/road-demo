@@ -217,9 +217,13 @@ export function DeltaText({ delta, label }: { delta: DeltaInfo; label?: string }
 
 // ---------------------------------------------------------------- каркас раздела
 
-export function SectionShell({ title, children, filters, district = true, stop = true }: {
+export function SectionShell({ title, children, filters, titleAddon, actions, district = true, stop = true }: {
     title: string
     children: ReactNode
+    /** Рядом с названием раздела: переключатель того, что показывает раздел. */
+    titleAddon?: ReactNode
+    /** Справа вверху раздела: выгрузки. */
+    actions?: ReactNode
     /** Дополнительные фильтры раздела справа от общих. */
     filters?: ReactNode
     district?: boolean
@@ -232,10 +236,12 @@ export function SectionShell({ title, children, filters, district = true, stop =
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">{title}</h2>
+                        {titleAddon}
                         {!isLiveVisionData() && <Badge variant="secondary">Демо-данные</Badge>}
                     </div>
                 </div>
-                <div className="text-sm text-muted-foreground lg:text-right">
+                <div className="flex flex-col gap-2 text-sm text-muted-foreground lg:items-end lg:text-right">
+                    {actions}
                     <div>Период: {fmtDateTime(scope.from)} - {fmtDateTime(scope.to)}</div>
                     <div>{isLiveVisionData() ? `Данные на ${fmtDateTime(V_NOW)}` : "Последние данные: 2 мин назад"} · {fmtInt(scope.stops.length)} ост.</div>
                 </div>
@@ -278,7 +284,7 @@ function StopSearch() {
         return V_STOPS
             .filter((stop) => districtId === null || stop.districtId === districtId)
             .filter((stop) => !needle || `${stop.name} ${stop.code} ${districtName(stop.districtId)}`.toLowerCase().includes(needle))
-            .slice(0, 8)
+            .sort((a, b) => a.name.localeCompare(b.name, "ru"))
     }, [query, districtId])
 
     if (selected) {
