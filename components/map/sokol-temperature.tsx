@@ -1,14 +1,15 @@
-import { temperatureDelta, type OutdoorTemperature } from "@/lib/sokol-temperature"
+import type { OutdoorTemperature } from "@/lib/sokol-temperature"
+
+function fresh(time: string | null | undefined) {
+    const age = Date.now() - Date.parse(time ?? "")
+    return Number.isFinite(age) && age >= 0 && age < 4 * 60 * 60 * 1000
+}
 
 export function SokolTemperature({ reading }: { reading: OutdoorTemperature | null }) {
-    return (
-        <div className="rounded-lg border bg-background/90 px-3 py-2 text-xs shadow-sm" aria-live="polite">
-            <div>Сокол: {reading ? `${reading.temperature.toFixed(1)} °C` : "нет данных"}</div>
-            {reading && <div className="text-muted-foreground">
-                Последнее измерение: <time dateTime={reading.time}>{new Date(reading.time).toLocaleString("ru-RU", { timeZone: "Asia/Yekaterinburg" })}</time> (UTC+5)
-            </div>}
-        </div>
-    )
+    const available = reading && Number.isFinite(reading.temperature) && fresh(reading.time)
+    return <div className="rounded-lg border bg-card px-3 py-2 text-sm shadow-sm" aria-live="polite">
+        {available ? `На улице ${reading.temperature.toFixed(1).replace('.', ',')} °C` : "Температура недоступна"}
+    </div>
 }
 
 export function PavilionTemperatureDelta({ indoor, measuredAt, outdoor }: {
@@ -16,11 +17,7 @@ export function PavilionTemperatureDelta({ indoor, measuredAt, outdoor }: {
     measuredAt: string | null | undefined
     outdoor: OutdoorTemperature | null
 }) {
-    const validTime = typeof measuredAt === "string" && Number.isFinite(Date.parse(measuredAt)) && Date.parse(measuredAt) <= Date.now()
-    const delta = validTime ? temperatureDelta(indoor, outdoor?.temperature) : null
-    return <>
-        <div>Δ к Соколу по последним измерениям: {delta ?? "—"}</div>
-        {delta && <div>{indoor! > outdoor!.temperature ? "В павильоне теплее" : indoor! < outdoor!.temperature ? "В павильоне холоднее" : "Температура одинаковая"}</div>}
-        {validTime && <div>Измерение в павильоне: <time dateTime={measuredAt}>{new Date(measuredAt).toLocaleString("ru-RU", { timeZone: "Asia/Yekaterinburg" })}</time> (UTC+5)</div>}
-    </>
+    if (!Number.isFinite(indoor) || !outdoor || !Number.isFinite(outdoor.temperature) || !fresh(measuredAt) || !fresh(outdoor.time)) return null
+    const delta = Number((indoor! - outdoor.temperature).toFixed(1))
+    return <span>{delta === 0 ? "Как на улице" : `На ${Math.abs(delta).toFixed(1).replace('.', ',')} °C ${delta > 0 ? "теплее" : "холоднее"} улицы`}</span>
 }

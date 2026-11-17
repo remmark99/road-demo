@@ -51,41 +51,28 @@ test('route handles upstream failures and invalid data', async () => {
     assert.equal((await GET()).body.temperature, 0)
   } finally { global.fetch = original }
 })
-test('map shares outdoor sample with modal; readout preserves historical measurement time', () => {
+test('compact current temperature and delta; stale, future and invalid samples hidden', () => {
   const React = require('react')
   const { renderToStaticMarkup } = require('react-dom/server')
-  const { SokolTemperature } = load('components/map/sokol-temperature.tsx')
-  const html = renderToStaticMarkup(React.createElement(SokolTemperature, { reading: { temperature: -12.5, time: '2025-12-03T04:20:00Z' } }))
-  assert.match(html, /Сокол/)
-  assert.match(html, /2025/)
-  assert.match(html, /Последнее измерение/)
-  assert.doesNotMatch(html, /сейчас|актуальн/i)
-  assert.match(renderToStaticMarkup(React.createElement(SokolTemperature, { reading: null })), /нет данных/)
-  const map = fs.readFileSync(path.join(__dirname, '../components/map/surgut-map.tsx'), 'utf8')
-  assert.match(map, /<SokolTemperature reading=\{outdoorTemperature\}/)
-  assert.match(map, /outdoorTemperature=\{outdoorTemperature\}/)
-  assert.match(map, /fetch\("\/api\/sokol-temperature"/)
-  const modal = fs.readFileSync(path.join(__dirname, '../components/map/bus-stop-modal.tsx'), 'utf8')
-  assert.match(modal, /indoor=\{sensorsOnline && !historicalAt \? temperature : undefined\}/)
-  assert.match(modal, /const sensorsOnline = Boolean\(busStop.sensor_data\?\.sensors_online\)/)
-  assert.match(modal, /measuredAt=\{climate\?\.temperatureUpdatedAt\}/)
-  assert.match(modal, /<PavilionTemperatureDelta/)
-})
-
-test('delta UI names last-known samples, warmer/colder/equal and missing data', () => {
-  const React = require('react')
-  const { renderToStaticMarkup } = require('react-dom/server')
-  const { PavilionTemperatureDelta } = load('components/map/sokol-temperature.tsx')
-  const render = (indoor, measuredAt = '2025-12-03T04:20:00Z', outdoor = { temperature: 2, measuredAt: '2025-12-03T04:00:00Z' }) => renderToStaticMarkup(React.createElement(PavilionTemperatureDelta, { indoor, measuredAt, outdoor }))
-  for (const [value, text, delta] of [[5, 'теплее', '+3.0'], [-5, 'холоднее', '−7.0'], [2, 'одинаковая', '0.0']]) {
-    const html = render(value)
-    assert.ok(html.includes(text))
-    assert.ok(html.includes(delta))
-    assert.match(html, /по последним измерениям/)
-    assert.match(html, /2025/)
-  }
-  for (const html of [render(undefined), render(5, 'bad'), render(5, null), render(5, undefined, null)]) {
-    assert.match(html, /—/)
-    assert.doesNotMatch(html, /теплее|холоднее|одинаковая/)
-  }
+  const { SokolTemperature, PavilionTemperatureDelta } = load('components/map/sokol-temperature.tsx')
+  const originalNow = Date.now
+  const now = Date.parse('2026-11-17T10:00:00Z')
+  Date.now = () => now
+  try {
+    const time = new Date(now - 60000).toISOString()
+    const outdoor = { temperature: -0.2, time }
+    const render = (Component, props) => renderToStaticMarkup(React.createElement(Component, props))
+    assert.match(render(SokolTemperature, { reading: outdoor }), /На улице -0,2 °C/)
+    assert.doesNotMatch(render(SokolTemperature, { reading: outdoor }), /Сокол|измерение|UTC|2026/)
+    assert.match(render(PavilionTemperatureDelta, { indoor: 13.6, measuredAt: time, outdoor }), /На 13,8 °C теплее улицы/)
+    assert.match(render(PavilionTemperatureDelta, { indoor: -2, measuredAt: time, outdoor }), /На 1,8 °C холоднее улицы/)
+    assert.match(render(PavilionTemperatureDelta, { indoor: -0.2, measuredAt: time, outdoor }), /Как на улице/)
+    for (const bad of [new Date(now - 14400000).toISOString(), new Date(now + 60000).toISOString(), 'bad']) {
+      assert.match(render(SokolTemperature, { reading: { ...outdoor, time: bad } }), /недоступна/)
+      assert.equal(render(PavilionTemperatureDelta, { indoor: 13.6, measuredAt: time, outdoor: { ...outdoor, time: bad } }), '')
+      assert.equal(render(PavilionTemperatureDelta, { indoor: 13.6, measuredAt: bad, outdoor }), '')
+    }
+    assert.match(render(SokolTemperature, { reading: null }), /недоступна/)
+    assert.equal(render(PavilionTemperatureDelta, { indoor: NaN, measuredAt: time, outdoor }), '')
+  } finally { Date.now = originalNow }
 })
