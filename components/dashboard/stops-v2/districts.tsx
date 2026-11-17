@@ -142,12 +142,13 @@ export function StopsDistricts() {
             </ChartCard>
 
             <div className="grid gap-6 xl:grid-cols-12">
-                <ChartCard className="xl:col-span-6" title="Где не хватает оснащения?" icon={Building2} iconClassName="text-blue-500" hint="Доля остановок микрорайона, на которых стоит оборудование">
-                    <ChartContainer config={coverageConfig} className="h-[320px] w-full">
-                        <BarChart data={data.rows.slice().sort((a, b) => a.coveragePct - b.coveragePct)} layout="vertical" margin={{ left: 0, right: 56, top: 8, bottom: 0 }}>
+                <ChartCard className="xl:col-span-6" title="Где не хватает оснащения?" icon={Building2} iconClassName="text-blue-500">
+                    {/* Микрорайонов в городе больше полусотни: на графике — 12 наименее оснащённых. */}
+                    <ChartContainer config={coverageConfig} className="h-[360px] w-full">
+                        <BarChart data={data.rows.slice().sort((a, b) => a.coveragePct - b.coveragePct || b.cityStops - a.cityStops).slice(0, 12)} layout="vertical" margin={{ left: 0, right: 56, top: 8, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                             <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} tickFormatter={(value) => `${value} %`} />
-                            <YAxis type="category" dataKey="name" width={130} tickLine={false} axisLine={false} tickMargin={8} interval={0} />
+                            <YAxis type="category" dataKey="name" width={190} tickLine={false} axisLine={false} tickMargin={8} interval={0} tick={{ fontSize: 12 }} />
                             <ChartTooltip content={<ChartTooltipContent formatter={(_value, _name, item) => `${fmtNum(item.payload.coveragePct, 0)} % · ${item.payload.equipped} из ${item.payload.cityStops} ост.`} />} />
                             <Bar dataKey="coveragePct" fill="var(--color-coveragePct)" radius={[0, 4, 4, 0]} maxBarSize={22} isAnimationActive={false}>
                                 <LabelList dataKey="equipped" position="right" className="fill-muted-foreground text-[11px]" formatter={(value: unknown) => `${value} ост.`} />

@@ -11,7 +11,6 @@ import {
     ChevronLeft,
     ChevronRight,
     Download,
-    Lightbulb,
     MapPin,
     Minus,
     Search,
@@ -327,15 +326,9 @@ function StopSearch() {
 
 // ---------------------------------------------------------------- вывод словами
 
-export function Insight({ children }: { children: ReactNode }) {
-    return (
-        <Card className="border-primary/30 bg-primary/[0.04]">
-            <CardContent className="flex items-start gap-3 p-4">
-                <Lightbulb className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                <p className="text-sm leading-relaxed">{children}</p>
-            </CardContent>
-        </Card>
-    )
+/** Вывод словами над разделом убран по замечанию 17.11: разделы показывают только цифры и графики. */
+export function Insight(_props: { children: ReactNode }) {
+    return null
 }
 
 // ---------------------------------------------------------------- плитка показателя
@@ -421,7 +414,6 @@ export function ChartCard({ title, icon: Icon, iconClassName, hint, action, clas
                             {Icon && <Icon className={cn("h-5 w-5 shrink-0", iconClassName)} />}
                             {title}
                         </CardTitle>
-                        {hint && <CardDescription>{hint}</CardDescription>}
                     </div>
                     {action && <div className="flex max-w-full flex-wrap gap-2">{action}</div>}
                 </div>

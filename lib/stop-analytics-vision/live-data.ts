@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { getBinEpisode } from "@/lib/bin-episodes"
 import { fetchCurrentStops, fetchStopCameras, resolveLocationStopId, toVmsCameraIndex } from "@/lib/api/stop-current-analytics"
 import { fetchStopDistricts, fetchStopDistrictAssignments } from "@/lib/api/stop-districts"
-import { fetchEquipmentOutages, fetchEquipmentState, type EquipmentOutage } from "@/lib/api/equipment"
+import { fetchEquipmentState } from "@/lib/api/equipment"
 import { fetchStopSafetyAlerts } from "@/lib/api/alerts"
 import { fetchStopLoadAnalytics } from "@/lib/api/stop-load-analytics"
 import type { StopConditionsResponse } from "@/lib/stop-conditions"
@@ -95,21 +95,45 @@ function climateLookup(climate: Map<number, ClimatePoint[]>) {
     }
 }
 
-function outageCauses(outages: EquipmentOutage[], devicesByStop: Map<number, number>, now: number): Map<number, VOutageCause> {
+interface OutageRow {
+    id: number
+    equipment_type: "camera" | "controller"
+    equipment_id: number
+    bus_stop_id: number | null
+    started_at: string
+    ended_at: string | null
+}
+
+/** Отключения от 10 минут и открытые сейчас; короткие пропадания связи отсекает сервер. */
+async function fetchOutages(from: number): Promise<{ data: OutageRow[] }> {
+    const response = await fetch(`/api/stop-equipment-outages?from=${new Date(from).toISOString()}`, { cache: "no-store" })
+    if (!response.ok) throw new Error("Не удалось загрузить отключения оборудования")
+    const body = await response.json() as { outages: OutageRow[] }
+    return { data: body.outages }
+}
+
+function outageCauses(outages: OutageRow[], devicesByStop: Map<number, number>, now: number): Map<number, VOutageCause> {
     const causes = new Map<number, VOutageCause>()
-    const byStop = new Map<number, EquipmentOutage[]>()
+    const byStop = new Map<number, OutageRow[]>()
     for (const outage of outages) {
         if (outage.bus_stop_id === null) continue
         byStop.set(outage.bus_stop_id, [...(byStop.get(outage.bus_stop_id) ?? []), outage])
+    }
+    // Начала по времени: соседей «в те же минуты» ищем скользящим окном, а не перебором всех пар.
+    const byStart = outages.filter((outage) => outage.bus_stop_id !== null).map((outage) => ({ outage, start: Date.parse(outage.started_at) })).sort((a, b) => a.start - b.start)
+    const networkIds = new Set<number>()
+    for (let i = 0, j = 0; i < byStart.length; i++) {
+        while (byStart[i].start - byStart[j].start > NETWORK_WINDOW) j++
+        let k = i
+        while (k + 1 < byStart.length && byStart[k + 1].start - byStart[i].start <= NETWORK_WINDOW) k++
+        const stops = new Set(byStart.slice(j, k + 1).map((item) => item.outage.bus_stop_id))
+        if (stops.size >= NETWORK_MIN_STOPS) networkIds.add(byStart[i].outage.id)
     }
     for (const outage of outages) {
         const start = Date.parse(outage.started_at)
         const end = outage.ended_at ? Date.parse(outage.ended_at) : now
         // Сразу несколько остановок пропали в одни и те же минуты — авария на сети.
-        const sameMoment = new Set(outages
-            .filter((other) => other.bus_stop_id !== null && Math.abs(Date.parse(other.started_at) - start) <= NETWORK_WINDOW)
-            .map((other) => other.bus_stop_id))
-        if (sameMoment.size >= NETWORK_MIN_STOPS) { causes.set(outage.id, "network"); continue }
+        if (networkIds.has(outage.id)) { causes.set(outage.id, "network"); continue }
         // Пропали все устройства остановки — нет связи или питания павильона.
         const siblings = outage.bus_stop_id === null ? [] : byStop.get(outage.bus_stop_id) ?? []
         const overlapping = new Set(siblings
@@ -132,7 +156,7 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
         fetchStopDistricts(),
         fetchStopDistrictAssignments(),
         fetchEquipmentState(),
-        fetchEquipmentOutages(new Date(historyFrom), new Date(now)),
+        fetchOutages(historyFrom),
         fetchStopSafetyAlerts({ from: new Date(historyFrom), to: new Date(now), types: ["smoking", "abandoned_object", "dogs_without_people"] }),
         readPages<{ id: string; camera_index: number | null; location_id: string | null; status: string; started_at: string; ended_at: string | null }>((a, b) =>
             supabase.from("lying_person_episodes").select("id,camera_index,location_id,status,started_at,ended_at")
