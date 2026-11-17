@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 
 import { getAuthenticatedUser, jsonError } from '@/lib/notifications/http'
 import { createClient } from '@/lib/supabase/server'
-import { MIN_OUTAGE_MS, readSignificantOutages, type OutageRow } from '@/lib/exports/equipment-outages-read'
+import { MIN_OUTAGE_MS, readSignificantOutages, readSignificantOutagesCached, type OutageRow } from '@/lib/exports/equipment-outages-read'
 
 export const dynamic = 'force-dynamic'
 
@@ -21,6 +21,11 @@ export async function GET(request: Request) {
     // Окно «до сейчас» кэшируется по началу: повторные открытия вкладки не перечитывают таблицу.
     const key = params.get('to') ? `${from}:${to}` : `${from}:now`
     try {
+        // Окно «до сейчас» — из общего кэша процесса; произвольный период — прямым чтением.
+        if (!params.get('to')) {
+            const rows = await readSignificantOutagesCached(await createClient(), from)
+            return NextResponse.json({ outages: rows, minOutageMinutes: MIN_OUTAGE_MS / 60_000 }, { headers: { 'Cache-Control': 'no-store' } })
+        }
         if (!cache || cache.key !== key || Date.now() - cache.at > CACHE_MS) cache = { key, at: Date.now(), rows: await readSignificantOutages(await createClient(), from, to) }
         return NextResponse.json({ outages: cache.rows, minOutageMinutes: MIN_OUTAGE_MS / 60_000 }, { headers: { 'Cache-Control': 'no-store' } })
     } catch {

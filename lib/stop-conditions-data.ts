@@ -48,13 +48,27 @@ export function parseConditionWindow(params: URLSearchParams, now: number) {
     return { start, end, liveEnd: Math.min(end, now) }
 }
 
-async function readClimate(db: Db, stopIds: number[], start: number, end: number) {
+// Срез часа, который уже закончился, не меняется: такие срезы держим в памяти процесса.
+// Без кэша вкладка «Аналитика» делала ~770 запросов на каждое открытие (31 день по часам).
+const climateCache = new Map<string, Map<number, ClimatePoint>>()
+const CLIMATE_CACHE_LIMIT = 24 * 100
+const CLIMATE_CONCURRENCY = 16
+
+export async function readClimate(db: Db, stopIds: number[], start: number, end: number) {
     const step = climateSampleHours(end - start) * HOUR
     const windows: [number, number][] = []
     for (let t = start; t < end; t += step) windows.push([t, Math.min(t + HOUR, end)])
     const byStop = new Map<number, ClimatePoint[]>()
-    for (let i = 0; i < windows.length; i += QUERY_CONCURRENCY) {
-        const pages = await Promise.all(windows.slice(i, i + QUERY_CONCURRENCY).map(([a, b]) => db
+    const stopsKey = stopIds.slice().sort((a, b) => a - b).join(',')
+    const settled = Date.now() - 5 * 60_000
+    const missing = windows.filter(([a, b]) => !(b <= settled && climateCache.has(`${stopsKey}|${a}|${b}`)))
+    for (const [a, b] of windows) {
+        const cached = climateCache.get(`${stopsKey}|${a}|${b}`)
+        if (cached && b <= settled) for (const [stopId, point] of cached) byStop.set(stopId, [...(byStop.get(stopId) ?? []), point])
+    }
+    for (let i = 0; i < missing.length; i += CLIMATE_CONCURRENCY) {
+        const slice = missing.slice(i, i + CLIMATE_CONCURRENCY)
+        const pages = await Promise.all(slice.map(([a, b]) => db
             .from('stop_sensor_history')
             .select('bus_stop_id,category,value,recorded_at')
             // По остановкам: на сервере заказчика есть индекс только (bus_stop_id, recorded_at).
@@ -64,7 +78,7 @@ async function readClimate(db: Db, stopIds: number[], start: number, end: number
             .lt('recorded_at', new Date(b).toISOString())
             .order('recorded_at', { ascending: false })
             .limit(CLIMATE_ROWS_PER_SAMPLE)))
-        for (const page of pages) {
+        for (const [index, page] of pages.entries()) {
             if (page.error) throw new Error('climate read failed')
             const latest = new Map<number, ClimatePoint>()
             for (const row of (page.data ?? []) as { bus_stop_id: number; category: string; value: number | null; recorded_at: string }[]) {
@@ -75,6 +89,11 @@ async function readClimate(db: Db, stopIds: number[], start: number, end: number
                 latest.set(row.bus_stop_id, point)
             }
             for (const [stopId, point] of latest) byStop.set(stopId, [...(byStop.get(stopId) ?? []), point])
+            const [a, b] = slice[index]
+            if (b <= settled) {
+                if (climateCache.size >= CLIMATE_CACHE_LIMIT) climateCache.delete(climateCache.keys().next().value!)
+                climateCache.set(`${stopsKey}|${a}|${b}`, latest)
+            }
         }
     }
     for (const points of byStop.values()) points.sort((a, b) => a[0] - b[0])

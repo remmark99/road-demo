@@ -63,7 +63,7 @@ async function fetchClimate(now: number) {
     }
     const responses = await Promise.all(chunks.map(async ([from, to]) => {
         const params = new URLSearchParams({ from: new Date(from).toISOString(), to: new Date(to).toISOString() })
-        const response = await fetch(`/api/stop-conditions?${params}`, { cache: "no-store" })
+        const response = await fetch(`/api/stop-conditions?${params}`, { cache: "no-store", signal: AbortSignal.timeout(120_000) })
         if (!response.ok) throw new Error("Не удалось загрузить показания датчиков")
         return response.json() as Promise<StopConditionsResponse>
     }))
@@ -107,7 +107,7 @@ interface OutageRow {
 
 /** Отключения от 10 минут и открытые сейчас; короткие пропадания связи отсекает сервер. */
 async function fetchOutages(from: number): Promise<{ data: OutageRow[] }> {
-    const response = await fetch(`/api/stop-equipment-outages?from=${new Date(from).toISOString()}`, { cache: "no-store" })
+    const response = await fetch(`/api/stop-equipment-outages?from=${new Date(from).toISOString()}`, { cache: "no-store", signal: AbortSignal.timeout(120_000) })
     if (!response.ok) throw new Error("Не удалось загрузить отключения оборудования")
     const body = await response.json() as { outages: OutageRow[] }
     return { data: body.outages }
@@ -151,7 +151,8 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
     const historyFrom = cityDayStart(now) - (HISTORY_DAYS - 1) * DAY
     const supabase = createClient()
 
-    const [stopsInfo, cameras, districts, assignments, equipment, outagesResult, safetyAlerts, lyingEpisodes, binAlerts, climateData, load] = await Promise.all([
+    const [stopCodes, stopsInfo, cameras, districts, assignments, equipment, outagesResult, safetyAlerts, lyingEpisodes, binAlerts, climateData, load] = await Promise.all([
+        readPages<{ id: number; stop_code: string | null }>((a, b) => supabase.from("bus_stops").select("id,stop_code").order("id").range(a, b)),
         fetchCurrentStops(),
         fetchStopCameras(),
         fetchStopDistricts(),
@@ -180,12 +181,17 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
         camerasByStop.set(camera.bus_stop_id, [...(camerasByStop.get(camera.bus_stop_id) ?? []), camera.camera_index])
     }
     const stopOfCamera = (index: number | null) => index === null ? undefined : stopByCamera.get(index)
-    // location_id аналитики — номер остановки («104-25» = bus_stops.short_name), у комплексов — по их камерам.
-    // Раньше брали число до дефиса как id остановки и попадали не в те остановки.
-    const stopByShortName = new Map(stopsInfo.filter((stop) => stop.short_name?.trim()).map((stop) => [stop.short_name!.trim(), stop.id]))
-    const stopOfLocation = (locationId: string): number | undefined => stopByShortName.get(locationId.trim())
-        ?? (getStopComplexByLocationId(locationId) ? resolveLocationStopId(locationId, stopByCamera) ?? undefined : undefined)
-        ?? (/^\d+$/.test(locationId.trim()) ? Number(locationId) : undefined)
+    // location_id аналитики — код остановки («104-25» = bus_stops.stop_code), «stop-677» — id остановки,
+    // у комплексов — по их камерам. Раньше искали в short_name (там название) и находили только комплексы.
+    const stopByCode = new Map(stopCodes.filter((row) => row.stop_code?.trim()).map((row) => [row.stop_code!.trim(), row.id]))
+    const stopOfLocation = (locationId: string): number | undefined => {
+        const code = locationId.trim()
+        const direct = /^stop-(\d+)$/.exec(code)
+        return stopByCode.get(code)
+            ?? (direct ? Number(direct[1]) : undefined)
+            ?? (getStopComplexByLocationId(code) ? resolveLocationStopId(code, stopByCamera) ?? undefined : undefined)
+            ?? (/^\d+$/.test(code) ? Number(code) : undefined)
+    }
 
     // Устройства на контроле — оснащённые остановки.
     const devices: VDevice[] = []
@@ -202,12 +208,13 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
     for (const row of load.locationHours) { const stopId = stopOfLocation(row.locationId); if (stopId !== undefined) deviceStops.add(stopId) }
 
     const districtByStop = new Map(assignments.map((row) => [row.id, row.district_id]))
+    const codeOf = new Map(stopCodes.map((row) => [row.id, row.stop_code?.trim() ?? ""]))
     const stops: VStop[] = stopsInfo
         .filter((stop) => deviceStops.has(stop.id))
         .map((stop) => ({
             id: stop.id,
             name: stop.short_name?.trim() || stop.name?.trim() || `Остановка ${stop.id}`,
-            code: String(stop.id),
+            code: codeOf.get(stop.id) || String(stop.id),
             direction: stop.description?.trim() || "",
             districtId: districtByStop.get(stop.id) != null ? String(districtByStop.get(stop.id)) : "",
             cameras: camerasByStop.get(stop.id) ?? [],
