@@ -12,17 +12,20 @@ import {
     V_NOW,
     cityDow,
     cityHour,
+    districtName,
     fmtInt,
     fmtNum,
     loadAt,
     peakAt,
     plural,
+    hasLoadData,
     stopOfflineAt,
     type VStop,
 } from "@/lib/mock/stop-analytics-vision-data"
 import { peopleNow } from "@/components/dashboard/stops-v2/selectors"
 import {
     ChartCard,
+    DataTable,
     HourHeatmap,
     Insight,
     KpiCard,
@@ -32,6 +35,7 @@ import {
     StopLink,
     WeekHourHeatmap,
     useScope,
+    type Column,
     type RankRow,
 } from "@/components/dashboard/stops-v2/kit"
 
@@ -62,7 +66,8 @@ export function StopsLoad() {
         const matrixCount = Array.from({ length: 7 }, () => Array.from({ length: 24 }, () => 0))
         const counted = new Set<number>()
 
-        const perStop: StopLoad[] = stops.map((stop) => {
+        // Только остановки, где камера считает людей: без подсчёта они давали бы нули в рейтингах.
+        const perStop: StopLoad[] = stops.filter(hasLoadData).map((stop) => {
             let sum = 0
             let hours = 0
             let peak = 0
@@ -110,6 +115,15 @@ export function StopsLoad() {
     }, [scope])
 
     const candidates = data.sorted.slice(0, 5)
+    const hasCapacity = data.perStop.some((row) => row.stop.capacity !== null)
+    const busiestHour = (row: StopLoad) => row.byHour.indexOf(Math.max(...row.byHour))
+    const allColumns: Column<StopLoad>[] = [
+        { key: "stop", header: "Остановка", cell: (row) => <StopLink stop={row.stop} />, value: (row) => row.stop.name },
+        { key: "district", header: "Микрорайон", cell: (row) => districtName(row.stop.districtId), value: (row) => districtName(row.stop.districtId) },
+        { key: "avg", header: "В среднем, чел.", align: "right", cell: (row) => fmtNum(row.avg), value: (row) => Math.round(row.avg * 10) / 10 },
+        { key: "peak", header: "Пик, чел.", align: "right", cell: (row) => fmtInt(row.peak), value: (row) => row.peak },
+        { key: "hour", header: "Самый загруженный час", align: "right", cell: (row) => row.avg > 0 ? `${String(busiestHour(row)).padStart(2, "0")}:00` : "—", value: (row) => busiestHour(row) },
+    ]
     const chosen = picked ?? new Set(candidates.slice(0, 3).map((row) => row.stop.id))
     const compareRows = Array.from({ length: 24 }, (_, hour) => {
         const row: Record<string, number | string> = { hour: String(hour).padStart(2, "0") }
@@ -250,10 +264,25 @@ export function StopsLoad() {
                     </ChartContainer>
                 </ChartCard>
 
-                <ChartCard className="xl:col-span-5" title="Где людей больше, чем мест?" icon={UserPlus} iconClassName="text-red-500" hint="Часы за период, когда людей было больше вместимости павильона">
-                    <RankList rows={overloadRanking} colors={["#ea580c"]} emptyText="Перегруза за период не было" labelWidth="12.5rem" />
-                </ChartCard>
+                {hasCapacity && (
+                    <ChartCard className="xl:col-span-5" title="Где людей больше, чем мест?" icon={UserPlus} iconClassName="text-red-500">
+                        <RankList rows={overloadRanking} colors={["#ea580c"]} emptyText="Перегруза за период не было" labelWidth="12.5rem" />
+                    </ChartCard>
+                )}
             </div>
+
+            {/* Весь город: каждая остановка, где камера считает людей. */}
+            <ChartCard title={`Все остановки с подсчётом людей · ${fmtInt(data.perStop.length)}`} icon={Users2} iconClassName="text-sky-500">
+                <DataTable
+                    columns={allColumns}
+                    rows={data.sorted}
+                    rowKey={(row) => String(row.stop.id)}
+                    search={(row) => `${row.stop.name} ${row.stop.code} ${districtName(row.stop.districtId)}`}
+                    pageSize={25}
+                    exportName="Загруженность остановок"
+                    initialSort={{ key: "avg", dir: "desc" }}
+                />
+            </ChartCard>
         </SectionShell>
     )
 }

@@ -8,6 +8,7 @@ import { fetchStopDistricts, fetchStopDistrictAssignments } from "@/lib/api/stop
 import { fetchEquipmentState } from "@/lib/api/equipment"
 import { fetchStopSafetyAlerts } from "@/lib/api/alerts"
 import { fetchStopLoadAnalytics } from "@/lib/api/stop-load-analytics"
+import { getStopComplexByLocationId } from "@/lib/stop-analytics-config"
 import type { StopConditionsResponse } from "@/lib/stop-conditions"
 import {
     DAY,
@@ -179,6 +180,12 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
         camerasByStop.set(camera.bus_stop_id, [...(camerasByStop.get(camera.bus_stop_id) ?? []), camera.camera_index])
     }
     const stopOfCamera = (index: number | null) => index === null ? undefined : stopByCamera.get(index)
+    // location_id аналитики — номер остановки («104-25» = bus_stops.short_name), у комплексов — по их камерам.
+    // Раньше брали число до дефиса как id остановки и попадали не в те остановки.
+    const stopByShortName = new Map(stopsInfo.filter((stop) => stop.short_name?.trim()).map((stop) => [stop.short_name!.trim(), stop.id]))
+    const stopOfLocation = (locationId: string): number | undefined => stopByShortName.get(locationId.trim())
+        ?? (getStopComplexByLocationId(locationId) ? resolveLocationStopId(locationId, stopByCamera) ?? undefined : undefined)
+        ?? (/^\d+$/.test(locationId.trim()) ? Number(locationId) : undefined)
 
     // Устройства на контроле — оснащённые остановки.
     const devices: VDevice[] = []
@@ -191,6 +198,8 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
     const deviceStops = new Set(devices.map((device) => device.stopId))
     for (const stopId of camerasByStop.keys()) deviceStops.add(stopId)
     for (const stopId of climateData.climate.keys()) deviceStops.add(stopId)
+    // Остановки, где считают людей, тоже в разделах — даже если камеры нет в справочнике оборудования.
+    for (const row of load.locationHours) { const stopId = stopOfLocation(row.locationId); if (stopId !== undefined) deviceStops.add(stopId) }
 
     const districtByStop = new Map(assignments.map((row) => [row.id, row.district_id]))
     const stops: VStop[] = stopsInfo
@@ -225,13 +234,13 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
 
     const safety: VSafetyEvent[] = []
     for (const alert of safetyAlerts) {
-        const stopId = stopOfCamera(alert.camera_index) ?? (alert.metadata?.location_id ? resolveLocationStopId(alert.metadata.location_id, stopByCamera) ?? undefined : undefined)
+        const stopId = stopOfCamera(alert.camera_index) ?? (alert.metadata?.location_id ? stopOfLocation(alert.metadata.location_id) : undefined)
         if (stopId === undefined || !stopIds.has(stopId)) continue
         const confidence = typeof alert.metadata?.confidence === "number" ? alert.metadata.confidence as number : null
         safety.push({ id: alert.id, stopId, type: alert.alert_type as SafetyType, at: Date.parse(alert.timestamp), durationMin: 0, camera: alert.camera_index, confidence, verdict: "confirmed" })
     }
     for (const episode of lyingEpisodes) {
-        const stopId = stopOfCamera(episode.camera_index) ?? (episode.location_id ? resolveLocationStopId(episode.location_id, stopByCamera) ?? undefined : undefined)
+        const stopId = stopOfCamera(episode.camera_index) ?? (episode.location_id ? stopOfLocation(episode.location_id) : undefined)
         if (stopId === undefined || !stopIds.has(stopId)) continue
         const start = Date.parse(episode.started_at)
         const durationMin = episode.ended_at ? Math.max(1, Math.round((Date.parse(episode.ended_at) - start) / 60_000)) : null
@@ -272,13 +281,14 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
     // Загруженность: средняя и наибольшая за час по направлениям остановки.
     const loadByStopHour = new Map<string, { avg: number; peak: number }>()
     for (const row of load.locationHours) {
-        const stopId = resolveLocationStopId(row.locationId, stopByCamera)
-        if (stopId === null || !stopIds.has(stopId)) continue
+        const stopId = stopOfLocation(row.locationId)
+        if (stopId === undefined || !stopIds.has(stopId)) continue
         const key = `${stopId}:${Math.floor(Date.parse(row.hourKey) / HOUR)}`
         const current = loadByStopHour.get(key)
         loadByStopHour.set(key, { avg: (current?.avg ?? 0) + row.avgPeople, peak: Math.max(current?.peak ?? 0, row.peakPeople) })
     }
 
+    const stopsWithLoad = new Set([...loadByStopHour.keys()].map((key) => Number(key.split(":")[0])))
     const thresholds = climateData.thresholds
     return {
         now,
@@ -296,6 +306,7 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
             humidityMax: thresholds.humidityEnabled ? thresholds.humidityMax : Infinity,
         } : {},
         climateAt,
+        hasLoad: (stop) => stopsWithLoad.has(stop.id),
         loadAt: (stop, ts) => loadByStopHour.get(`${stop.id}:${Math.floor(ts / HOUR)}`)?.avg ?? 0,
         peakAt: (stop, ts) => loadByStopHour.get(`${stop.id}:${Math.floor(ts / HOUR)}`)?.peak ?? 0,
     }

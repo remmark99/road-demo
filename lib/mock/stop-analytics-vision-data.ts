@@ -676,12 +676,19 @@ export interface VisionDataset {
     norms: Partial<typeof V_NORMS>
     climateAt: (stop: VStop, ts: number) => VClimate
     loadAt: (stop: VStop, ts: number) => number
+    /** Есть ли у остановки подсчёт людей (камера с аналитикой загруженности). */
+    hasLoad: (stop: VStop) => boolean
     peakAt: (stop: VStop, ts: number) => number
 }
 
 let live: VisionDataset | null = null
 
 /** Есть ли у остановки живые показания загруженности или климата — для пустых состояний. */
+/** У остановки считают людей: в демо — у всех, на живых данных — где есть окна загруженности. */
+export function hasLoadData(stop: VStop) {
+    return live ? live.hasLoad(stop) : true
+}
+
 export function isLiveVisionData() {
     return live !== null
 }
