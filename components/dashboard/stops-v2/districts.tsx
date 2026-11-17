@@ -13,7 +13,10 @@ import { V_DISTRICTS, V_STOPS, fmtNum, median } from "@/lib/mock/stop-analytics-
 import { districtRows, relativeTone, type DistrictRow } from "@/components/dashboard/stops-v2/selectors"
 import { ChartCard, Insight, Legend, SectionShell, useScope, useVision } from "@/components/dashboard/stops-v2/kit"
 
-const coverageConfig = { coveragePct: { label: "Покрытие", color: "#2563eb" } } satisfies ChartConfig
+const coverageConfig = {
+    equipped: { label: "С оборудованием", color: "#2563eb" },
+    missing: { label: "Без оборудования", color: "#cbd5e1" },
+} satisfies ChartConfig
 
 interface Metric {
     key: keyof Pick<DistrictRow, "availability" | "binHoursPerStop" | "safetyPerStop" | "climateHoursPerStop" | "avgLoad">
@@ -143,15 +146,25 @@ export function StopsDistricts() {
 
             <div className="grid gap-6 xl:grid-cols-12">
                 <ChartCard className="xl:col-span-6" title="Где не хватает оснащения?" icon={Building2} iconClassName="text-blue-500">
-                    {/* Микрорайонов в городе больше полусотни: на графике — 12 наименее оснащённых. */}
-                    <ChartContainer config={coverageConfig} className="h-[360px] w-full">
-                        <BarChart data={data.rows.slice().sort((a, b) => a.coveragePct - b.coveragePct || b.cityStops - a.cityStops).slice(0, 12)} layout="vertical" margin={{ left: 0, right: 56, top: 8, bottom: 0 }}>
+                    {/* Микрорайонов больше полусотни: на графике — 12, где больше всего неоснащённых остановок.
+                        Столбец — все остановки микрорайона: синим оснащённые, серым без оборудования. */}
+                    <Legend items={[{ label: "С оборудованием", color: "#2563eb" }, { label: "Без оборудования", color: "#cbd5e1" }]} />
+                    <ChartContainer config={coverageConfig} className="mt-3 h-[360px] w-full">
+                        <BarChart
+                            data={data.rows
+                                .map((row) => ({ ...row, missing: Math.max(0, row.cityStops - row.equipped) }))
+                                .sort((a, b) => b.missing - a.missing || a.coveragePct - b.coveragePct)
+                                .slice(0, 12)}
+                            layout="vertical"
+                            margin={{ left: 0, right: 72, top: 8, bottom: 0 }}
+                        >
                             <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                            <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} domain={[0, 100]} tickFormatter={(value) => `${value} %`} />
+                            <XAxis type="number" tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} tickFormatter={(value) => `${value}`} />
                             <YAxis type="category" dataKey="name" width={190} tickLine={false} axisLine={false} tickMargin={8} interval={0} tick={{ fontSize: 12 }} />
-                            <ChartTooltip content={<ChartTooltipContent formatter={(_value, _name, item) => `${fmtNum(item.payload.coveragePct, 0)} % · ${item.payload.equipped} из ${item.payload.cityStops} ост.`} />} />
-                            <Bar dataKey="coveragePct" fill="var(--color-coveragePct)" radius={[0, 4, 4, 0]} maxBarSize={22} isAnimationActive={false}>
-                                <LabelList dataKey="equipped" position="right" className="fill-muted-foreground text-[11px]" formatter={(value: unknown) => `${value} ост.`} />
+                            <ChartTooltip content={<ChartTooltipContent formatter={(_value, _name, item) => `${item.payload.equipped} из ${item.payload.cityStops} ост. оснащены · ${fmtNum(item.payload.coveragePct, 0)} %`} />} />
+                            <Bar dataKey="equipped" stackId="stops" fill="var(--color-equipped)" maxBarSize={22} isAnimationActive={false} />
+                            <Bar dataKey="missing" stackId="stops" fill="var(--color-missing)" radius={[0, 4, 4, 0]} maxBarSize={22} isAnimationActive={false}>
+                                <LabelList dataKey="coveragePct" position="right" className="fill-muted-foreground text-[11px]" formatter={(value: unknown) => `${fmtNum(Number(value), 0)} %`} />
                             </Bar>
                         </BarChart>
                     </ChartContainer>

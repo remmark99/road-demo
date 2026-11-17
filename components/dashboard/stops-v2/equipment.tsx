@@ -150,8 +150,7 @@ export function StopsEquipment() {
     return (
         <SectionShell
             title="Оборудование"
-            filters={
-                <>
+            titleAddon={
                     <Segmented<VDeviceType>
                         value={device}
                         onChange={setDevice}
@@ -160,7 +159,8 @@ export function StopsEquipment() {
                             { value: "controller", label: "Датчики" },
                         ]}
                     />
-                    {isLiveVisionData() && (
+            }
+            actions={isLiveVisionData() && (
                         <Button asChild variant="outline" size="sm" className="h-9 gap-2">
                             {/* Статусы — на момент нажатия, отключения — за выбранный период. */}
                             <a href={`/api/equipment/status-report?from=${new Date(scope.from).toISOString()}&to=${new Date(scope.to).toISOString()}`} download>
@@ -168,9 +168,7 @@ export function StopsEquipment() {
                                 Скачать Excel
                             </a>
                         </Button>
-                    )}
-                </>
-            }
+            )}
         >
             <Insight>
                 <span className="font-medium">{phrase}:</span> доступность {deviceWord} {fmtNum(data.availability)} %. Сейчас не в сети {data.open.length} из {data.total}, на {data.offlineNow.length} {plural(data.offlineNow.length, ["остановке", "остановках", "остановках"])}; {data.openLong.length} — дольше суток.
