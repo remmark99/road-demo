@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { type OutdoorTemperature } from "@/lib/sokol-temperature"
-import { PavilionTemperatureDelta } from "./sokol-temperature"
+import { PavilionTemperatureDelta, PavilionHumidityDelta } from "./sokol-temperature"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { CameraDetails } from "./video-modal"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -308,6 +308,9 @@ export function BusStopModal({ busStop, cameras, onClose, historicalAt, outdoorT
                                     <div className="text-xs text-muted-foreground">Влажность</div>
                                     <div className="font-medium mt-0.5">
                                         {humidity !== undefined ? `${humidity.toFixed(1)}%` : '—'}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                        <PavilionHumidityDelta indoor={sensorsOnline && !historicalAt ? humidity : undefined} measuredAt={climate?.humidityUpdatedAt} outdoor={outdoorTemperature} />
                                     </div>
                                 </div>
                                 <div className="p-3 bg-secondary/80 rounded-lg flex flex-col items-center justify-center text-center">

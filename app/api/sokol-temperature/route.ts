@@ -12,6 +12,6 @@ export async function GET() {
         if (!reading) throw new Error("Invalid Sokol reading")
         return NextResponse.json(reading)
     } catch {
-        return NextResponse.json({ error: "Температура Сокола недоступна" }, { status: 503 })
+        return NextResponse.json({ error: "Метеоданные Сокола недоступны" }, { status: 503 })
     }
 }
