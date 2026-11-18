@@ -175,8 +175,8 @@ export function StopsEquipment() {
     const deviceColumns: Column<DeviceRow>[] = [
         { key: "device", header: device === "camera" ? "Камера" : "Контроллер", cell: (row) => <span className="inline-flex items-center gap-2 font-medium">{device === "camera" ? <Camera className="h-4 w-4 text-muted-foreground" /> : <Gauge className="h-4 w-4 text-muted-foreground" />}{row.label}</span>, value: (row) => row.label },
         { key: "stop", header: "Остановка", cell: (row) => { const stop = stopById(row.stopId); return stop ? <StopLink stop={stop} /> : null }, value: (row) => stopById(row.stopId)?.name ?? "" },
-        { key: "code", header: "№ остановки", cell: (row) => stopById(row.stopId)?.code ?? "", value: (row) => stopById(row.stopId)?.code ?? "" },
-        { key: "district", header: "Микрорайон", cell: (row) => districtName(stopById(row.stopId)?.districtId ?? ""), value: (row) => districtName(stopById(row.stopId)?.districtId ?? "") },
+        { key: "code", header: "№ остановки", exportOnly: true, cell: (row) => stopById(row.stopId)?.code ?? "", value: (row) => stopById(row.stopId)?.code ?? "" },
+        { key: "district", header: "Микрорайон", exportOnly: true, cell: (row) => districtName(stopById(row.stopId)?.districtId ?? ""), value: (row) => districtName(stopById(row.stopId)?.districtId ?? "") },
         { key: "state", header: "Статус", cell: (row) => row.since === null ? <StatusBadge tone="success">В сети</StatusBadge> : <StatusBadge tone={V_NOW - row.since > longMs ? "high" : "attention"}>Не в сети</StatusBadge>, value: (row) => (row.since === null ? "В сети" : "Не в сети") },
         { key: "since", header: "Не в сети с", cell: (row) => <span className="whitespace-nowrap tabular-nums">{row.since === null ? "—" : fmtDateTime(row.since)}</span>, value: (row) => (row.since === null ? "" : fmtDateTime(row.since)) },
         { key: "duration", header: "Без связи", align: "right", cell: (row) => <span className="font-medium">{row.since === null ? "—" : fmtDuration(V_NOW - row.since)}</span>, value: (row) => (row.since === null ? "" : fmtDuration(V_NOW - row.since)) },
@@ -323,10 +323,10 @@ export function StopsEquipment() {
             </div>
 
             <Dialog open={deviceList !== null} onOpenChange={(open) => { if (!open) setDeviceList(null) }}>
-                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-6xl">
+                <DialogContent className="w-[96vw] max-w-none sm:max-w-[min(96vw,88rem)]">
                     <DialogHeader>
                         <DialogTitle>{device === "camera" ? "Камеры" : "Контроллеры датчиков"}: {fmtInt(deviceRows.length)} из {fmtInt(data.total)}</DialogTitle>
-                        <DialogDescription>Состояние на {fmtDateTime(V_NOW)}. Выгрузка берёт строки с учётом фильтра и поиска.</DialogDescription>
+                        <DialogDescription>Состояние на {fmtDateTime(V_NOW)}. В выгрузке также номер остановки и микрорайон, с учётом фильтра и поиска.</DialogDescription>
                     </DialogHeader>
                     {deviceList !== null && (
                         <DataTable
@@ -336,7 +336,7 @@ export function StopsEquipment() {
                             rowKey={(row) => row.key}
                             search={(row) => { const stop = stopById(row.stopId); return `${stop?.name ?? ""} ${stop?.code ?? ""} ${row.label} ${districtName(stop?.districtId ?? "")}` }}
                             searchPlaceholder="Остановка, номер или устройство"
-                            pageSize={12}
+                            scrollAll
                             exportName={`${device === "camera" ? "kamery" : "kontrollery"}-${EXPORT_SLUG[deviceList]}`}
                             initialSort={deviceList === "online" || deviceList === "all" ? { key: "stop", dir: "asc" } : { key: "since", dir: "asc" }}
                             toolbar={<Segmented<DeviceFilter> value={deviceList} onChange={setDeviceList} options={DEVICE_FILTERS} />}

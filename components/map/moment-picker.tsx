@@ -1,19 +1,23 @@
 "use client"
 
-// Срез на момент: дата по календарю и время — карта показывает состояние всей аппаратуры
-// на этот момент. «Сейчас» возвращает живой режим. Заменяет слайдер времени.
+// Срез на момент: одна кнопка с датой и временем. По нажатию — календарь и поле времени,
+// карта показывает состояние всей аппаратуры на выбранный момент. «Сейчас» возвращает живой режим.
 import { useEffect, useState } from "react"
-import { CalendarIcon, Clock, Radio } from "lucide-react"
 import { format } from "date-fns"
 import { ru } from "date-fns/locale"
 import { Button } from "@/components/ui/button"
 import { Calendar } from "@/components/ui/calendar"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { cn } from "@/lib/utils"
 import type { RoadStatus } from "@/lib/types"
 
 /** История для среза читается за сутки до выбранного момента: столько нужно тепловой карте и состоянию остановок. */
 const WINDOW_MS = 24 * 3_600_000
+const SURGUT_OFFSET_MS = 5 * 3_600_000
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+
+const LABEL = new Intl.DateTimeFormat("ru-RU", { timeZone: "Asia/Yekaterinburg", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })
 
 interface MomentPickerProps {
   onTimeChange: (time: Date, statusOverride: Record<string, RoadStatus>, live: boolean, from: Date, to: Date) => void
@@ -24,15 +28,25 @@ function surgutMoment(day: Date, time: string) {
   return new Date(`${format(day, "yyyy-MM-dd")}T${time}:00+05:00`)
 }
 
-function surgutTimeNow() {
-  return new Date(Date.now() + 5 * 3_600_000).toISOString().slice(11, 16)
+/** Момент → день календаря (локальная полночь той же даты по Сургуту) и «ЧЧ:ММ» по Сургуту. */
+function surgutParts(at: Date) {
+  const iso = new Date(at.getTime() + SURGUT_OFFSET_MS).toISOString()
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number)
+  return { day: new Date(y, m - 1, d), time: iso.slice(11, 16) }
+}
+
+/** Цифры в «ЧЧ:ММ»: двоеточие ставится само. */
+function normalizeTime(value: string) {
+  const digits = value.replace(/\D/g, "").slice(0, 4)
+  return digits.length > 2 ? `${digits.slice(0, 2)}:${digits.slice(2)}` : digits
 }
 
 export function MomentPicker({ onTimeChange }: MomentPickerProps) {
-  const [day, setDay] = useState<Date | undefined>()
-  const [time, setTime] = useState(surgutTimeNow)
   const [moment, setMoment] = useState<Date | null>(null)
   const [now, setNow] = useState(() => new Date())
+  const [open, setOpen] = useState(false)
+  const [day, setDay] = useState<Date | undefined>()
+  const [time, setTime] = useState("")
 
   // Живой режим двигается вместе со временем.
   useEffect(() => {
@@ -46,49 +60,57 @@ export function MomentPicker({ onTimeChange }: MomentPickerProps) {
     onTimeChange(at, {}, moment === null, new Date(at.getTime() - WINDOW_MS), at)
   }, [moment, now, onTimeChange])
 
-  const candidate = day ? surgutMoment(day, time) : null
-  const invalid = candidate !== null && (Number.isNaN(candidate.getTime()) || candidate.getTime() > Date.now())
+  const shown = moment ?? now
+  const candidate = day && TIME_RE.test(time) ? surgutMoment(day, time) : null
+  const future = candidate !== null && candidate.getTime() > Date.now()
 
-  const show = () => {
-    if (candidate && !invalid) setMoment(candidate)
+  const toggle = (next: boolean) => {
+    if (next) {
+      // Окно открывается на том моменте, который сейчас на карте.
+      const parts = surgutParts(shown)
+      setDay(parts.day)
+      setTime(parts.time)
+    }
+    setOpen(next)
+  }
+  const apply = () => {
+    if (!candidate || future) return
+    setMoment(candidate)
+    setOpen(false)
   }
   const live = () => {
     setMoment(null)
-    setDay(undefined)
-    setTime(surgutTimeNow())
     setNow(new Date())
   }
 
   return (
-    <div className="bg-card border border-border rounded-xl p-3 shadow-md">
-      <div className="flex flex-wrap items-center gap-2">
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="outline" size="sm" className="h-8 justify-start font-normal">
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {day ? format(day, "d MMMM yyyy", { locale: ru }) : "Дата"}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar mode="single" selected={day} onSelect={setDay} disabled={{ after: new Date() }} locale={ru} />
-          </PopoverContent>
-        </Popover>
-        <div className="flex items-center gap-1">
-          <Clock className="h-4 w-4 text-muted-foreground" />
-          <Input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="h-8 w-[6.5rem]" aria-label="Время" />
-        </div>
-        <Button size="sm" className="h-8" onClick={show} disabled={!candidate || invalid}>Показать срез</Button>
-        <Button variant={moment ? "outline" : "secondary"} size="sm" className="h-8 gap-1.5" onClick={live}>
-          <Radio className="h-3.5 w-3.5" />
-          Сейчас
-        </Button>
-      </div>
-      <div className="mt-2 text-xs text-muted-foreground">
-        {moment
-          ? `Срез на ${moment.toLocaleString("ru-RU", { timeZone: "Asia/Yekaterinburg", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}`
-          : "Текущее состояние"}
-        {invalid && <span className="ml-2 text-destructive">Момент в будущем</span>}
-      </div>
+    <div className="inline-flex items-center gap-1 rounded-lg border border-border bg-card p-1 shadow-md">
+      <Popover open={open} onOpenChange={toggle}>
+        <PopoverTrigger asChild>
+          <Button variant="ghost" size="sm" className={cn("h-8 px-3 font-normal tabular-nums", moment && "text-primary")} aria-label="Дата и время на карте">
+            {LABEL.format(shown)}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="start" side="top">
+          <Calendar mode="single" selected={day} onSelect={setDay} disabled={{ after: new Date() }} locale={ru} />
+          <div className="flex items-center gap-2 border-t p-3">
+            <Input
+              value={time}
+              onChange={(event) => setTime(normalizeTime(event.target.value))}
+              onKeyDown={(event) => { if (event.key === "Enter") apply() }}
+              inputMode="numeric"
+              placeholder="ЧЧ:ММ"
+              aria-label="Время"
+              className="h-8 w-20 text-center tabular-nums"
+            />
+            <Button size="sm" className="h-8 flex-1" onClick={apply} disabled={!candidate || future}>Показать</Button>
+          </div>
+          {future && <p className="px-3 pb-3 text-xs text-destructive">Момент ещё не наступил</p>}
+        </PopoverContent>
+      </Popover>
+      {moment && (
+        <Button variant="ghost" size="sm" className="h-8 px-3" onClick={live}>Сейчас</Button>
+      )}
     </div>
   )
 }
