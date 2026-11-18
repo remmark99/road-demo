@@ -327,6 +327,9 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
   const [showStopConditionsPref, setShowStopConditions] = useMapPreference("showStopConditions", false)
   const showStopConditions = showStopConditionsPref && !sensorsOnly && hasModule("stops")
   const { data: conditionHistory, error: conditionError } = useStopConditions(showStopConditions, timelineRange)
+  // Выбранные категории состояния: пусто — показываются все остановки, как раньше.
+  const [conditionLevels, setConditionLevels] = useState<ConditionLevel[]>([])
+  useEffect(() => { if (!showStopConditions) setConditionLevels([]) }, [showStopConditions])
   const conditionTime = selectedTime?.getTime() ?? null
   const stopConditions = useMemo(() => {
     if (!conditionHistory || !busStopsData) return null
@@ -2030,6 +2033,12 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
             && (c.status === "online") === (wanted === "online"))
         }
 
+        // Выбраны категории состояния — на карте ровно те остановки, что в счётчиках этих категорий.
+        if (showStopConditions && conditionLevels.length > 0) {
+          const level = stopConditions?.get(f.properties.id)?.level
+          return level !== undefined && conditionLevels.includes(level)
+        }
+
         return busStopFilters[busStopStatusKey(sd)]
       })
 
@@ -2057,7 +2066,7 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
       source.setData(flatData as any)
       rawSource.setData(flatData as any)
     }
-  }, [busStopsData, cameras, mapLoaded, addBusStops, busStopFilters, stopClass, stopConditions])
+  }, [busStopsData, cameras, mapLoaded, addBusStops, busStopFilters, stopClass, stopConditions, showStopConditions, conditionLevels])
 
   // Карточки закреплённых остановок пересчитываются под момент слайдера.
   useEffect(() => {
@@ -2724,16 +2733,30 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
       {showStopConditions && (
         <div className="space-y-1 text-xs text-muted-foreground">
           {conditionError ? <div className="text-destructive">{conditionError}</div> : !conditionHistory ? <div>Загрузка…</div> : (
-            (["ok", "warn", "bad", "unknown"] as const).map(level => (
-              <div key={level} className="flex items-center gap-2">
+            <>
+            {(["ok", "warn", "bad", "unknown"] as const).map(level => {
+              const checked = conditionLevels.includes(level)
+              return (
+              <label key={level} className={`flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 hover:bg-muted/60 ${conditionLevels.length > 0 && !checked ? "opacity-50" : ""}`}>
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(value) => setConditionLevels(prev => value ? [...prev.filter(item => item !== level), level] : prev.filter(item => item !== level))}
+                  aria-label={CONDITION_LABELS[level]}
+                  className="h-3.5 w-3.5"
+                />
                 <span className="relative flex h-4 w-4 items-center justify-center">
                   <span className="absolute inset-0 rounded-full opacity-40 blur-[2px]" style={{ backgroundColor: level === "unknown" ? "transparent" : CONDITION_COLORS[level] }} />
                   <span className="relative h-2.5 w-2.5 rounded-full border-[3px] bg-white" style={{ borderColor: CONDITION_COLORS[level] }} />
                 </span>
                 <span className="flex-1">{CONDITION_LABELS[level]}</span>
                 <span className="tabular-nums">{conditionCounts[level]}</span>
-              </div>
-            ))
+              </label>
+              )
+            })}
+            {conditionLevels.length > 0 && (
+              <button type="button" className="px-1 pt-1 text-primary hover:underline" onClick={() => setConditionLevels([])}>Показать все</button>
+            )}
+            </>
           )}
         </div>
       )}
