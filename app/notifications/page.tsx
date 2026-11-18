@@ -1507,6 +1507,8 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
             const outageIsOpen = outageEpisode?.status === "open"
             const shownMessage = outageEpisode ? withoutOutageDuration(message) : message
             const timedEvent = binEpisode || episode || outageEpisode
+            const shownStart = binEpisode ? binEpisode.object_first_seen_at || binEpisode.started_at
+              : outageEpisode ? outageEpisode.started_at : alert.timestamp
             // Раскрывать есть смысл, только когда есть что показать: фото или видео.
             // Массовое отключение раскрывается в список камер и остановок.
             const expandable = !demoAlert && !!(binEpisode || episode || alert.clip_path || outageList)
@@ -1533,13 +1535,13 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                     <div className="md:col-span-2 flex items-center gap-2 text-sm">
                       <Clock className="h-4 w-4 text-muted-foreground md:hidden" />
                       <div className="min-w-0">
-                        <div className="text-muted-foreground md:text-foreground">
-                          {binEpisode ? `Начало: ${formatBinTime(binEpisode.object_first_seen_at || binEpisode.started_at)}${binConfidence?.start != null ? ` · уверенность ${formatConfidencePercent(binConfidence.start)}` : ''}`
-                            : outageEpisode ? `Начало: ${formatBinTime(outageEpisode.started_at)}`
-                            : formatTimeAgo(alert.timestamp)}
+                        {/* Эпизод показываем так же, как обычное событие: «N назад» и под ним дата — только от начала эпизода. */}
+                        <div className="text-muted-foreground md:text-foreground">{formatTimeAgo(shownStart)}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {binEpisode || outageEpisode ? `Начало: ${formatTime(shownStart)}` : formatTime(shownStart)}
                         </div>
-                        {!binEpisode && !outageEpisode && (
-                          <div className="text-xs text-muted-foreground">{formatTime(alert.timestamp)}</div>
+                        {binConfidence?.start != null && (
+                          <div className="text-xs text-muted-foreground">уверенность {formatConfidencePercent(binConfidence.start)}</div>
                         )}
                       </div>
                     </div>

@@ -4,6 +4,7 @@ import { useMemo, useState } from "react"
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts"
 import { Activity, Camera, Cctv, CircleHelp, Download, Gauge, ListX, TimerReset, Unplug, Wrench } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { isLiveVisionData } from "@/lib/mock/stop-analytics-vision-data"
 
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
@@ -63,6 +64,25 @@ const availabilityConfig = {
     controller: { label: "Контроллеры датчиков", color: "#ea580c" },
 } satisfies ChartConfig
 
+type DeviceFilter = "offline" | "long" | "online" | "all"
+
+interface DeviceRow {
+    key: string
+    label: string
+    stopId: number
+    since: number | null
+    cause: VOutageCause | null
+}
+
+const DEVICE_FILTERS: { value: DeviceFilter; label: string }[] = [
+    { value: "offline", label: "Не в сети" },
+    { value: "long", label: "Дольше суток" },
+    { value: "online", label: "В сети" },
+    { value: "all", label: "Все" },
+]
+
+const EXPORT_SLUG: Record<DeviceFilter, string> = { offline: "ne-v-seti", long: "ne-v-seti-dolshe-sutok", online: "v-seti", all: "vse" }
+
 const CAUSE_LABEL = Object.fromEntries(OUTAGE_CAUSES.map((cause) => [cause.id, cause])) as Record<VOutageCause, (typeof OUTAGE_CAUSES)[number]>
 
 export function StopsEquipment() {
@@ -70,6 +90,8 @@ export function StopsEquipment() {
     const phrase = usePeriodPhrase()
     const [device, setDevice] = useState<VDeviceType>("camera")
     const [showShort, setShowShort] = useState(false)
+    // Список устройств по нажатию на плитку: null — окно закрыто.
+    const [deviceList, setDeviceList] = useState<DeviceFilter | null>(null)
 
     const data = useMemo(() => {
         const { ids, from, to, prevFrom, prevTo } = scope
@@ -127,7 +149,13 @@ export function StopsEquipment() {
 
         const table = outagesStarted(ids, from, to, device)
         const mainCause = causes.slice().sort((a, b) => b.hours - a.hours)[0]
-        return { total, availability, availabilityPrev, open, openLong, repair, repairPrev, series, floor, causes, causeHours, offlineNow, ranking, table, mainCause }
+        // Каждое устройство — один раз: со временем начала текущего отключения или «в сети».
+        const openByDevice = new Map(open.map((outage) => [outage.deviceKey, outage]))
+        const devices: DeviceRow[] = devicesOf(ids, device).map((item) => {
+            const outage = openByDevice.get(item.key)
+            return { key: item.key, label: item.label, stopId: item.stopId, since: outage?.startAt ?? null, cause: outage?.cause ?? null }
+        })
+        return { devices, total, availability, availabilityPrev, open, openLong, repair, repairPrev, series, floor, causes, causeHours, offlineNow, ranking, table, mainCause }
     }, [scope, device])
 
     const tableRows = useMemo(
@@ -136,6 +164,24 @@ export function StopsEquipment() {
     )
     const hiddenShort = data.table.length - data.table.filter((outage) => outageDurationMs(outage) >= SHORT_MS).length
     const deviceWord = device === "camera" ? "камер" : "контроллеров"
+
+    const longMs = V_NORMS.offlineHours * HOUR
+    const deviceRows = useMemo(() => data.devices.filter((row) => {
+        if (deviceList === "online") return row.since === null
+        if (deviceList === "offline") return row.since !== null
+        if (deviceList === "long") return row.since !== null && V_NOW - row.since > longMs
+        return true
+    }), [data.devices, deviceList, longMs])
+    const deviceColumns: Column<DeviceRow>[] = [
+        { key: "device", header: device === "camera" ? "Камера" : "Контроллер", cell: (row) => <span className="inline-flex items-center gap-2 font-medium">{device === "camera" ? <Camera className="h-4 w-4 text-muted-foreground" /> : <Gauge className="h-4 w-4 text-muted-foreground" />}{row.label}</span>, value: (row) => row.label },
+        { key: "stop", header: "Остановка", cell: (row) => { const stop = stopById(row.stopId); return stop ? <StopLink stop={stop} /> : null }, value: (row) => stopById(row.stopId)?.name ?? "" },
+        { key: "code", header: "№ остановки", cell: (row) => stopById(row.stopId)?.code ?? "", value: (row) => stopById(row.stopId)?.code ?? "" },
+        { key: "district", header: "Микрорайон", cell: (row) => districtName(stopById(row.stopId)?.districtId ?? ""), value: (row) => districtName(stopById(row.stopId)?.districtId ?? "") },
+        { key: "state", header: "Статус", cell: (row) => row.since === null ? <StatusBadge tone="success">В сети</StatusBadge> : <StatusBadge tone={V_NOW - row.since > longMs ? "high" : "attention"}>Не в сети</StatusBadge>, value: (row) => (row.since === null ? "В сети" : "Не в сети") },
+        { key: "since", header: "Не в сети с", cell: (row) => <span className="whitespace-nowrap tabular-nums">{row.since === null ? "—" : fmtDateTime(row.since)}</span>, value: (row) => (row.since === null ? "" : fmtDateTime(row.since)) },
+        { key: "duration", header: "Без связи", align: "right", cell: (row) => <span className="font-medium">{row.since === null ? "—" : fmtDuration(V_NOW - row.since)}</span>, value: (row) => (row.since === null ? "" : fmtDuration(V_NOW - row.since)) },
+        { key: "cause", header: "Вероятная причина", cell: (row) => (row.cause ? CAUSE_LABEL[row.cause].hint : "—"), value: (row) => (row.cause ? CAUSE_LABEL[row.cause].hint : "") },
+    ]
 
     const columns: Column<VOutage>[] = [
         { key: "device", header: "Оборудование", cell: (outage) => <span className="inline-flex items-center gap-2 font-medium">{outage.device === "camera" ? <Camera className="h-4 w-4 text-muted-foreground" /> : <Gauge className="h-4 w-4 text-muted-foreground" />}{outage.label}</span>, value: (outage) => outage.label },
@@ -177,6 +223,7 @@ export function StopsEquipment() {
 
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <KpiCard
+                    onClick={() => setDeviceList("all")}
                     title="Доступность за период"
                     value={`${fmtNum(data.availability)} %`}
                     icon={Activity}
@@ -185,6 +232,7 @@ export function StopsEquipment() {
                     deltaLabel={scope.prevLabel}
                 />
                 <KpiCard
+                    onClick={() => setDeviceList("offline")}
                     title="Не в сети сейчас"
                     value={fmtInt(data.open.length)}
                     icon={Unplug}
@@ -192,6 +240,7 @@ export function StopsEquipment() {
                     detail={`Из ${fmtInt(data.total)} · на ${data.offlineNow.length} ${plural(data.offlineNow.length, ["остановке", "остановках", "остановках"])}`}
                 />
                 <KpiCard
+                    onClick={() => setDeviceList("long")}
                     title="Из них дольше суток"
                     value={fmtInt(data.openLong.length)}
                     icon={ListX}
@@ -272,6 +321,29 @@ export function StopsEquipment() {
                     <RankList rows={data.ranking} colors={["#2563eb"]} emptyText="За период отключений не было" />
                 </ChartCard>
             </div>
+
+            <Dialog open={deviceList !== null} onOpenChange={(open) => { if (!open) setDeviceList(null) }}>
+                <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-6xl">
+                    <DialogHeader>
+                        <DialogTitle>{device === "camera" ? "Камеры" : "Контроллеры датчиков"}: {fmtInt(deviceRows.length)} из {fmtInt(data.total)}</DialogTitle>
+                        <DialogDescription>Состояние на {fmtDateTime(V_NOW)}. Выгрузка берёт строки с учётом фильтра и поиска.</DialogDescription>
+                    </DialogHeader>
+                    {deviceList !== null && (
+                        <DataTable
+                            key={`${device}-${deviceList}`}
+                            columns={deviceColumns}
+                            rows={deviceRows}
+                            rowKey={(row) => row.key}
+                            search={(row) => { const stop = stopById(row.stopId); return `${stop?.name ?? ""} ${stop?.code ?? ""} ${row.label} ${districtName(stop?.districtId ?? "")}` }}
+                            searchPlaceholder="Остановка, номер или устройство"
+                            pageSize={12}
+                            exportName={`${device === "camera" ? "kamery" : "kontrollery"}-${EXPORT_SLUG[deviceList]}`}
+                            initialSort={deviceList === "online" || deviceList === "all" ? { key: "stop", dir: "asc" } : { key: "since", dir: "asc" }}
+                            toolbar={<Segmented<DeviceFilter> value={deviceList} onChange={setDeviceList} options={DEVICE_FILTERS} />}
+                        />
+                    )}
+                </DialogContent>
+            </Dialog>
 
             <ChartCard title="Отключения за период" icon={Unplug} iconClassName="text-sky-500">
                 <DataTable

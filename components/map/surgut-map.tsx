@@ -238,8 +238,8 @@ function formatMeasure(value: number | null | undefined, unit: string) {
   return value === null || value === undefined || !Number.isFinite(value) ? "—" : `${String(Math.round(value * 10) / 10).replace(".", ",")} ${unit}`
 }
 
-/** Карточка закреплённой остановки: состояние на момент слайдера (или сейчас). */
-function pinnedStopContent(properties: BusStopProperties, condition: StopCondition | null, at: number, historical: boolean, onDetails: () => void): HTMLElement {
+/** Карточка остановки: состояние на момент слайдера (или сейчас). Без onDetails — подсказка при наведении, без кнопки. */
+function pinnedStopContent(properties: BusStopProperties, condition: StopCondition | null, at: number, historical: boolean, onDetails?: () => void): HTMLElement {
   const data = properties.sensor_data
   const sensors = !data?.has_controller ? "не установлены" : data.sensors_history_known === false ? "нет истории" : data.sensors_online ? "в сети" : "не в сети"
   const cameraTotal = data?.total_camera_count ?? 0
@@ -262,8 +262,8 @@ function pinnedStopContent(properties: BusStopProperties, condition: StopConditi
       <span>Камеры</span><b>${escapeHtml(cameras)}</b>
       <span>Датчики</span><b>${escapeHtml(sensors)}</b>
     </div>
-    <button type="button" class="pinned-stop-details">Подробнее</button>`
-  root.querySelector("button")?.addEventListener("click", onDetails)
+    ${onDetails ? `<button type="button" class="pinned-stop-details">Подробнее</button>` : ""}`
+  if (onDetails) root.querySelector("button")?.addEventListener("click", onDetails)
   return root
 }
 
@@ -347,6 +347,9 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
     // Режим выключили — закреплённая карточка не должна оставаться на карте.
     if (!pinModeRef.current) setPinnedStops([])
   }, [historySnapshot, showStopConditions])
+  // Подсказка при наведении в режиме «Состояние остановок»: обработчики карты вешаются один раз,
+  // поэтому свежие данные слоя они читают через ref.
+  const conditionHoverRef = useRef<((stopId: number) => HTMLElement | null) | null>(null)
   const conditionCounts = useMemo(() => {
     const counts: Record<ConditionLevel, number> = { ok: 0, warn: 0, bad: 0, unknown: 0 }
     for (const condition of stopConditions?.values() ?? []) counts[condition.level]++
@@ -794,6 +797,13 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
           const feature = e.features?.[0]
           if (feature) {
             const props = feature.properties as any
+            const conditionCard = conditionHoverRef.current?.(Number(props.id)) ?? null
+            if (conditionCard) {
+              popup.setMaxWidth("280px").addClassName("stop-condition-hover")
+              popup.setLngLat((e as unknown as { lngLat: any }).lngLat).setDOMContent(conditionCard).addTo(map.current!)
+              return
+            }
+            popup.setMaxWidth("240px").removeClassName("stop-condition-hover")
             popup
               .setLngLat((e as unknown as { lngLat: any }).lngLat)
               .setHTML(
@@ -2085,6 +2095,14 @@ export function SurgutMap({ selectedTime, timelineRange, statusOverride, hovered
       popups.set(stopId, popup)
     }
   }, [pinnedStops, busStopsData, stopConditions, conditionTime, historySnapshot, mapLoaded])
+
+  useEffect(() => {
+    conditionHoverRef.current = showStopConditions ? (stopId: number) => {
+      const feature = busStopsData?.features.find(f => f.properties.id === stopId)
+      if (!feature) return null
+      return pinnedStopContent(feature.properties, stopConditions?.get(stopId) ?? null, conditionTime ?? Date.now(), historySnapshot !== null)
+    } : null
+  }, [showStopConditions, busStopsData, stopConditions, conditionTime, historySnapshot])
 
   useEffect(() => {
     const popups = pinnedPopups.current

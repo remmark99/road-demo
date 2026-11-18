@@ -272,7 +272,7 @@ export function StopsLoad() {
                                     <PopoverTrigger asChild>
                                         <Button type="button" variant="outline" size="sm" className="h-7 gap-1 px-2 text-xs"><Plus className="h-3 w-3" />Остановка</Button>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-80 p-2" align="end">
+                                    <PopoverContent className="w-[min(32rem,calc(100vw-2rem))] p-2" align="end">
                                         <Input autoFocus value={addQuery} onChange={(event) => setAddQuery(event.target.value)} placeholder="Название, номер или микрорайон" aria-label="Добавить остановку в сравнение" />
                                         <div className="mt-2 max-h-72 space-y-0.5 overflow-auto">
                                             {addMatches.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">Ничего не найдено</p>}
