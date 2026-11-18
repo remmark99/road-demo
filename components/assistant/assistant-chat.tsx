@@ -77,7 +77,10 @@ function messageText(message: UIMessage) {
 }
 
 /** Какие данные ассистент взял: одна строка источников, пока грузится — со спиннером. */
-function ToolSteps({ parts }: { parts: ToolPart[] }) {
+function ToolSteps({ parts: all }: { parts: ToolPart[] }) {
+    // Неудачную попытку, которую модель потом повторила успешно, не показываем: ответ от неё не пострадал.
+    const parts = all.filter((part, index) => !toolFailed(part)
+        || !all.slice(index + 1).some(later => toolName(later) === toolName(part) && !toolFailed(later)))
     if (!parts.length) return null
     const pending = parts.some(part => part.state !== "output-available" && part.state !== "output-error")
     return (
