@@ -4,6 +4,8 @@ import type { UIMessage } from 'ai'
 import { assistantUser } from '@/lib/assistant/access'
 import { saveConversation } from '@/lib/assistant/conversations'
 import { MAX_REPORT_PROMPT_CHARS } from '@/lib/assistant/limits'
+import { readUsageSummary, recordUsage } from '@/lib/assistant/usage'
+import { budgetExhausted, exhaustedMessage } from '@/lib/assistant/usage-shared'
 import { assistantConfigured, generateVectorReport } from '@/lib/assistant/vector-assistant'
 import { REPORT_FORMATS, type ReportFormat } from '@/lib/reports/document'
 import { reportResponse } from '@/lib/reports/render'
@@ -39,8 +41,13 @@ export async function POST(request: Request) {
     const wish = typeof body?.prompt === 'string' ? body.prompt.trim().slice(0, MAX_REPORT_PROMPT_CHARS) : ''
     const question = `Сделай отчёт за период с ${from} по ${to} включительно (даты по Сургуту).\n\n${wish || DEFAULT_REQUEST}`
 
+    const budget = await readUsageSummary(access.db, access.user.id)
+    if (budgetExhausted(budget)) return NextResponse.json({ error: exhaustedMessage(budget) }, { status: 429 })
+
     try {
-        const result = await generateVectorReport(question, { db: access.db, now: Date.now() })
+        const result = await generateVectorReport(question, { db: access.db, now: Date.now() }, {
+            onUsage: usage => recordUsage(access.db, access.user.id, { source: 'report', usage }).then(() => undefined),
+        })
         if (!result.report) {
             // Например, запрос не про остановки — тогда модель отвечает отбивкой.
             return NextResponse.json({ error: result.text || result.error || 'Ассистент не собрал отчёт. Уточните запрос.' }, { status: 422 })

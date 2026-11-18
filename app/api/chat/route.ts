@@ -9,6 +9,8 @@ import { createClient } from "@/lib/supabase/server"
 import { answerWithVectorAssistant, assistantConfigured, streamVectorAssistant, cannedReply } from "@/lib/assistant/vector-assistant"
 import { isConversationId, saveConversation } from "@/lib/assistant/conversations"
 import { readReportPrompt } from "@/lib/assistant/report-prompt"
+import { readUsageSummary, recordUsage, usageTokens } from "@/lib/assistant/usage"
+import { budgetExhausted, exhaustedMessage, type AssistantMessageMetadata } from "@/lib/assistant/usage-shared"
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
@@ -3107,11 +3109,21 @@ async function streamConfiguredAssistant(messages: UIMessage[], conversationId: 
     const stream = createUIMessageStream<UIMessage>({
         execute: async ({ writer }) => {
             const canned = allowed ? cannedReply(messages) : null
-            const result = allowed && !canned ? streamVectorAssistant(messages, { db, now: Date.now() }, { reportPrompt }) : null
+            // Месячный лимит: исчерпан — модель не вызываем, отвечаем сразу.
+            const budget = allowed && !canned && user ? await readUsageSummary(db, user.id) : null
+            const exhausted = budget && budgetExhausted(budget) ? exhaustedMessage(budget) : null
+            const result = allowed && !canned && !exhausted ? streamVectorAssistant(messages, { db, now: Date.now() }, {
+                reportPrompt,
+                onUsage: async usage => { if (user) await recordUsage(db, user.id, { conversationId, source: "chat", usage }) },
+            }) : null
             if (result) {
                 writer.merge(result.toUIMessageStream({
                     sendReasoning: false,
                     originalMessages: messages,
+                    // Сколько токенов занял ответ — видно под ним в окне чата.
+                    messageMetadata: ({ part }): AssistantMessageMetadata | undefined => part.type === "finish"
+                        ? { tokens: usageTokens(part.totalUsage) }
+                        : undefined,
                     onFinish: async ({ messages: conversation }) => {
                         if (conversationId && user) await saveConversation(db, user.id, conversationId, conversation)
                     },
@@ -3120,7 +3132,7 @@ async function streamConfiguredAssistant(messages: UIMessage[], conversationId: 
             }
             writer.write({ type: "start" })
             writer.write({ type: "text-start", id: TEXT_PART_ID })
-            writer.write({ type: "text-delta", id: TEXT_PART_ID, delta: canned ?? (allowed ? "Напишите вопрос." : NO_STOPS_ACCESS) })
+            writer.write({ type: "text-delta", id: TEXT_PART_ID, delta: canned ?? exhausted ?? (allowed ? "Напишите вопрос." : NO_STOPS_ACCESS) })
             writer.write({ type: "text-end", id: TEXT_PART_ID })
             writer.write({ type: "finish", finishReason: "stop" })
             if (canned && conversationId && user) {
