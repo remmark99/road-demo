@@ -106,8 +106,8 @@ test('compact outdoor readout: icons with values, delta for temperature and humi
     assert.match(render(PavilionTemperatureDelta, { indoor: 13.6, measuredAt: time, outdoor }), /На 13,8 °C теплее улицы/)
     assert.match(render(PavilionTemperatureDelta, { indoor: -2, measuredAt: time, outdoor }), /На 1,8 °C холоднее улицы/)
     assert.match(render(PavilionTemperatureDelta, { indoor: -0.2, measuredAt: time, outdoor }), /Как на улице/)
-    assert.match(render(PavilionHumidityDelta, { indoor: 68.7, measuredAt: time, outdoor }), /На 25,3 п\.п\. суше улицы/)
-    assert.match(render(PavilionHumidityDelta, { indoor: 97.4, measuredAt: time, outdoor }), /На 3,4 п\.п\. влажнее улицы/)
+    assert.match(render(PavilionHumidityDelta, { indoor: 68.7, measuredAt: time, outdoor }), /На 25,3 % суше улицы/)
+    assert.match(render(PavilionHumidityDelta, { indoor: 97.4, measuredAt: time, outdoor }), /На 3,4 % влажнее улицы/)
     assert.match(render(PavilionHumidityDelta, { indoor: 94, measuredAt: time, outdoor }), /Как на улице/)
     // Старое, будущее и битое время скрывает каждое значение по своему полю.
     for (const bad of [new Date(now - 14400000).toISOString(), new Date(now + 60000).toISOString(), 'bad']) {
