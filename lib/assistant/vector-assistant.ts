@@ -153,6 +153,7 @@ export function vectorToolSet(ctx: VectorToolContext): ToolSet {
                 execute: async (args: unknown): Promise<ChartToolOutput> => {
                     const result = await callVectorTool(ctx, definition.name, args)
                     const text = result.content.map(part => part.text).join('\n')
+                    if (result.isError) console.warn('create_chart rejected:', text.slice(0, 300))
                     return result.isError ? { error: text } : JSON.parse(text) as ChartToolOutput
                 },
                 toModelOutput: ({ output }) => {
@@ -170,6 +171,8 @@ export function vectorToolSet(ctx: VectorToolContext): ToolSet {
                 execute: async (args: unknown): Promise<ReportToolOutput> => {
                     const result = await callVectorTool(ctx, definition.name, args)
                     const text = result.content.map(part => part.text).join('\n')
+                    // Текст проверки аргументов — наш, без данных пользователя: по нему видно, на чём споткнулась модель.
+                    if (result.isError) console.warn('create_report rejected:', text.slice(0, 300))
                     return result.isError ? { error: text } : JSON.parse(text) as ReportToolOutput
                 },
                 toModelOutput: ({ output }) => ({ type: 'text', value: reportSummary(output as ReportToolOutput) }),
