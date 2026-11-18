@@ -231,8 +231,9 @@ export function SectionShell({ title, children, filters, titleAddon, actions, di
 }) {
     const scope = useScope()
     return (
-        <div className="h-full overflow-auto p-6 space-y-6">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="h-full overflow-auto p-6 space-y-4">
+            {/* Шапка в одну строку: период и свежесть данных стоят рядом с выгрузкой, а не столбиком над фильтрами. */}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                         <h2 className="text-xl font-semibold">{title}</h2>
@@ -240,10 +241,12 @@ export function SectionShell({ title, children, filters, titleAddon, actions, di
                         {!isLiveVisionData() && <Badge variant="secondary">Демо-данные</Badge>}
                     </div>
                 </div>
-                <div className="flex flex-col gap-2 text-sm text-muted-foreground lg:items-end lg:text-right">
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground lg:justify-end lg:text-right">
+                    <div className="leading-tight">
+                        <div>Период: {fmtDateTime(scope.from)} - {fmtDateTime(scope.to)}</div>
+                        <div>{isLiveVisionData() ? `Данные на ${fmtDateTime(V_NOW)}` : "Последние данные: 2 мин назад"} · {fmtInt(scope.stops.length)} ост.</div>
+                    </div>
                     {actions}
-                    <div>Период: {fmtDateTime(scope.from)} - {fmtDateTime(scope.to)}</div>
-                    <div>{isLiveVisionData() ? `Данные на ${fmtDateTime(V_NOW)}` : "Последние данные: 2 мин назад"} · {fmtInt(scope.stops.length)} ост.</div>
                 </div>
             </div>
             <FilterBar district={district} stop={stop}>{filters}</FilterBar>
@@ -304,14 +307,14 @@ function StopSearch() {
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="gap-2 font-normal text-muted-foreground">
+                <Button variant="outline" size="sm" className="w-full justify-start gap-2 font-normal text-muted-foreground sm:w-80">
                     <Search className="h-3.5 w-3.5" />
                     Найти остановку
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-80 p-2" align="start">
+            <PopoverContent className="w-[min(32rem,calc(100vw-2rem))] p-2" align="start">
                 <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, номер или микрорайон" aria-label="Поиск остановки" />
-                <div className="mt-2 max-h-72 space-y-0.5 overflow-auto">
+                <div className="mt-2 max-h-96 space-y-0.5 overflow-auto">
                     {matches.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">Ничего не найдено</p>}
                     {matches.map((stop) => (
                         <button
@@ -684,7 +687,7 @@ export function DataTable<T>({ columns, rows, rowKey, search, searchPlaceholder 
         <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
                 {search && (
-                    <div className="relative w-full sm:w-72">
+                    <div className="relative w-full sm:w-96">
                         <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                         <Input className="pl-8" value={query} onChange={(event) => { setQuery(event.target.value); setPage(0) }} placeholder={searchPlaceholder} aria-label={searchPlaceholder} />
                     </div>

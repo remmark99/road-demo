@@ -107,7 +107,7 @@ export function StopMultiSelect<T extends StopOptionId>({
             <PopoverTrigger asChild>
                 <Button
                     variant="outline"
-                    className={cn("max-w-[16rem] gap-2", className)}
+                    className={cn("max-w-[22rem] gap-2", className)}
                     disabled={disabled || total === 0}
                     title={singleLabel ?? undefined}
                 >
@@ -122,7 +122,7 @@ export function StopMultiSelect<T extends StopOptionId>({
                     event.preventDefault()
                     searchRef.current?.focus()
                 }}
-                className="flex w-[22rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 max-h-[min(30rem,var(--radix-popover-content-available-height))]"
+                className="flex w-[32rem] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 max-h-[min(30rem,var(--radix-popover-content-available-height))]"
             >
                 <div className="border-b p-2">
                     <div className="relative">
