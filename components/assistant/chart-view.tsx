@@ -10,11 +10,11 @@ import { cn } from "@/lib/utils"
 
 /** Цвета серий — CSS-переменные .chart-view (globals.css): свои шаги для светлой и тёмной темы. */
 const seriesColor = (index: number) => `var(--series-${(index % 8) + 1})`
-const AXIS = { fontSize: 11, fill: "hsl(var(--muted-foreground))" }
+const AXIS = { fontSize: 11, fill: "var(--muted-foreground)" }
 const TOOLTIP = {
-    contentStyle: { background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12, color: "hsl(var(--popover-foreground))" },
-    labelStyle: { color: "hsl(var(--muted-foreground))", marginBottom: 2 },
-    cursor: { fill: "hsl(var(--muted) / 0.4)" },
+    contentStyle: { background: "var(--popover)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 12, color: "var(--popover-foreground)" },
+    labelStyle: { color: "var(--muted-foreground)", marginBottom: 2 },
+    cursor: { fill: "var(--muted)", fillOpacity: 0.7 },
 }
 
 const short = (label: string, max: number) => label.length > max ? `${label.slice(0, max - 1)}…` : label
@@ -57,7 +57,7 @@ function Plot({ chart }: { chart: ReportChart }) {
     }), [chart])
     const format = (value: unknown) => `${chartNumber(typeof value === "number" ? value : null)}${chart.unit ? ` ${chart.unit}` : ""}`
     const legend = chart.series.length > 1 ? <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 4 }} /> : null
-    const grid = <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
+    const grid = <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
 
     if (chart.type === "pie" || chart.type === "donut") {
         const values = chart.series[0].values.map(v => v ?? 0)
@@ -68,7 +68,7 @@ function Plot({ chart }: { chart: ReportChart }) {
                 <div className="relative h-56 w-full sm:w-1/2">
                     <ResponsiveContainer>
                         <PieChart>
-                            <Pie data={slices} dataKey="value" nameKey="label" innerRadius={chart.type === "donut" ? "58%" : 0} outerRadius="88%" paddingAngle={slices.length > 1 ? 1.5 : 0} stroke="hsl(var(--card))" strokeWidth={2} isAnimationActive={false}>
+                            <Pie data={slices} dataKey="value" nameKey="label" innerRadius={chart.type === "donut" ? "58%" : 0} outerRadius="88%" paddingAngle={slices.length > 1 ? 1.5 : 0} stroke="var(--card)" strokeWidth={2} isAnimationActive={false}>
                                 {slices.map(slice => <Cell key={slice.label} fill={colorFor(chart, 0, chart.labels.indexOf(slice.label))} />)}
                             </Pie>
                             <Tooltip {...TOOLTIP} formatter={(value: unknown) => format(value)} />
@@ -101,7 +101,7 @@ function Plot({ chart }: { chart: ReportChart }) {
             <div style={{ height }}>
                 <ResponsiveContainer>
                     <BarChart data={rows} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 4 }} barCategoryGap="22%">
-                        <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" horizontal={false} />
+                        <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" horizontal={false} />
                         <XAxis type="number" tick={AXIS} axisLine={false} tickLine={false} tickFormatter={v => chartNumber(v)} />
                         <YAxis type="category" dataKey="label" width={170} tick={AXIS} axisLine={false} tickLine={false} tickFormatter={v => short(String(v), 28)} interval={0} />
                         <Tooltip {...TOOLTIP} formatter={(value: unknown) => format(value)} />
@@ -117,7 +117,7 @@ function Plot({ chart }: { chart: ReportChart }) {
         )
     }
 
-    const xAxis = <XAxis dataKey="label" tick={AXIS} axisLine={{ stroke: "hsl(var(--border))" }} tickLine={false} minTickGap={8} tickFormatter={v => short(String(v), 14)} />
+    const xAxis = <XAxis dataKey="label" tick={AXIS} axisLine={{ stroke: "var(--border)" }} tickLine={false} minTickGap={8} tickFormatter={v => short(String(v), 14)} />
     const yAxis = <YAxis tick={AXIS} axisLine={false} tickLine={false} width={44} tickFormatter={v => chartNumber(v)} />
     return (
         <div className="h-64">
@@ -125,14 +125,14 @@ function Plot({ chart }: { chart: ReportChart }) {
                 {chart.type === "line" ? (
                     <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
                         {grid}{xAxis}{yAxis}
-                        <Tooltip {...TOOLTIP} cursor={{ stroke: "hsl(var(--muted-foreground))", strokeDasharray: "3 3" }} formatter={(value: unknown) => format(value)} />
+                        <Tooltip {...TOOLTIP} cursor={{ stroke: "var(--muted-foreground)", strokeDasharray: "3 3" }} formatter={(value: unknown) => format(value)} />
                         {legend}
                         {chart.series.map((s, k) => <Line key={s.name} type="monotone" dataKey={`s${k}`} name={s.name} stroke={seriesColor(k)} strokeWidth={2} dot={chart.labels.length <= 31 ? { r: 3, strokeWidth: 0, fill: seriesColor(k) } : false} activeDot={{ r: 5 }} connectNulls isAnimationActive={false} />)}
                     </LineChart>
                 ) : chart.type === "area" ? (
                     <AreaChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
                         {grid}{xAxis}{yAxis}
-                        <Tooltip {...TOOLTIP} cursor={{ stroke: "hsl(var(--muted-foreground))", strokeDasharray: "3 3" }} formatter={(value: unknown) => format(value)} />
+                        <Tooltip {...TOOLTIP} cursor={{ stroke: "var(--muted-foreground)", strokeDasharray: "3 3" }} formatter={(value: unknown) => format(value)} />
                         {legend}
                         {chart.series.map((s, k) => <Area key={s.name} type="monotone" dataKey={`s${k}`} name={s.name} stroke={seriesColor(k)} strokeWidth={2} fill={seriesColor(k)} fillOpacity={0.15} connectNulls isAnimationActive={false} />)}
                     </AreaChart>
