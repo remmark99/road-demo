@@ -3,6 +3,8 @@
 import { GlassEvidencePanel } from '@/components/notifications/glass-evidence'
 import { EventsExport } from '@/components/notifications/events-export'
 import { getAbandonedEpisode } from '@/lib/notifications/abandoned-episode'
+import { getVandalismEpisode } from '@/lib/notifications/vandalism-episode'
+import { VandalismEvidencePanel } from '@/components/notifications/vandalism-evidence'
 import { PeriodFilter } from '@/components/notifications/period-filter'
 import { CameraPlaceFilter } from '@/components/notifications/camera-place-filter'
 import { buildCameraPlaces, buildStopPlaces, findStopPlace, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
@@ -99,6 +101,7 @@ import {
   Trash2,
   Cigarette,
   Dog,
+  SprayCan,
   Cctv,
   Wifi,
   WifiOff,
@@ -162,6 +165,7 @@ const alertIcons: Record<string, LucideIcon> = {
   lying_person: PersonStanding,
   abandoned_object: PackageSearch,
   dogs_without_people: Dog,
+  vandalism: SprayCan,
   camera_offline: CameraOff,
   camera_online: CameraIcon,
 }
@@ -205,6 +209,7 @@ const RUSSIAN_ALERT_MESSAGES: Record<string, string> = {
   abandoned_object: "Обнаружен оставленный предмет",
   dogs_without_people: "Обнаружены собаки без людей",
   bin_full: "Зафиксирована переполненная урна",
+  vandalism: "Обнаружен вандализм",
   trash_overflow: "Зафиксирована переполненная урна",
   trash_bin_overflow: "Зафиксирована переполненная урна",
   bin_overflow: "Зафиксирована переполненная урна",
@@ -1499,7 +1504,10 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
               : undefined
             const episodeIsOpen = episode?.status === "open"
             const abandonedEpisode = getAbandonedEpisode(alert)
+            const vandalismEpisode = getVandalismEpisode(alert)
+            // Прогон сохранённой записи — разовая проверка: у неё нет «продолжается» и длительности.
             const binEpisode = getBinEpisode(alert) || abandonedEpisode
+              || (vandalismEpisode && !vandalismEpisode.replay ? vandalismEpisode : null)
             // Boundary scores exist for bin episodes only (abandoned reuses the
             // same shape); they come from our trained classifier, not the VLM.
             const binConfidence = binEpisode ? binEpisodeConfidences(alert) : null
@@ -1511,7 +1519,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
               : outageEpisode ? outageEpisode.started_at : alert.timestamp
             // Раскрывать есть смысл, только когда есть что показать: фото или видео.
             // Массовое отключение раскрывается в список камер и остановок.
-            const expandable = !demoAlert && !!(binEpisode || episode || alert.clip_path || outageList)
+            const expandable = !demoAlert && !!(binEpisode || vandalismEpisode || episode || alert.clip_path || outageList)
             const duration = timedEvent && (binEpisode?.object_first_seen_at || timedEvent.started_at) ? formatEventDuration(binEpisode?.object_first_seen_at || timedEvent.started_at,
               timedEvent.status === 'open' ? new Date().toISOString() : timedEvent.ended_at || timedEvent.last_seen_at) : ['bin_full', 'lying_person', 'abandoned_object'].includes(alert.alert_type) ? 'не определена' : null
 
@@ -1567,6 +1575,9 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
 
                     <div className="md:col-span-4 min-w-0 text-sm">
                       <div className="truncate">{shownMessage}</div>
+                      {vandalismEpisode?.replay && (
+                        <div className="mt-1"><Badge variant="outline" className="text-xs">Проверка по записи</Badge></div>
+                      )}
                       {binEpisode && (
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <Badge variant="outline">
@@ -1640,7 +1651,9 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
 
                   {isExpanded && outageList && <OutageCamerasPanel message={shownMessage} cameras={outageList} />}
 
-                  {isExpanded && expandable && !outageList && (
+                  {isExpanded && vandalismEpisode && <VandalismEvidencePanel episode={vandalismEpisode} onExpand={openLightbox} />}
+
+                  {isExpanded && expandable && !outageList && !vandalismEpisode && (
                     <div className="mt-4 pt-4 border-t">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {binEpisode ? (

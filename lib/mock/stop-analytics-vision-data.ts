@@ -175,7 +175,7 @@ function named(name: string) {
 
 // ---------------------------------------------------------------- события безопасности
 
-export type SafetyType = "lying_person" | "smoking" | "abandoned_object" | "dogs_without_people" | "glass_break"
+export type SafetyType = "lying_person" | "smoking" | "abandoned_object" | "dogs_without_people" | "glass_break" | "vandalism"
 
 /** Порядок и цвета закреплены за видом события и не меняются при фильтрации. */
 export const SAFETY_TYPES: { id: SafetyType; label: string; color: string }[] = [
@@ -184,6 +184,8 @@ export const SAFETY_TYPES: { id: SafetyType; label: string; color: string }[] = 
     { id: "abandoned_object", label: "Оставленные предметы", color: "#0d9488" },
     { id: "dogs_without_people", label: "Собаки без людей", color: "#8b5cf6" },
     { id: "glass_break", label: "Разбитое стекло", color: "#db2777" },
+    // Изменение поверхности по камере: наклейки, надписи (alerts.alert_type = "vandalism").
+    { id: "vandalism", label: "Вандализм", color: "#a16207" },
 ]
 
 export interface VSafetyEvent {
@@ -205,6 +207,7 @@ const SAFETY_RATES: Record<SafetyType, number> = {
     abandoned_object: 0.7,
     dogs_without_people: 0.25,
     glass_break: 0.22,
+    vandalism: 0.18,
 }
 
 const SAFETY_HOURS: Record<SafetyType, number[]> = {
@@ -213,6 +216,7 @@ const SAFETY_HOURS: Record<SafetyType, number[]> = {
     abandoned_object: [0.2, 0.1, 0.1, 0.1, 0.1, 0.3, 1, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 3, 2, 1, 1, 0.5, 0.3],
     dogs_without_people: [2, 2, 2, 3, 4, 5, 4, 2, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2],
     glass_break: [4, 5, 5, 4, 3, 1, 0.5, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.5, 0.5, 1, 1, 2, 3, 4, 4],
+    vandalism: [4, 4, 4, 3, 2, 1, 0.5, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.5, 0.5, 1, 1, 2, 3, 4, 5, 5],
 }
 
 function pickWeighted(weights: number[], roll: number) {

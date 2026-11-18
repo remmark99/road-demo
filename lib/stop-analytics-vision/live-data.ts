@@ -3,6 +3,7 @@
 // строил из демо-генератора (lib/mock/stop-analytics-vision-data.ts), и ставит его в модуль.
 import { createClient } from "@/lib/supabase/client"
 import { getBinEpisode } from "@/lib/bin-episodes"
+import { VANDALISM_ALERT_TYPE, getVandalismEpisode } from "@/lib/notifications/vandalism-episode"
 import { fetchCurrentStops, fetchStopCameras, resolveLocationStopId, toVmsCameraIndex } from "@/lib/api/stop-current-analytics"
 import { fetchStopDistricts, fetchStopDistrictAssignments } from "@/lib/api/stop-districts"
 import { fetchEquipmentState } from "@/lib/api/equipment"
@@ -147,7 +148,7 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
     const historyFrom = cityDayStart(now) - (HISTORY_DAYS - 1) * DAY
     const supabase = createClient()
 
-    const [stopCodes, stopsInfo, cameras, districts, assignments, equipment, outagesResult, safetyAlerts, lyingEpisodes, binAlerts, climateData, load] = await Promise.all([
+    const [stopCodes, stopsInfo, cameras, districts, assignments, equipment, outagesResult, safetyAlerts, lyingEpisodes, binAlerts, vandalismAlerts, climateData, load] = await Promise.all([
         readPages<{ id: number; stop_code: string | null }>((a, b) => supabase.from("bus_stops").select("id,stop_code").order("id").range(a, b)),
         fetchCurrentStops(),
         fetchStopCameras(),
@@ -163,6 +164,10 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
         readPages<{ id: string; alert_type: string; camera_index: number | null; metadata: Record<string, unknown> | null }>((a, b) =>
             supabase.from("alerts").select("id,alert_type,camera_index,metadata").eq("alert_type", "bin_full")
                 .gte("timestamp", new Date(historyFrom - 30 * DAY).toISOString()).order("id").range(a, b)),
+        // Инцидент вандализма — одна строка на всё время от появления следа до устранения.
+        readPages<{ id: string; alert_type: string; camera_index: number | null; timestamp: string; metadata: Record<string, unknown> | null }>((a, b) =>
+            supabase.from("alerts").select("id,alert_type,camera_index,timestamp,metadata").eq("alert_type", VANDALISM_ALERT_TYPE)
+                .gte("timestamp", new Date(historyFrom).toISOString()).order("id").range(a, b)),
         fetchClimate(now),
         fetchStopLoadAnalytics({ from: new Date(Math.floor((now - SERIES_DAYS * DAY) / 300_000) * 300_000), to: new Date(Math.floor(now / 300_000) * 300_000) }),
     ])
@@ -248,6 +253,16 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
         const start = Date.parse(episode.started_at)
         const durationMin = episode.ended_at ? Math.max(1, Math.round((Date.parse(episode.ended_at) - start) / 60_000)) : null
         safety.push({ id: `lp-${episode.id}`, stopId, type: "lying_person", at: start, durationMin, camera: episode.camera_index, confidence: null, verdict: "confirmed" })
+    }
+    for (const alert of vandalismAlerts) {
+        const episode = getVandalismEpisode(alert)
+        // Прогон сохранённой записи — проверка детектора, а не происшествие: в статистику не идёт.
+        if (!episode || episode.replay) continue
+        const stopId = stopOfCamera(alert.camera_index)
+        if (stopId === undefined || !stopIds.has(stopId)) continue
+        const start = Date.parse(episode.started_at)
+        const durationMin = episode.ended_at ? Math.max(1, Math.round((Date.parse(episode.ended_at) - start) / 60_000)) : null
+        safety.push({ id: alert.id, stopId, type: "vandalism", at: start, durationMin, camera: alert.camera_index, confidence: null, verdict: "confirmed" })
     }
     for (const [stopId, times] of climateData.glass) {
         if (!stopIds.has(stopId)) continue

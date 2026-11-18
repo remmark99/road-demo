@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react"
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
 import { BarChart3, Bell, CalendarClock, ExternalLink, MapPin, ShieldAlert, Timer, type LucideIcon } from "lucide-react"
-import { Cigarette, Dog, Package, PersonStanding, Wine } from "lucide-react"
+import { Cigarette, Dog, Package, PersonStanding, SprayCan, Wine } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
@@ -47,6 +47,7 @@ const TYPE_ICONS: Record<SafetyType, LucideIcon> = {
     abandoned_object: Package,
     dogs_without_people: Dog,
     glass_break: Wine,
+    vandalism: SprayCan,
 }
 
 const TYPE_LABEL = Object.fromEntries(SAFETY_TYPES.map((type) => [type.id, type.label])) as Record<SafetyType, string>
