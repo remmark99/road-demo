@@ -625,9 +625,11 @@ export interface Column<T> {
     /** Значение для сортировки и выгрузки. */
     value?: (row: T) => number | string
     align?: "right"
+    /** Только в выгрузке: на экране это уже видно в другой колонке. */
+    exportOnly?: boolean
 }
 
-export function DataTable<T>({ columns, rows, rowKey, search, searchPlaceholder = "Поиск по остановке", pageSize = 8, exportName, toolbar, initialSort }: {
+export function DataTable<T>({ columns: allColumns, rows, rowKey, search, searchPlaceholder = "Поиск по остановке", pageSize: pageSizeProp = 8, exportName, toolbar, initialSort, scrollAll = false }: {
     columns: Column<T>[]
     rows: T[]
     rowKey: (row: T) => string
@@ -638,7 +640,10 @@ export function DataTable<T>({ columns, rows, rowKey, search, searchPlaceholder 
     exportName?: string
     toolbar?: ReactNode
     initialSort?: { key: string; dir: "asc" | "desc" }
+    /** Все строки сразу с прокруткой вниз и закреплённой шапкой — вместо страниц. */
+    scrollAll?: boolean
 }) {
+    const columns = useMemo(() => allColumns.filter((column) => !column.exportOnly), [allColumns])
     const [query, setQuery] = useState("")
     const [sort, setSort] = useState<{ key: string; dir: "asc" | "desc" } | null>(initialSort ?? null)
     const [page, setPage] = useState(0)
@@ -646,7 +651,7 @@ export function DataTable<T>({ columns, rows, rowKey, search, searchPlaceholder 
     const filtered = useMemo(() => {
         const needle = query.trim().toLowerCase()
         let list = needle && search ? rows.filter((row) => search(row).toLowerCase().includes(needle)) : rows
-        const column = sort ? columns.find((item) => item.key === sort.key) : undefined
+        const column = sort ? allColumns.find((item) => item.key === sort.key) : undefined
         if (sort && column?.value) {
             const getValue = column.value
             list = list.slice().sort((a, b) => {
@@ -657,8 +662,9 @@ export function DataTable<T>({ columns, rows, rowKey, search, searchPlaceholder 
             })
         }
         return list
-    }, [rows, query, sort, columns, search])
+    }, [rows, query, sort, allColumns, search])
 
+    const pageSize = scrollAll ? Math.max(1, filtered.length) : pageSizeProp
     const pages = Math.max(1, Math.ceil(filtered.length / pageSize))
     const current = Math.min(page, pages - 1)
     const shown = filtered.slice(current * pageSize, current * pageSize + pageSize)
@@ -671,8 +677,8 @@ export function DataTable<T>({ columns, rows, rowKey, search, searchPlaceholder 
     const exportCsv = () => {
         const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`
         const lines = [
-            columns.map((column) => escape(column.header)).join(";"),
-            ...filtered.map((row) => columns.map((column) => escape(column.value ? column.value(row) : "")).join(";")),
+            allColumns.map((column) => escape(column.header)).join(";"),
+            ...filtered.map((row) => allColumns.map((column) => escape(column.value ? column.value(row) : "")).join(";")),
         ]
         const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" })
         const url = URL.createObjectURL(blob)
@@ -700,9 +706,9 @@ export function DataTable<T>({ columns, rows, rowKey, search, searchPlaceholder 
                     </Button>
                 )}
             </div>
-            <div className="overflow-x-auto rounded-lg border">
+            <div className={cn("overflow-x-auto rounded-lg border", scrollAll && "max-h-[65vh] overflow-y-auto [&_[data-slot=table-container]]:overflow-visible")}>
                 <Table>
-                    <TableHeader>
+                    <TableHeader className={cn(scrollAll && "sticky top-0 z-10 bg-background shadow-[0_1px_0_var(--border)]")}>
                         <TableRow>
                             {columns.map((column) => (
                                 <TableHead key={column.key} className={cn(column.align === "right" && "text-right")}>
@@ -735,6 +741,9 @@ export function DataTable<T>({ columns, rows, rowKey, search, searchPlaceholder 
                     </TableBody>
                 </Table>
             </div>
+            {scrollAll ? (
+                <div className="text-sm text-muted-foreground">{filtered.length === 0 ? "Нет строк" : `Всего ${fmtInt(filtered.length)}`}</div>
+            ) : (
             <div className="flex items-center justify-between text-sm text-muted-foreground">
                 <span>
                     {filtered.length === 0 ? "Нет строк" : `Строки ${current * pageSize + 1}–${Math.min(filtered.length, (current + 1) * pageSize)} из ${fmtInt(filtered.length)}`}
@@ -749,6 +758,7 @@ export function DataTable<T>({ columns, rows, rowKey, search, searchPlaceholder 
                     </Button>
                 </div>
             </div>
+            )}
         </div>
     )
 }

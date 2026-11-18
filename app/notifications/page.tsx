@@ -1540,9 +1540,6 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                         <div className="text-xs text-muted-foreground">
                           {binEpisode || outageEpisode ? `Начало: ${formatTime(shownStart)}` : formatTime(shownStart)}
                         </div>
-                        {binConfidence?.start != null && (
-                          <div className="text-xs text-muted-foreground">уверенность {formatConfidencePercent(binConfidence.start)}</div>
-                        )}
                       </div>
                     </div>
 
