@@ -7,7 +7,7 @@ import { PeriodFilter } from '@/components/notifications/period-filter'
 import { CameraPlaceFilter } from '@/components/notifications/camera-place-filter'
 import { buildCameraPlaces, buildStopPlaces, findStopPlace, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
 import { fetchStopDirectory, type BusStopProperties } from '@/lib/api/bus-stops'
-import { formatCameraConfidence, binEpisodeConfidences, formatConfidencePercent, closedEpisodeImage } from '@/lib/notifications/camera-evidence'
+import { formatCameraConfidence, binEpisodeConfidences, formatConfidencePercent, closedLyingEpisodeImage } from '@/lib/notifications/camera-evidence'
 import { getBinEpisode } from "@/lib/bin-episodes"
 import { fetchEquipmentOutagesByIds, type EquipmentOutage } from "@/lib/api/equipment"
 import { CAMERA_OFFLINE, CAMERA_ONLINE, getCameraOutageEpisode, getCameraOutageIds, mergeCameraLinkTypes, withoutOutageDuration } from "@/lib/notifications/camera-outage"
@@ -1682,7 +1682,7 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
                               },
                               {
                                 label: "После — событие завершено",
-                                imageUrl: episode.status === "closed" ? closedEpisodeImage(alert.metadata) : null,
+                                imageUrl: closedLyingEpisodeImage(episode, alert.metadata),
                               },
                             ]
                             const episodeImages: LightboxImage[] = episodeItems
