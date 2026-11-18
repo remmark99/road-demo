@@ -282,7 +282,8 @@ export const ALERT_CATEGORIES: Record<AlertCategory, { label: string; types: str
             'lying_person',
             'abandoned_object',
             'dogs_without_people',
-            'bin_full'
+            'bin_full',
+            'vandalism'
         ]
     },
     // Отключения камер (backend equipment-monitor). Отдельно от
@@ -529,6 +530,14 @@ export const ALERT_TYPE_CONFIG: Record<string, { label: string; icon: string; co
         label: 'Переполненная урна',
         icon: 'trash-2',
         color: 'text-lime-500 bg-lime-500/20 border-lime-500/30',
+        category: 'bus_stop_monitoring'
+    },
+    // Изменение поверхности остановки по камере (сервис vandalism-alerts):
+    // наклейка, надпись. Срабатывание датчика стекла — отдельный тип «incident».
+    vandalism: {
+        label: 'Вандализм',
+        icon: 'spray-can',
+        color: 'text-fuchsia-400 bg-fuchsia-500/20 border-fuchsia-500/30',
         category: 'bus_stop_monitoring'
     },
     camera_offline: {
