@@ -77,3 +77,29 @@ export function closedEpisodeImage(metadata: unknown): string | null {
   const value = record(metadata).closed_image_url
   return typeof value === 'string' && value.trim() ? value : null
 }
+
+export interface LyingEpisodeEnd {
+  status: string
+  latest_image_url: string | null
+}
+
+/**
+ * Кадр «После» для эпизода лежачего человека.
+ *
+ * Эпизод лежачего закрывается не чистым кадром, а тем, что человека перестали
+ * видеть (close_stale_lying_person_episodes по last_seen_at), поэтому последний
+ * кадр наблюдения и есть конец события. Сами кадры лежат в строке эпизода
+ * (first_image_url / latest_image_url) — в metadata алерта этого типа
+ * closed_image_url не пишется никогда, из-за чего закрытая карточка всегда
+ * показывала «Фото завершения недоступно».
+ */
+export function closedLyingEpisodeImage(
+  episode: Pick<LyingEpisodeEnd, 'status' | 'latest_image_url'> | null | undefined,
+  metadata: unknown,
+): string | null {
+  if (!episode || episode.status !== 'closed') return null
+  const latest = typeof episode.latest_image_url === 'string' && episode.latest_image_url.trim()
+    ? episode.latest_image_url
+    : null
+  return latest ?? closedEpisodeImage(metadata)
+}
