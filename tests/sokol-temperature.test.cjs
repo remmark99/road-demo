@@ -87,7 +87,7 @@ test('route handles upstream failures and invalid data', async () => {
 test('compact outdoor readout: icons with values, delta for temperature and humidity', () => {
   const React = require('react')
   const { renderToStaticMarkup } = require('react-dom/server')
-  const { SokolTemperature, PavilionTemperatureDelta } = load('components/map/sokol-temperature.tsx')
+  const { SokolTemperature, PavilionTemperatureDelta, PavilionHumidityDelta } = load('components/map/sokol-temperature.tsx')
   const originalNow = Date.now
   const now = Date.parse('2026-11-17T10:00:00Z')
   Date.now = () => now
@@ -106,6 +106,9 @@ test('compact outdoor readout: icons with values, delta for temperature and humi
     assert.match(render(PavilionTemperatureDelta, { indoor: 13.6, measuredAt: time, outdoor }), /На 13,8 °C теплее улицы/)
     assert.match(render(PavilionTemperatureDelta, { indoor: -2, measuredAt: time, outdoor }), /На 1,8 °C холоднее улицы/)
     assert.match(render(PavilionTemperatureDelta, { indoor: -0.2, measuredAt: time, outdoor }), /Как на улице/)
+    assert.match(render(PavilionHumidityDelta, { indoor: 68.7, measuredAt: time, outdoor }), /На 25,3 п\.п\. суше улицы/)
+    assert.match(render(PavilionHumidityDelta, { indoor: 97.4, measuredAt: time, outdoor }), /На 3,4 п\.п\. влажнее улицы/)
+    assert.match(render(PavilionHumidityDelta, { indoor: 94, measuredAt: time, outdoor }), /Как на улице/)
     // Старое, будущее и битое время скрывает каждое значение по своему полю.
     for (const bad of [new Date(now - 14400000).toISOString(), new Date(now + 60000).toISOString(), 'bad']) {
       const stale = render(SokolTemperature, { reading: { ...outdoor, temperatureTime: bad } })
@@ -117,12 +120,16 @@ test('compact outdoor readout: icons with values, delta for temperature and humi
       assert.match(staleHumidity, /-0,2 °C/)
       assert.equal(render(PavilionTemperatureDelta, { indoor: 13.6, measuredAt: time, outdoor: { ...outdoor, temperatureTime: bad } }), '')
       assert.equal(render(PavilionTemperatureDelta, { indoor: 13.6, measuredAt: bad, outdoor }), '')
+      assert.equal(render(PavilionHumidityDelta, { indoor: 68.7, measuredAt: time, outdoor: { ...outdoor, humidityTime: bad } }), '')
+      assert.equal(render(PavilionHumidityDelta, { indoor: 68.7, measuredAt: bad, outdoor }), '')
     }
     // Метеомониторинг недоступен: значки остаются, значений нет — вместо них прочерк.
     const unavailable = render(SokolTemperature, { reading: null })
     assert.match(unavailable, /Метеомониторинг недоступен/)
     assert.doesNotMatch(unavailable, /°C|94 %/)
     // Влажность без улицы не сравниваем: второго значения просто нет.
+    assert.equal(render(PavilionHumidityDelta, { indoor: 68.7, measuredAt: time, outdoor: { ...outdoor, humidity: null, humidityTime: null } }), '')
     assert.equal(render(PavilionTemperatureDelta, { indoor: NaN, measuredAt: time, outdoor }), '')
+    assert.equal(render(PavilionHumidityDelta, { indoor: undefined, measuredAt: time, outdoor }), '')
   } finally { Date.now = originalNow }
 })

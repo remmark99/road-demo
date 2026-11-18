@@ -41,3 +41,17 @@ export function PavilionTemperatureDelta({ indoor, measuredAt, outdoor }: {
     const delta = Number((indoor! - outdoor.temperature!).toFixed(1))
     return <span>{delta === 0 ? "Как на улице" : `На ${Math.abs(delta).toFixed(1).replace('.', ',')} °C ${delta > 0 ? "теплее" : "холоднее"} улицы`}</span>
 }
+
+/**
+ * Влажность в павильоне относительно улицы. Сравнение в процентных пунктах:
+ * «на 26 % суше» читалось бы как относительное изменение, а не как разница показаний.
+ */
+export function PavilionHumidityDelta({ indoor, measuredAt, outdoor }: {
+    indoor: number | undefined
+    measuredAt: string | null | undefined
+    outdoor: OutdoorTemperature | null
+}) {
+    if (!Number.isFinite(indoor) || !outdoor || !Number.isFinite(outdoor.humidity) || !fresh(measuredAt) || !fresh(outdoor.humidityTime)) return null
+    const delta = Number((indoor! - outdoor.humidity!).toFixed(1))
+    return <span>{delta === 0 ? "Как на улице" : `На ${Math.abs(delta).toFixed(1).replace('.', ',')} п.п. ${delta > 0 ? "влажнее" : "суше"} улицы`}</span>
+}
