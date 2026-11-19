@@ -170,7 +170,7 @@ export function StopsCleanliness() {
             </div>
 
             <div className="grid gap-6 xl:grid-cols-12">
-                <ChartCard className="xl:col-span-5" title="Где переполнено сейчас?" icon={Trash2} iconClassName="text-red-500" hint="Самые долгие сверху">
+                <ChartCard className="xl:col-span-5" title="Где переполнено сейчас?" expandable icon={Trash2} iconClassName="text-red-500" hint="Самые долгие сверху">
                     {data.openNow.length === 0 ? (
                         <EmptyNote>Сейчас все урны в порядке</EmptyNote>
                     ) : (

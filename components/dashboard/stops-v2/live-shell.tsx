@@ -7,9 +7,8 @@ import { useSearchParams } from "next/navigation"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { VisionProvider, type VisionInitial, type VisionView } from "@/components/dashboard/stops-v2/kit"
+import { VisionProvider, readVisionInitial, type VisionInitial, type VisionView } from "@/components/dashboard/stops-v2/kit"
 import { StopCardDialog } from "@/components/dashboard/stops-v2/stop-card"
-import { V_DISTRICTS, stopById } from "@/lib/mock/stop-analytics-vision-data"
 import { ensureLiveVisionData } from "@/lib/stop-analytics-vision/live-data"
 
 const loading = () => <Skeleton className="h-64 w-full" />
@@ -58,16 +57,7 @@ export function LiveStopsVision({ view, onViewChange, viewToUrl }: {
         setState("loading")
         ensureLiveVisionData().then(() => {
             if (cancelled) return
-            const period = searchParams.get("period")
-            const district = searchParams.get("district")
-            const stopFilter = Number(searchParams.get("s"))
-            const card = Number(searchParams.get("stop"))
-            setInitial({
-                period: period === "today" || period === "yesterday" || period === "month" ? period : "week",
-                districtId: V_DISTRICTS.some((item) => item.id === district) ? district : null,
-                stopId: stopById(stopFilter) ? stopFilter : null,
-                cardStopId: stopById(card) ? card : null,
-            })
+            setInitial(readVisionInitial(searchParams))
             setState("ready")
         }).catch(() => { if (!cancelled) setState("error") })
         return () => { cancelled = true }

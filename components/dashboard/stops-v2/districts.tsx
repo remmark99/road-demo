@@ -45,7 +45,7 @@ function cellTone(tone: "success" | "attention" | "high" | null) {
 
 export function StopsDistricts() {
     const scope = useScope()
-    const { setDistrictId, setView } = useVision()
+    const { setDistrictIds, setView } = useVision()
     const [selected, setSelected] = useState<string | null>(null)
 
     const data = useMemo(() => {
@@ -72,7 +72,7 @@ export function StopsDistricts() {
         .find((item) => item.tone === "high")?.metric
 
     const openDistrict = (id: string) => {
-        setDistrictId(id)
+        setDistrictIds([id])
         setView("overview")
     }
 
@@ -86,6 +86,7 @@ export function StopsDistricts() {
 
             <ChartCard
                 title="Чем микрорайоны отличаются друг от друга?"
+                expandable={560}
                 icon={Table2}
                 iconClassName="text-violet-500"
                 hint="Цвет ячейки показывает отклонение от медианы по городу. Название открывает сводку по микрорайону."

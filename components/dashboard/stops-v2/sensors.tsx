@@ -71,7 +71,7 @@ function faultRows(stops: VStop[]): FaultRow[] {
 export function StopsSensors() {
     const scope = useScope()
     const phrase = usePeriodPhrase()
-    const { stopId } = useVision()
+    const { stopIds } = useVision()
 
     const data = useMemo(() => {
         const { ids, stops, from, to, prevFrom, prevTo } = scope
@@ -85,7 +85,7 @@ export function StopsSensors() {
 
         // На графике — выбранная остановка, а без выбора та, что дольше всех была вне нормы.
         const worstId = Array.from(summary.outHours.entries()).sort((a, b) => b[1] - a[1])[0]?.[0]
-        const focus = (stopId !== null ? stopById(stopId) : undefined) ?? (worstId !== undefined ? stopById(worstId) : undefined) ?? stops[0]
+        const focus = (stopIds.length ? stopById(stopIds[0]) : undefined) ?? (worstId !== undefined ? stopById(worstId) : undefined) ?? stops[0]
 
         const step = scope.hourly ? HOUR : to - from <= 8 * DAY ? 3 * HOUR : 12 * HOUR
         const tempRows: { label: string; stop: number | null; city: number | null }[] = []
@@ -106,7 +106,7 @@ export function StopsSensors() {
         const glass = safetyIn(ids, from, to, new Set(["glass_break"]))
         const faults = faultRows(stops)
         return { nowRows, summary, prev, outNow, focus, tempRows, outSeries, glass, faults }
-    }, [scope, stopId])
+    }, [scope, stopIds])
 
     const confirmed = data.glass.filter((event) => event.verdict === "confirmed").length
     const longest = data.outNow[0]
@@ -161,7 +161,7 @@ export function StopsSensors() {
             </div>
 
             <div className="grid gap-6 xl:grid-cols-12">
-                <ChartCard className="xl:col-span-6" title="Где сейчас вне нормы?" icon={Snowflake} iconClassName="text-sky-500" hint="Сюда нужно отправить электрика или обслуживающую бригаду">
+                <ChartCard className="xl:col-span-6" title="Где сейчас вне нормы?" expandable icon={Snowflake} iconClassName="text-sky-500" hint="Сюда нужно отправить электрика или обслуживающую бригаду">
                     {data.outNow.length === 0 ? (
                         <EmptyNote>Все павильоны в норме</EmptyNote>
                     ) : (

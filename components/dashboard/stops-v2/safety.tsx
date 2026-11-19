@@ -10,7 +10,10 @@ import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartToo
 import { cn } from "@/lib/utils"
 import {
     DOW_LABELS,
+    HOUR,
     SAFETY_TYPES,
+    V_NOW,
+    V_STOPS,
     cityDow,
     cityHour,
     districtName,
@@ -21,12 +24,12 @@ import {
     type SafetyType,
     type VSafetyEvent,
 } from "@/lib/mock/stop-analytics-vision-data"
+import { safetyNotificationsHref } from "@/lib/analytics/safety-periods"
 import { buildBuckets, safetyIn } from "@/components/dashboard/stops-v2/selectors"
 import {
     ChartCard,
     DataTable,
     EmptyNote,
-    FrameThumb,
     Insight,
     KpiCard,
     RankList,
@@ -71,6 +74,18 @@ function TypeMark({ type }: { type: SafetyType }) {
             {TYPE_LABEL[type]}
         </span>
     )
+}
+
+/** Событие в ленте уведомлений: вид, камера и час вокруг события; у обычного уведомления — сразу раскрытая карточка. */
+function eventNotificationsHref(event: VSafetyEvent) {
+    const end = event.durationMin ? event.at + event.durationMin * 60_000 : event.at
+    const href = safetyNotificationsHref(
+        { from: new Date(event.at - HOUR), to: new Date(Math.min(V_NOW, end + HOUR)) },
+        [event.type],
+        event.camera !== null ? [event.camera] : [],
+    )
+    // У эпизодов лежачих (lp-…) и срабатываний датчика стекла (gl-…) своего уведомления нет — только фильтр.
+    return /^(lp|gl)-/.test(event.id) ? href : `${href}&alertId=${encodeURIComponent(event.id)}`
 }
 
 export function StopsSafety() {
@@ -143,8 +158,15 @@ export function StopsSafety() {
     const top = data.byType.slice().sort((a, b) => b.count - a.count)[0]
     const total = data.byType.reduce((sum, type) => sum + type.count, 0)
 
+    // Лента уведомлений за тот же период и с теми же видами событий; при выбранных районах или остановках — по их камерам.
+    const filtered = scope.stops.length < V_STOPS.length
+    const periodNotificationsHref = safetyNotificationsHref(
+        { from: new Date(scope.from), to: new Date(scope.to) },
+        Array.from(active),
+        filtered ? scope.stops.flatMap((stop) => stop.cameras) : [],
+    )
+
     const columns: Column<VSafetyEvent>[] = [
-        { key: "frame", header: "Кадр", cell: () => <FrameThumb /> },
         { key: "at", header: "Время", cell: (event) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(event.at)}</span>, value: (event) => event.at },
         { key: "type", header: "Вид", cell: (event) => <TypeMark type={event.type} />, value: (event) => TYPE_LABEL[event.type] },
         { key: "stop", header: "Остановка", cell: (event) => { const stop = stopById(event.stopId); return stop ? <StopLink stop={stop} /> : null }, value: (event) => stopById(event.stopId)?.name ?? "" },
@@ -161,10 +183,12 @@ export function StopsSafety() {
             key: "open",
             header: "Уведомления",
             align: "right",
-            cell: () => (
-                <Button variant="ghost" size="sm" className="h-8">
-                    Открыть
-                    <ExternalLink className="h-3.5 w-3.5" />
+            cell: (event) => (
+                <Button asChild variant="ghost" size="sm" className="h-8">
+                    <a href={eventNotificationsHref(event)} target="_blank" rel="noopener noreferrer">
+                        Открыть
+                        <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                 </Button>
             ),
         },
@@ -271,10 +295,12 @@ export function StopsSafety() {
                 icon={ShieldAlert}
                 iconClassName="text-red-500"
                 action={
-                    <Button variant="outline" size="sm" className="gap-2">
-                        <Bell className="h-4 w-4" />
-                        Уведомления
-                        <ExternalLink className="h-3.5 w-3.5" />
+                    <Button asChild variant="outline" size="sm" className="gap-2">
+                        <a href={periodNotificationsHref} target="_blank" rel="noopener noreferrer">
+                            <Bell className="h-4 w-4" />
+                            Уведомления
+                            <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
                     </Button>
                 }
             >
