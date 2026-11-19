@@ -91,3 +91,12 @@ export function localDay(ms: number): string {
 export function minutesBetween(from: number, to: number) {
     return Math.max(0, Math.round((to - from) / 60_000))
 }
+
+/** Длительность словами — «70 сут 4 ч», «5 ч 12 мин»: модели ошибаются, пересчитывая минуты в сутки сами. */
+export function durationText(minutes: number | null) {
+    if (minutes === null || !Number.isFinite(minutes)) return null
+    const total = Math.max(0, Math.round(minutes)), days = Math.floor(total / 1440), hours = Math.floor(total % 1440 / 60), rest = total % 60
+    if (days) return hours ? `${days} сут ${hours} ч` : `${days} сут`
+    if (hours) return rest ? `${hours} ч ${rest} мин` : `${hours} ч`
+    return `${rest} мин`
+}

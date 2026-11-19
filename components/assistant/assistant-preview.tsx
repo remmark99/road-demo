@@ -4,6 +4,7 @@ import { useMemo } from "react"
 import type { ChatTransport, UIMessage, UIMessageChunk } from "ai"
 import { FlaskConical } from "lucide-react"
 import { AssistantChat, type AssistantBackend } from "@/components/assistant/assistant-chat"
+import type { OverviewSummary } from "@/lib/assistant/overview"
 import type { ChatTable } from "@/lib/assistant/table"
 import { monthWindow, type AssistantUsageSummary } from "@/lib/assistant/usage-shared"
 import type { ReportChart } from "@/lib/reports/chart"
@@ -102,6 +103,16 @@ const novemberChart: ReportChart = {
     series: [{ name: "Отключений", values: [4, 6, 3, 23, 7, 5, 2, 4, 12, 6, 3, 5, 18, 7, 4, 3, 31, 42] }],
 }
 
+const previewOverview: OverviewSummary = {
+    asOf: "2026-11-18 12:00",
+    stops: { withCameras: 112, withSensors: 107 },
+    cameras: { online: 228, total: 230 },
+    controllers: { online: 77, total: 94 },
+    events: [{ label: "Курение", count: 6 }, { label: "Оставленный предмет", count: 5 }, { label: "Лежачий человек", count: 3 }],
+    binsFull: 3,
+    conditions: { ok: 71, warn: 6, bad: 1, unknown: 434 },
+}
+
 let counter = 0
 const id = (prefix: string) => `${prefix}-${++counter}`
 const user = (text: string): UIMessage => ({ id: id("u"), role: "user", parts: [{ type: "text", text }] })
@@ -181,17 +192,8 @@ function scenario(question: string): { tools: { name: string; output: unknown }[
         }
     }
     return {
-        tools: [{ name: "system_overview", output: { text: "" } }],
-        text: `Коротко по остановкам на сейчас:
-
-| Что | Сейчас |
-|---|---|
-| Камер на связи | 228 из 230 |
-| Контроллеров на связи | 77 из 94 |
-| Событий безопасности за сутки | 14 |
-| Урн переполнено | 3 |
-
-Главное — **17 контроллеров не в сети**, из них 11 с 10 сентября. Это прототип: ответы здесь заготовлены, спросите про «не в сети», «Excel» или «холодно».`,
+        tools: [{ name: "system_overview", output: { text: "", overview: previewOverview } }],
+        text: "Камеры почти все на связи, главная проблема — **17 контроллеров датчиков не в сети**, из них 11 молчат с **10 сентября**. На **7 остановках** нарушена норма влажности, переполнены **3 урны**. Это прототип: ответы здесь заготовлены.",
         tokens: 19_600,
     }
 }
