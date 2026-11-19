@@ -28,14 +28,14 @@ const TABLE_ROWS = 100
 /** Где в выводе инструмента полное число строк списка (если список обрезан лимитом). */
 const TOTAL_FIELDS: Record<string, string> = {
     equipment_status: 'total', equipment_outages: 'devices_with_outages', stop_conditions: 'total',
-    stop_climate: 'stops_with_readings', bin_episodes: 'total', find_stops: 'total',
+    stop_climate: 'total', bin_episodes: 'total', find_stops: 'total',
 }
 
 const COLUMN_LABELS: Record<string, string> = {
     kind: 'Оборудование', id: 'Номер', status: 'Статус', stop: 'Остановка', name: 'Остановка', number: 'Номер остановки', address: 'Адрес',
     district: 'Микрорайон', since: 'С какого времени', minutes: 'Минут', outages: 'Отключений', downtime_minutes: 'Простой, мин',
     offline_now: 'Не в сети сейчас', count: 'Событий', level: 'Состояние', issues: 'Нарушения', temperature: 'Температура, °C',
-    humidity: 'Влажность, %', updated: 'Обновлено', temperature_out_of_norm: 'Температура вне нормы', humidity_out_of_norm: 'Влажность вне нормы',
+    humidity: 'Влажность, %', updated: 'Обновлено', stale: 'Показание устарело', temperature_out_of_norm: 'Температура вне нормы', humidity_out_of_norm: 'Влажность вне нормы',
     average_people: 'Людей в кадре, в среднем', peak_people: 'Пик людей', started: 'Начало', cleaned: 'Убрано', confirmations: 'Подтверждений',
     stops: 'Остановок', with_cameras: 'С камерами', cameras_online_stops: 'Камеры на связи', with_sensors: 'С датчиками',
     sensors_online: 'Датчики на связи', video_coverage_pct: 'Видеопокрытие, %', time: 'Время', type: 'Тип', camera: 'Камера',

@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { getBinEpisode, type BinEpisode } from '@/lib/bin-episodes'
 import type { Alert } from '@/lib/types'
-import { CONDITION_LABELS, stopConditionAt, type ConditionLevel, type StopConditionsResponse } from '@/lib/stop-conditions'
+import { CLIMATE_MAX_AGE_MS, CONDITION_LABELS, stopConditionAt, type ConditionLevel, type StopConditionsResponse } from '@/lib/stop-conditions'
 import { buildStopConditions } from '@/lib/stop-conditions-data'
 import {
     ToolInputError, boolArg, enumArg, enumListArg, intArg, localDay, localTime, minutesBetween, optionalText,
@@ -26,6 +26,8 @@ export const EVENT_LABELS: Record<string, string> = {
 const DAY = 86_400_000
 const HOUR = 3_600_000
 const LIMIT_MAX = 200
+/** Элемент контроллера, под которым поллер пишет температуру и влажность павильона. */
+const CLIMATE_ELEMENT = 13
 
 export interface VectorTool {
     name: string
@@ -352,8 +354,10 @@ export const VECTOR_TOOLS: VectorTool[] = [
         name: 'stop_climate',
         title: VECTOR_TOOL_TITLES.stop_climate,
         description: 'Температура и влажность в павильонах. Без stop — последние показания всех остановок с сортировкой (самые холодные, тёплые, влажные) '
-            + 'и отметкой выхода за нормы. Со stop и периодом — почасовая история этой остановки.',
+            + 'и отметкой выхода за нормы; out_of_norm оставляет только остановки, где показатель вне нормы. Показания старше двух часов помечены stale '
+            + 'и в нарушения норм не входят. Со stop и периодом — почасовая история этой остановки.',
         inputSchema: schema({ stop: stopParam, sort: { type: 'string', enum: ['coldest', 'warmest', 'most_humid', 'name'], default: 'coldest' },
+            out_of_norm: { type: 'string', enum: ['temperature', 'humidity', 'any'], description: 'Только остановки, где температура, влажность или любой из показателей вне нормы' },
             ...period, limit: limit(20) }),
         async handler(ctx, args) {
             const directory = await loadDirectory(ctx.db)
@@ -366,32 +370,45 @@ export const VECTOR_TOOLS: VectorTool[] = [
                     hourly: (data.stops[stop.id]?.climate ?? []).map(([t, temp, hum]) => ({ time: localTime(t), temperature: temp, humidity: hum })) }
             }
             const data = await conditionsAt(ctx, ctx.now)
-            const rows = await readAll<{ bus_stop_id: number; category: string; value: number | null; updated_at: string }>((a, b) => {
-                let q = ctx.db.from('stop_sensor_states').select('bus_stop_id,category,value,updated_at').in('category', ['temperature', 'humidity'])
+            type ClimateRow = { bus_stop_id: number; element: number | null; category: string; value: number | null; updated_at: string }
+            const rows = await readAll<ClimateRow>((a, b) => {
+                let q = ctx.db.from('stop_sensor_states').select('bus_stop_id,element,category,value,updated_at').in('category', ['temperature', 'humidity'])
                 if (stop) q = q.eq('bus_stop_id', stop.id)
-                return q.order('bus_stop_id').range(a, b)
+                return q.order('bus_stop_id').order('element').order('category').range(a, b)
             })
-            const byStop = new Map<number, { temperature: number | null; humidity: number | null; updated: string }>()
+            // У остановки бывает несколько строк одного показателя (старые прошивки писали климат под разными элементами):
+            // берём самое свежее непустое показание, при равном времени — основной элемент климата.
+            const newer = (row: ClimateRow, kept: ClimateRow | undefined) => !kept || row.updated_at > kept.updated_at
+                || (row.updated_at === kept.updated_at && row.element === CLIMATE_ELEMENT && kept.element !== CLIMATE_ELEMENT)
+            const byStop = new Map<number, { temperature?: ClimateRow; humidity?: ClimateRow }>()
             for (const row of rows) {
-                const entry = byStop.get(row.bus_stop_id) ?? { temperature: null, humidity: null, updated: row.updated_at }
-                if (row.category === 'temperature') entry.temperature = row.value
-                if (row.category === 'humidity') entry.humidity = row.value
-                if (row.updated_at > entry.updated) entry.updated = row.updated_at
+                if (row.value === null) continue
+                const entry = byStop.get(row.bus_stop_id) ?? {}
+                const key = row.category === 'temperature' ? 'temperature' : 'humidity'
+                if (newer(row, entry[key])) entry[key] = row
                 byStop.set(row.bus_stop_id, entry)
             }
             const n = data.thresholds
             const sort = enumArg(args, 'sort', ['coldest', 'warmest', 'most_humid', 'name'] as const, 'coldest')
-            const list = [...byStop.entries()].map(([id, v]) => ({ stop_id: id, stop: stopLabel(directory.stopById.get(id), id), ...v, updated: localTime(v.updated),
-                temperature_out_of_norm: v.temperature !== null && n.tempEnabled && (v.temperature < n.tempMin || v.temperature > n.tempMax),
-                humidity_out_of_norm: v.humidity !== null && n.humidityEnabled && (v.humidity < n.humidityMin || v.humidity > n.humidityMax) }))
+            const only = args.out_of_norm == null ? null : enumArg(args, 'out_of_norm', ['temperature', 'humidity', 'any'] as const, 'any')
+            const list = [...byStop.entries()].map(([id, v]) => {
+                const temperature = v.temperature?.value ?? null, humidity = v.humidity?.value ?? null
+                const updated = [v.temperature?.updated_at, v.humidity?.updated_at].filter((x): x is string => Boolean(x)).sort().at(-1)!
+                // Как в слое «Состояние остановок»: устаревшее показание нарушением не считается.
+                const stale = ctx.now - Date.parse(updated) > CLIMATE_MAX_AGE_MS
+                return { stop_id: id, stop: stopLabel(directory.stopById.get(id), id), temperature, humidity, updated: localTime(updated), stale,
+                    temperature_out_of_norm: !stale && temperature !== null && n.tempEnabled && (temperature < n.tempMin || temperature > n.tempMax),
+                    humidity_out_of_norm: !stale && humidity !== null && n.humidityEnabled && (humidity < n.humidityMin || humidity > n.humidityMax) }
+            })
             const value = (x: number | null, empty: number) => x ?? empty
-            list.sort((a, b) => sort === 'coldest' ? value(a.temperature, 999) - value(b.temperature, 999)
+            list.sort((a, b) => Number(a.stale) - Number(b.stale) || (sort === 'coldest' ? value(a.temperature, 999) - value(b.temperature, 999)
                 : sort === 'warmest' ? value(b.temperature, -999) - value(a.temperature, -999)
                 : sort === 'most_humid' ? value(b.humidity, -1) - value(a.humidity, -1)
-                : a.stop.localeCompare(b.stop, 'ru'))
-            return { as_of: localTime(ctx.now), norms: n, stops_with_readings: list.length,
+                : a.stop.localeCompare(b.stop, 'ru')))
+            const wanted = list.filter(r => only === null || (only !== 'humidity' && r.temperature_out_of_norm) || (only !== 'temperature' && r.humidity_out_of_norm))
+            return { as_of: localTime(ctx.now), norms: n, stops_with_readings: list.length, stale_readings: list.filter(r => r.stale).length,
                 out_of_norm: { temperature: list.filter(r => r.temperature_out_of_norm).length, humidity: list.filter(r => r.humidity_out_of_norm).length },
-                stops: list.slice(0, intArg(args, 'limit', 20, 1, LIMIT_MAX)) }
+                total: wanted.length, stops: wanted.slice(0, intArg(args, 'limit', 20, 1, LIMIT_MAX)) }
         },
     },
     {

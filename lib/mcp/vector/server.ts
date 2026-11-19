@@ -21,7 +21,7 @@ export const INSTRUCTIONS = `Платформа «Вектор города», �
 2. «Что не работает / что не в сети»: equipment_status (сейчас), equipment_outages (за период, самые долгие простои).
 3. «Расскажи про остановку N»: get_stop(stop="название или id"). Если название неоднозначно, инструмент вернёт список с id — выбери нужную.
 4. «Сколько было лежачих / курящих / где чаще»: security_events с периодом; group_by=stop, day или hour_of_day.
-5. «Где холодно / влажно / нарушения норм»: stop_climate (sort=coldest/warmest/most_humid) и stop_conditions.
+5. «Где холодно / влажно / нарушения норм»: stop_climate (sort=coldest/warmest/most_humid; out_of_norm=temperature или humidity — только остановки, где этот показатель вне нормы) и stop_conditions.
 6. «Урны»: bin_episodes (status=open — переполнены сейчас).
 7. «Сколько людей / загруженность»: passenger_load — это люди в кадре, а не уникальные пассажиры.
 8. «По микрорайонам»: districts_summary.
