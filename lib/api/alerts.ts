@@ -48,6 +48,10 @@ export interface LyingPersonEpisode {
     canonical_bbox: Record<string, unknown>
     first_image_url: string | null
     latest_image_url: string | null
+    // Кадр камеры в момент закрытия эпизода: человека там уже нет. Пусто у
+    // эпизодов, закрытых до появления поля, и если камеры не было в потоке.
+    closed_image_url: string | null
+    closed_image_at: string | null
     created_at: string
     updated_at: string
 }
@@ -146,7 +150,7 @@ export async function fetchLyingPersonEpisodes(
 
     const { data, error } = await supabase
         .from('lying_person_episodes')
-        .select('id,alert_id,camera_id,camera_index,location_id,status,started_at,last_seen_at,ended_at,observation_count,canonical_subject,canonical_bbox,first_image_url,latest_image_url,created_at,updated_at')
+        .select('id,alert_id,camera_id,camera_index,location_id,status,started_at,last_seen_at,ended_at,observation_count,canonical_subject,canonical_bbox,first_image_url,latest_image_url,closed_image_url,closed_image_at,created_at,updated_at')
         .in('id', uniqueIds)
 
     if (error) {
