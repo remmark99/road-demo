@@ -166,6 +166,34 @@ test('overview, conditions, climate, bins and passenger load run end to end', as
   assert.deepEqual(load.rows[0], { key: 'Никольский (в центр)', average_people: 3, peak_people: 7 })
 })
 
+test('stop_climate: дубли показаний, устаревшие показания и фильтр «вне нормы»', async () => {
+  const saved = tables.stop_sensor_states
+  const extra = [
+    // Две строки температуры с одним временем: берётся основной элемент 13, а не последняя попавшаяся.
+    { bus_stop_id: 180, element: 14, category: 'temperature', name: 't', value: 35, alarm: 'normal', updated_at: iso(1) },
+    // Показания многомесячной давности: по числу выше нормы, но нарушением не считаются.
+    { bus_stop_id: 601, element: 13, category: 'temperature', name: 't', value: 33.9, alarm: 'warning', updated_at: iso(100000) },
+    { bus_stop_id: 601, element: 14, category: 'temperature', name: 't', value: 29.6, alarm: 'warning', updated_at: iso(100000) },
+    // Пустое показание свежее настоящего: значение не затирает.
+    { bus_stop_id: 179, element: 15, category: 'humidity', name: 'h', value: null, alarm: 'alarm', updated_at: iso(0) },
+  ]
+  try {
+    for (const rows of [[...saved, ...extra], [...extra, ...saved].reverse()]) {
+      tables.stop_sensor_states = rows
+      const all = (await call('stop_climate', { sort: 'name' })).data
+      const byId = Object.fromEntries(all.stops.map(s => [s.stop_id, s]))
+      assert.deepEqual([all.stops_with_readings, all.stale_readings, all.out_of_norm.temperature, all.out_of_norm.humidity], [3, 1, 1, 1])
+      assert.deepEqual([byId[180].temperature, byId[179].humidity, byId[601].temperature], [4, 91, 33.9])
+      assert.deepEqual([byId[601].stale, byId[601].temperature_out_of_norm, byId[179].stale], [true, false, false])
+      const hot = (await call('stop_climate', { out_of_norm: 'temperature' })).data
+      assert.deepEqual([hot.total, hot.stops.map(s => s.stop_id)], [1, [179]])
+    }
+    assert.match((await call('stop_climate', { out_of_norm: 'все' })).error, /out_of_norm/)
+  } finally {
+    tables.stop_sensor_states = saved
+  }
+})
+
 test('create_report: таблица раздела берётся из базы, а не из текста модели', async () => {
   const result = await call('create_report', {
     title: 'Связь оборудования', subtitle: 'на 13.11.2026', summary: ['Камера 131 не в сети полтора часа.'],
