@@ -104,20 +104,23 @@ test('last positive frame is never substituted for recovery evidence', () => {
   assert.equal(closedEpisodeImage({closed_image_url:'clean.jpg'}),'clean.jpg')
 })
 
-test('a closed lying-person episode ends with its last observed frame', () => {
+test('a closed lying-person episode ends with the frame taken at closing time', () => {
   const {closedLyingEpisodeImage}=load('lib/notifications/camera-evidence.ts')
-  const latest='http://supabase-replica-kong:8000/storage/v1/object/public/alert_images/lying/abc/latest.jpg'
-  const closed={status:'closed',latest_image_url:latest}
-  assert.equal(closedLyingEpisodeImage(closed,{}),latest)
+  const base='http://supabase-replica-kong:8000/storage/v1/object/public/alert_images/lying/abc'
+  const latest=`${base}/latest.jpg`, closedFrame=`${base}/closed.jpg`
+  // The end photo is the camera frame captured when the episode closed: the
+  // person is gone from it. It wins over the last lying frame.
+  assert.equal(closedLyingEpisodeImage({status:'closed',latest_image_url:latest,closed_image_url:closedFrame},{}),closedFrame)
+  // Episodes closed before the end photo existed keep their last observed frame,
+  // otherwise the whole history would read «Фото завершения недоступно».
+  assert.equal(closedLyingEpisodeImage({status:'closed',latest_image_url:latest},{}),latest)
+  assert.equal(closedLyingEpisodeImage({status:'closed',latest_image_url:latest,closed_image_url:'   '},{}),latest)
+  assert.equal(closedLyingEpisodeImage({status:'closed',latest_image_url:null,closed_image_url:null},{closed_image_url:closedFrame}),closedFrame)
+  assert.equal(closedLyingEpisodeImage({status:'closed',latest_image_url:null,closed_image_url:null},{}),null)
   // An open episode has no end frame: the card says the event is still running.
-  assert.equal(closedLyingEpisodeImage({...closed,status:'open'},{}),null)
+  assert.equal(closedLyingEpisodeImage({status:'open',latest_image_url:latest,closed_image_url:closedFrame},{}),null)
   assert.equal(closedLyingEpisodeImage(null,{}),null)
   assert.equal(closedLyingEpisodeImage(undefined,{}),null)
-  // No frame on the episode row is missing evidence, not a reason to borrow a
-  // start frame: only an already recorded end frame may stand in, else nothing.
-  assert.equal(closedLyingEpisodeImage({status:'closed',latest_image_url:null},{closed_image_url:'clean.jpg'}),'clean.jpg')
-  assert.equal(closedLyingEpisodeImage({status:'closed',latest_image_url:'   '},{first_image_url:latest}),null)
-  assert.equal(closedLyingEpisodeImage({status:'closed',latest_image_url:'   '},{}),null)
 })
 
 test('Shift selects and clears whole visible stop ranges in either direction', () => {
