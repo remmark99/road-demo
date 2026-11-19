@@ -291,7 +291,7 @@ export function StopsEquipment() {
             </div>
 
             <div className="grid gap-6 xl:grid-cols-12">
-                <ChartCard className="xl:col-span-7" title="Что не работает сейчас?" icon={Cctv} iconClassName="text-red-500" hint="Сгруппировано по остановкам, самые долгие сверху">
+                <ChartCard className="xl:col-span-7" title="Что не работает сейчас?" expandable icon={Cctv} iconClassName="text-red-500" hint="Сгруппировано по остановкам, самые долгие сверху">
                     {data.offlineNow.length === 0 ? (
                         <EmptyNote>Всё оборудование на связи</EmptyNote>
                     ) : (

@@ -13,8 +13,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
-import { VisionProvider, type VisionInitial, type VisionView } from "@/components/dashboard/stops-v2/kit"
-import { V_DISTRICTS, stopById } from "@/lib/mock/stop-analytics-vision-data"
+import { VisionProvider, readVisionInitial, type VisionInitial, type VisionView } from "@/components/dashboard/stops-v2/kit"
 import { StopCardDialog } from "@/components/dashboard/stops-v2/stop-card"
 
 const loading = () => <Skeleton className="h-64 w-full" />
@@ -45,18 +44,7 @@ function PreviewContent() {
     const [expanded, setExpanded] = useState(true)
 
     // Начальное состояние берётся из адреса: раздел, период, район, остановка.
-    const [initial] = useState<VisionInitial>(() => {
-        const period = searchParams.get("period")
-        const district = searchParams.get("district")
-        const stopFilter = Number(searchParams.get("s"))
-        const card = Number(searchParams.get("stop"))
-        return {
-            period: period === "today" || period === "yesterday" || period === "month" ? period : "week",
-            districtId: V_DISTRICTS.some((item) => item.id === district) ? district : null,
-            stopId: stopById(stopFilter) ? stopFilter : null,
-            cardStopId: stopById(card) ? card : null,
-        }
-    })
+    const [initial] = useState<VisionInitial>(() => readVisionInitial(searchParams))
 
     const Active = SECTIONS.find((section) => section.id === view)?.component ?? StopsOverview
 

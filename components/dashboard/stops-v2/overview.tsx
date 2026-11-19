@@ -90,7 +90,7 @@ function toneDot(tone: "success" | "attention" | "high") {
 
 export function StopsOverview() {
     const scope = useScope()
-    const { setView, setDistrictId, districtId, timeRange } = useVision()
+    const { setView, toggleDistrict, districtIds, timeRange } = useVision()
     const [showAllAttention, setShowAllAttention] = useState(false)
 
     const data = useMemo(() => {
@@ -298,6 +298,7 @@ export function StopsOverview() {
                     icon={Building2}
                     iconClassName="text-violet-500"
                     hint="Показатели на одну оснащённую остановку. Цвет — отклонение от медианы по городу."
+                    expandable
                     action={
                         <Button variant="outline" size="sm" className="gap-2" onClick={() => setView("districts")}>
                             Все показатели
@@ -325,9 +326,9 @@ export function StopsOverview() {
                                     [`${fmtNum(row.climateHoursPerStop)} ч`, relativeTone(row.climateHoursPerStop, all.map((item) => item.climateHoursPerStop), "higher")],
                                 ]
                                 return (
-                                    <TableRow key={row.id} className={cn(districtId === row.id && "bg-muted/50")}>
+                                    <TableRow key={row.id} className={cn(districtIds.includes(row.id) && "bg-muted/50")}>
                                         <TableCell>
-                                            <button type="button" className="text-left font-medium underline-offset-4 hover:underline" onClick={() => setDistrictId(districtId === row.id ? null : row.id)} title="Показать только этот микрорайон">
+                                            <button type="button" className="text-left font-medium underline-offset-4 hover:underline" onClick={() => toggleDistrict(row.id)} title={districtIds.includes(row.id) ? "Убрать микрорайон из фильтра" : "Добавить микрорайон в фильтр"}>
                                                 {row.name}
                                             </button>
                                         </TableCell>

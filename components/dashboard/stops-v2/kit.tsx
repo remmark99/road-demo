@@ -8,11 +8,13 @@ import {
     ArrowDown,
     ArrowUp,
     ArrowUpDown,
+    ChevronDown,
     ChevronLeft,
     ChevronRight,
     Download,
     MapPin,
     Minus,
+    Plus,
     Search,
     X,
     type LucideIcon,
@@ -21,10 +23,10 @@ import {
 import { TimeRangeFilter, type TimeRange, type TimeRangeResult } from "@/components/dashboard/time-range-filter"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
 import {
@@ -41,6 +43,7 @@ import {
     fmtDuration,
     fmtInt,
     fmtNum,
+    plural,
     stopById,
     type VStop,
     isLiveVisionData,
@@ -54,10 +57,18 @@ export type VisionView = "overview" | "safety" | "clean" | "equipment" | "sensor
 interface VisionState {
     timeRange: TimeRangeResult
     setTimeRange: (value: TimeRangeResult) => void
-    districtId: string | null
-    setDistrictId: (value: string | null) => void
-    stopId: number | null
-    setStopId: (value: number | null) => void
+    /** Пустой список — все микрорайоны. */
+    districtIds: string[]
+    setDistrictIds: (value: string[]) => void
+    toggleDistrict: (id: string) => void
+    /** Пустой список — все остановки выбранных микрорайонов. */
+    stopIds: number[]
+    setStopIds: (value: number[]) => void
+    toggleStop: (id: number) => void
+    /** Выбран ли хоть один фильтр, отличный от исходного (неделя, весь город). */
+    hasFilters: boolean
+    /** Сбросить период, микрорайоны и остановки сразу. */
+    resetFilters: () => void
     view: VisionView
     setView: (value: VisionView) => void
     cardStopId: number | null
@@ -70,8 +81,8 @@ const VisionContext = createContext<VisionState | null>(null)
 /** Фильтры общие для всех разделов: выбранный период, район и остановка переходят вместе с пользователем. */
 export interface VisionInitial {
     period?: TimeRange
-    districtId?: string | null
-    stopId?: number | null
+    districtIds?: string[]
+    stopIds?: number[]
     /** Карточка остановки, открытая сразу. */
     cardStopId?: number | null
 }
@@ -86,8 +97,8 @@ export function VisionProvider({ children, view, onViewChange, initial, viewToUr
     initial?: VisionInitial
 }) {
     const [timeRange, setTimeRange] = useState<TimeRangeResult>({ preset: initial?.period ?? "week" })
-    const [districtId, setDistrictIdState] = useState<string | null>(initial?.districtId ?? null)
-    const [stopId, setStopIdState] = useState<number | null>(initial?.stopId ?? null)
+    const [districtIds, setDistrictIdsState] = useState<string[]>(initial?.districtIds ?? [])
+    const [stopIds, setStopIdsState] = useState<number[]>(initial?.stopIds ?? [])
     const [cardStopId, setCardStopId] = useState<number | null>(initial?.cardStopId ?? null)
 
     // Раздел, период, район и остановка живут в адресе страницы.
@@ -95,25 +106,55 @@ export function VisionProvider({ children, view, onViewChange, initial, viewToUr
         const params = new URLSearchParams()
         params.set("view", viewToUrl ? viewToUrl(view) : view)
         if (timeRange.preset !== "week" && timeRange.preset !== "custom") params.set("period", timeRange.preset)
-        if (districtId) params.set("district", districtId)
-        if (stopId !== null) params.set("s", String(stopId))
+        if (districtIds.length) params.set("district", districtIds.join(","))
+        if (stopIds.length) params.set("s", stopIds.join(","))
         if (cardStopId !== null) params.set("stop", String(cardStopId))
         window.history.replaceState(null, "", `?${params.toString()}`)
-    }, [view, timeRange, districtId, stopId, cardStopId, viewToUrl])
+    }, [view, timeRange, districtIds, stopIds, cardStopId, viewToUrl])
 
-    const setDistrictId = useCallback((value: string | null) => {
-        setDistrictIdState(value)
-        setStopIdState(null)
+    // При смене микрорайонов остаются только остановки, которые в них входят.
+    const setDistrictIds = useCallback((value: string[]) => {
+        setDistrictIdsState(value)
+        if (value.length) {
+            const allowed = new Set(value)
+            setStopIdsState((previous) => previous.filter((id) => allowed.has(stopById(id)?.districtId ?? "")))
+        }
     }, [])
-    const setStopId = useCallback((value: number | null) => setStopIdState(value), [])
+    const toggleDistrict = useCallback((id: string) => {
+        setDistrictIds(districtIds.includes(id) ? districtIds.filter((item) => item !== id) : [...districtIds, id])
+    }, [districtIds, setDistrictIds])
+    const setStopIds = useCallback((value: number[]) => setStopIdsState(value), [])
+    const toggleStop = useCallback((id: number) => {
+        setStopIdsState((previous) => (previous.includes(id) ? previous.filter((item) => item !== id) : [...previous, id]))
+    }, [])
+    const hasFilters = timeRange.preset !== "week" || districtIds.length > 0 || stopIds.length > 0
+    const resetFilters = useCallback(() => {
+        setTimeRange({ preset: "week" })
+        setDistrictIdsState([])
+        setStopIdsState([])
+    }, [])
     const openStop = useCallback((id: number) => setCardStopId(id), [])
     const closeStop = useCallback(() => setCardStopId(null), [])
 
     const value = useMemo<VisionState>(() => ({
-        timeRange, setTimeRange, districtId, setDistrictId, stopId, setStopId, view, setView: onViewChange, cardStopId, openStop, closeStop,
-    }), [timeRange, districtId, setDistrictId, stopId, setStopId, view, onViewChange, cardStopId, openStop, closeStop])
+        timeRange, setTimeRange, districtIds, setDistrictIds, toggleDistrict, stopIds, setStopIds, toggleStop, hasFilters, resetFilters,
+        view, setView: onViewChange, cardStopId, openStop, closeStop,
+    }), [timeRange, districtIds, setDistrictIds, toggleDistrict, stopIds, setStopIds, toggleStop, hasFilters, resetFilters, view, onViewChange, cardStopId, openStop, closeStop])
 
     return <VisionContext.Provider value={value}>{children}</VisionContext.Provider>
+}
+
+/** Начальные фильтры из адреса: ?period=month&district=20a,c&s=12,40&stop=12. Списки — через запятую. */
+export function readVisionInitial(params: { get: (key: string) => string | null }): VisionInitial {
+    const period = params.get("period")
+    const list = (key: string) => (params.get(key) ?? "").split(",").map((item) => item.trim()).filter(Boolean)
+    const card = Number(params.get("stop"))
+    return {
+        period: period === "today" || period === "yesterday" || period === "month" ? period : "week",
+        districtIds: list("district").filter((id) => V_DISTRICTS.some((item) => item.id === id)),
+        stopIds: list("s").map(Number).filter((id) => stopById(id) !== undefined),
+        cardStopId: stopById(card) ? card : null,
+    }
 }
 
 export function useVision() {
@@ -142,16 +183,19 @@ export function resolveRange(timeRange: TimeRangeResult): { from: number; to: nu
 }
 
 export function useScope(): Scope {
-    const { timeRange, districtId, stopId } = useVision()
+    const { timeRange, districtIds, stopIds } = useVision()
     return useMemo(() => {
         const { from, to, prevLabel } = resolveRange(timeRange)
         const length = to - from
         // «Сегодня» сравнивается с тем же отрезком вчера, остальное — с предыдущим периодом той же длины.
         const prevFrom = timeRange.preset === "today" ? from - DAY : from - length
         const prevTo = timeRange.preset === "today" ? to - DAY : from
-        const stops = V_STOPS.filter((stop) => (stopId !== null ? stop.id === stopId : districtId === null || stop.districtId === districtId))
+        // Выбраны остановки — смотрим только их; иначе все остановки выбранных микрорайонов (или всего города).
+        const stopSet = new Set(stopIds)
+        const districtSet = new Set(districtIds)
+        const stops = V_STOPS.filter((stop) => (stopSet.size ? stopSet.has(stop.id) : districtSet.size === 0 || districtSet.has(stop.districtId)))
         return { from, to, prevFrom, prevTo, stops, ids: new Set(stops.map((stop) => stop.id)), prevLabel, hourly: length <= 2 * DAY }
-    }, [timeRange, districtId, stopId])
+    }, [timeRange, districtIds, stopIds])
 }
 
 // ---------------------------------------------------------------- изменение к прошлому периоду
@@ -259,77 +303,150 @@ export function FilterBar({ children, district = true, stop = true }: { children
     const vision = useVision()
     return (
         <TimeRangeFilter value={vision.timeRange} onChange={vision.setTimeRange}>
-            {district && (
-                <Select value={vision.districtId ?? "all"} onValueChange={(value) => vision.setDistrictId(value === "all" ? null : value)}>
-                    <SelectTrigger className="w-[190px]" aria-label="Микрорайон">
-                        <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">Все микрорайоны</SelectItem>
-                        {V_DISTRICTS.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                    </SelectContent>
-                </Select>
-            )}
+            {district && <DistrictPicker />}
             {stop && <StopSearch />}
             {children}
+            {vision.hasFilters && (
+                <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={vision.resetFilters} title="Неделя, все микрорайоны и все остановки">
+                    <X className="h-4 w-4" />
+                    Сбросить всё
+                </Button>
+            )}
         </TimeRangeFilter>
     )
 }
 
-function StopSearch() {
-    const { stopId, setStopId, districtId, openStop } = useVision()
-    const [open, setOpen] = useState(false)
+/** Строка списка с галочкой: выбор не закрывает список, можно отметить сразу несколько. */
+function PickRow({ checked, onToggle, title, sub }: { checked: boolean; onToggle: () => void; title: string; sub?: string }) {
+    return (
+        <button
+            type="button"
+            className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+            onClick={onToggle}
+            aria-pressed={checked}
+        >
+            <Checkbox checked={checked} tabIndex={-1} className="pointer-events-none" aria-hidden />
+            <span className="flex min-w-0 flex-col">
+                <span className={cn("truncate", checked && "font-medium")}>{title}</span>
+                {sub && <span className="truncate text-xs text-muted-foreground">{sub}</span>}
+            </span>
+        </button>
+    )
+}
+
+function DistrictPicker() {
+    const { districtIds, setDistrictIds, toggleDistrict } = useVision()
     const [query, setQuery] = useState("")
-    const selected = stopId !== null ? stopById(stopId) : undefined
-
-    const matches = useMemo(() => {
-        const needle = query.trim().toLowerCase()
-        return V_STOPS
-            .filter((stop) => districtId === null || stop.districtId === districtId)
-            .filter((stop) => !needle || `${stop.name} ${stop.code} ${districtName(stop.districtId)}`.toLowerCase().includes(needle))
-            .sort((a, b) => a.name.localeCompare(b.name, "ru"))
-    }, [query, districtId])
-
-    if (selected) {
-        return (
-            <div className="flex items-center gap-1">
-                <Button variant="outline" size="sm" className="gap-2 border-primary/30 bg-primary/10 text-primary hover:bg-primary/20" onClick={() => openStop(selected.id)}>
-                    <MapPin className="h-3.5 w-3.5" />
-                    {selected.name}
-                </Button>
-                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setStopId(null)} aria-label="Сбросить остановку">
-                    <X className="h-4 w-4" />
-                </Button>
-            </div>
-        )
-    }
+    const label = districtIds.length === 0
+        ? "Все микрорайоны"
+        : districtIds.length === 1
+            ? districtName(districtIds[0])
+            : `${districtIds.length} ${plural(districtIds.length, ["микрорайон", "микрорайона", "микрорайонов"])}`
+    const needle = query.trim().toLowerCase()
+    const list = V_DISTRICTS.filter((item) => !needle || item.name.toLowerCase().includes(needle))
 
     return (
-        <Popover open={open} onOpenChange={setOpen}>
+        <Popover onOpenChange={(open) => { if (!open) setQuery("") }}>
             <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="w-full justify-start gap-2 font-normal text-muted-foreground sm:w-80">
-                    <Search className="h-3.5 w-3.5" />
-                    Найти остановку
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn("w-[200px] justify-between gap-2 font-normal", districtIds.length > 0 && "border-primary/30 bg-primary/10 text-primary hover:bg-primary/20")}
+                    aria-label="Микрорайоны"
+                >
+                    <span className="truncate">{label}</span>
+                    <ChevronDown className="h-4 w-4 shrink-0 opacity-60" />
                 </Button>
             </PopoverTrigger>
-            <PopoverContent className="w-[min(32rem,calc(100vw-2rem))] p-2" align="start">
-                <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, номер или микрорайон" aria-label="Поиск остановки" />
-                <div className="mt-2 max-h-96 space-y-0.5 overflow-auto">
-                    {matches.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">Ничего не найдено</p>}
-                    {matches.map((stop) => (
-                        <button
-                            key={stop.id}
-                            type="button"
-                            className="flex w-full flex-col rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
-                            onClick={() => { setStopId(stop.id); setOpen(false); setQuery("") }}
-                        >
-                            <span className="font-medium">{stop.name}</span>
-                            <span className="text-xs text-muted-foreground">№ {stop.code} · {districtName(stop.districtId)}</span>
-                        </button>
+            <PopoverContent className="w-72 p-2" align="start">
+                <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти микрорайон" aria-label="Поиск микрорайона" />
+                <div className="mt-2 max-h-80 space-y-0.5 overflow-auto">
+                    {!needle && <PickRow checked={districtIds.length === 0} onToggle={() => setDistrictIds([])} title="Все микрорайоны" />}
+                    {list.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">Ничего не найдено</p>}
+                    {list.map((item) => (
+                        <PickRow key={item.id} checked={districtIds.includes(item.id)} onToggle={() => toggleDistrict(item.id)} title={item.name} />
                     ))}
                 </div>
             </PopoverContent>
         </Popover>
+    )
+}
+
+/** Сколько выбранных остановок показывать отдельными плашками; остальные — одной «ещё N». */
+const STOP_CHIPS = 3
+
+function StopSearch() {
+    const { stopIds, setStopIds, toggleStop, districtIds, openStop } = useVision()
+    const [open, setOpen] = useState(false)
+    const [query, setQuery] = useState("")
+    const selected = stopIds.map((id) => stopById(id)).filter((stop): stop is VStop => stop !== undefined)
+
+    const matches = useMemo(() => {
+        const needle = query.trim().toLowerCase()
+        const districts = new Set(districtIds)
+        return V_STOPS
+            .filter((stop) => districts.size === 0 || districts.has(stop.districtId))
+            .filter((stop) => !needle || `${stop.name} ${stop.code} ${districtName(stop.districtId)}`.toLowerCase().includes(needle))
+            .sort((a, b) => a.name.localeCompare(b.name, "ru"))
+    }, [query, districtIds])
+    // Отмеченные — сверху списка, чтобы их было легко снять.
+    const ordered = useMemo(() => {
+        const picked = new Set(stopIds)
+        return [...matches.filter((stop) => picked.has(stop.id)), ...matches.filter((stop) => !picked.has(stop.id))]
+        // Порядок пересчитывается при открытии и поиске, а не на каждый клик: строки не прыгают под курсором.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [matches, open])
+
+    return (
+        <div className="flex flex-wrap items-center gap-1">
+            {selected.slice(0, selected.length > STOP_CHIPS ? STOP_CHIPS - 1 : STOP_CHIPS).map((stop) => (
+                <div key={stop.id} className="flex items-center rounded-md border border-primary/30 bg-primary/10 text-primary">
+                    <button type="button" className="flex h-8 items-center gap-2 pl-3 pr-1 text-sm font-medium hover:underline" onClick={() => openStop(stop.id)} title="Открыть карточку остановки">
+                        <MapPin className="h-3.5 w-3.5" />
+                        <span className="max-w-[12rem] truncate">{stop.name}</span>
+                    </button>
+                    <button type="button" className="flex h-8 w-7 items-center justify-center rounded-r-md hover:bg-primary/20" onClick={() => toggleStop(stop.id)} aria-label={`Убрать остановку ${stop.name}`}>
+                        <X className="h-3.5 w-3.5" />
+                    </button>
+                </div>
+            ))}
+            <Popover open={open} onOpenChange={(value) => { setOpen(value); if (!value) setQuery("") }}>
+                <PopoverTrigger asChild>
+                    {selected.length > STOP_CHIPS ? (
+                        <Button variant="outline" size="sm" className="gap-1.5 border-primary/30 bg-primary/10 text-primary hover:bg-primary/20">
+                            ещё {selected.length - (STOP_CHIPS - 1)}
+                            <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
+                    ) : (
+                        <Button variant="outline" size="sm" className={cn("justify-start gap-2 font-normal text-muted-foreground", selected.length === 0 && "w-full sm:w-80")}>
+                            {selected.length === 0 ? <Search className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                            {selected.length === 0 ? "Найти остановку" : "Добавить"}
+                        </Button>
+                    )}
+                </PopoverTrigger>
+                <PopoverContent className="w-[min(32rem,calc(100vw-2rem))] p-2" align="start">
+                    <Input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Название, номер или микрорайон" aria-label="Поиск остановки" />
+                    <div className="mt-2 max-h-96 space-y-0.5 overflow-auto">
+                        {ordered.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">Ничего не найдено</p>}
+                        {ordered.map((stop) => (
+                            <PickRow
+                                key={stop.id}
+                                checked={stopIds.includes(stop.id)}
+                                onToggle={() => toggleStop(stop.id)}
+                                title={stop.name}
+                                sub={`№ ${stop.code} · ${districtName(stop.districtId)}`}
+                            />
+                        ))}
+                    </div>
+                    {selected.length > 0 && (
+                        <div className="mt-2 flex items-center justify-between border-t px-2 pt-2 text-xs text-muted-foreground">
+                            <span>Выбрано: {fmtInt(selected.length)}</span>
+                            <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => setStopIds([])}>Снять все</Button>
+                        </div>
+                    )}
+                </PopoverContent>
+            </Popover>
+        </div>
     )
 }
 
@@ -404,7 +521,7 @@ export function KpiCard({ title, value, detail, icon: Icon, tone = "normal", del
 
 // ---------------------------------------------------------------- карточка графика
 
-export function ChartCard({ title, icon: Icon, iconClassName, hint, action, className, children }: {
+export function ChartCard({ title, icon: Icon, iconClassName, hint, action, className, children, expandable }: {
     /** Заголовок — вопрос, на который отвечает блок. */
     title: string
     icon?: LucideIcon
@@ -413,6 +530,8 @@ export function ChartCard({ title, icon: Icon, iconClassName, hint, action, clas
     action?: ReactNode
     className?: string
     children: ReactNode
+    /** Длинный блок показывается свёрнутым до этой высоты (true — 420 px) и раскрывается кнопкой. */
+    expandable?: boolean | number
 }) {
     return (
         <Card className={className}>
@@ -427,8 +546,45 @@ export function ChartCard({ title, icon: Icon, iconClassName, hint, action, clas
                     {action && <div className="flex max-w-full flex-wrap gap-2">{action}</div>}
                 </div>
             </CardHeader>
-            <CardContent>{children}</CardContent>
+            <CardContent>
+                {expandable ? <ExpandableBlock maxHeight={expandable === true ? undefined : expandable}>{children}</ExpandableBlock> : children}
+            </CardContent>
         </Card>
+    )
+}
+
+/**
+ * Длинный блок по умолчанию свёрнут до высоты соседних карточек, чтобы страница оставалась ровной
+ * и без пустот рядом с ним. Кнопка «Раскрыть» показывает всё; если содержимое и так короткое, кнопки нет.
+ */
+export function ExpandableBlock({ children, maxHeight = 420 }: { children: ReactNode; maxHeight?: number }) {
+    const [expanded, setExpanded] = useState(false)
+    const [content, setContent] = useState<HTMLDivElement | null>(null)
+    const [overflows, setOverflows] = useState(false)
+
+    useEffect(() => {
+        if (!content) return
+        const measure = () => setOverflows(content.scrollHeight > maxHeight + 24)
+        measure()
+        const observer = new ResizeObserver(measure)
+        observer.observe(content)
+        return () => observer.disconnect()
+    }, [content, maxHeight])
+
+    const collapsed = overflows && !expanded
+    return (
+        <div>
+            <div className="relative overflow-hidden" style={collapsed ? { maxHeight } : undefined}>
+                <div ref={setContent}>{children}</div>
+                {collapsed && <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-card to-transparent" aria-hidden />}
+            </div>
+            {overflows && (
+                <Button variant="ghost" size="sm" className="mt-1 w-full" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded}>
+                    {expanded ? "Свернуть" : "Раскрыть"}
+                    <ChevronDown className={cn("ml-1 h-4 w-4 transition-transform", expanded && "rotate-180")} />
+                </Button>
+            )}
+        </div>
     )
 }
 
