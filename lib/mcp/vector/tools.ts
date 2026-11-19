@@ -4,7 +4,7 @@ import type { Alert } from '@/lib/types'
 import { CLIMATE_MAX_AGE_MS, CONDITION_LABELS, stopConditionAt, type ConditionLevel, type StopConditionsResponse } from '@/lib/stop-conditions'
 import { buildStopConditions } from '@/lib/stop-conditions-data'
 import {
-    ToolInputError, boolArg, enumArg, enumListArg, intArg, localDay, localTime, minutesBetween, optionalText,
+    ToolInputError, boolArg, durationText, enumArg, enumListArg, intArg, localDay, localTime, minutesBetween, optionalText,
     parseMoment, periodArgs, type ToolArgs,
 } from './args'
 import { VECTOR_TOOL_TITLES } from './titles'
@@ -227,6 +227,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
                     kind: s.equipment_type === 'camera' ? 'камера' : 'контроллер датчиков', id: s.equipment_id, status: s.status,
                     stop_id: s.bus_stop_id, stop: stopLabel(s.bus_stop_id !== null ? directory.stopById.get(s.bus_stop_id) : undefined, s.bus_stop_id),
                     since: localTime(s.status_since), minutes: s.status_since ? minutesBetween(Date.parse(s.status_since), ctx.now) : null,
+                    duration: s.status_since ? durationText(minutesBetween(Date.parse(s.status_since), ctx.now)) : null,
                 })),
             }
         },
@@ -269,10 +270,11 @@ export const VECTOR_TOOLS: VectorTool[] = [
                 devices_with_outages: list.length,
                 outages: list.reduce((s, d) => s + d.outages, 0),
                 downtime_minutes: list.reduce((s, d) => s + d.minutes, 0),
+                downtime: durationText(list.reduce((s, d) => s + d.minutes, 0)),
                 worst: list.slice(0, take).map(d => ({
                     kind: d.kind === 'camera' ? 'камера' : 'контроллер датчиков', id: d.id, stop_id: d.stop_id,
                     stop: stopLabel(d.stop_id !== null ? directory.stopById.get(d.stop_id) : undefined, d.stop_id),
-                    outages: d.outages, downtime_minutes: d.minutes, offline_now: d.open,
+                    outages: d.outages, downtime_minutes: d.minutes, downtime: durationText(d.minutes), offline_now: d.open,
                 })),
             }
         },

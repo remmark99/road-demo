@@ -80,3 +80,14 @@ test('графики остаются в истории, вход и прочи�
   assert.deepEqual(stored.parts[0].input, {})
   assert.equal(stored.parts[1].output, null)
 })
+
+test('карточка сводки остаётся в истории, остальной вывод system_overview — нет', () => {
+  const overview = { asOf: '2026-11-20 03:23', stops: { withCameras: 112, withSensors: 107 }, cameras: { online: 266, total: 304 }, controllers: { online: 80, total: 94 }, events: [], binsFull: 0, conditions: { ok: 71, warn: 7, bad: 0, unknown: 434 } }
+  const message = { id: 'a2', role: 'assistant', parts: [
+    { type: 'tool-system_overview', toolCallId: 'c1', state: 'output-available', input: {}, output: { text: 'x'.repeat(5000), table: null, overview } },
+    { type: 'text', text: 'Камеры почти все на связи.' },
+  ] }
+  const stored = history.storableMessages([user('Сводка'), message])
+  assert.deepEqual(stored[1].parts[0].output, { text: '', overview })
+})
+

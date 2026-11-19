@@ -16,14 +16,15 @@ export function isConversationId(value: unknown): value is string {
     return typeof value === 'string' && UUID.test(value)
 }
 
-type StoredOutput = { report?: unknown; chart?: unknown; table?: unknown }
+type StoredOutput = { report?: unknown; chart?: unknown; table?: unknown; overview?: unknown }
 
-/** Вывод, который нужен окну чата и после перезагрузки: отчёт (кнопки скачивания), график или таблица данных. */
+/** Вывод, который нужен окну чата и после перезагрузки: отчёт (кнопки скачивания), график, таблица данных или карточка сводки. */
 function keptOutput(tool: { type: string; state?: string; output?: StoredOutput }) {
     if (tool.state !== 'output-available' || !tool.output || typeof tool.output !== 'object') return null
     if (tool.type === 'tool-create_report' && tool.output.report) return { report: tool.output.report }
     if (tool.type === 'tool-create_chart' && tool.output.chart) return { chart: tool.output.chart }
     if (tool.output.table) return { text: '', table: tool.output.table }
+    if (tool.output.overview) return { text: '', overview: tool.output.overview }
     return null
 }
 

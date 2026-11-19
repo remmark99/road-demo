@@ -1,5 +1,6 @@
 import { createXlsx, type Cell, type Sheet } from '@/lib/exports/xlsx'
 import type { ReportTable } from '@/lib/reports/document'
+import type { OverviewSummary } from './overview'
 
 /**
  * Таблицы в окне ассистента: данные инструментов (сервер кладёт их рядом
@@ -11,8 +12,8 @@ export interface ChatTable extends ReportTable {
     title: string
 }
 
-/** Вывод инструмента данных в окне чата: текст для модели и таблица для человека. */
-export interface DataToolOutput { text: string; table?: ChatTable | null }
+/** Вывод инструмента данных в окне чата: текст для модели, таблица или карточка сводки для человека. */
+export interface DataToolOutput { text: string; table?: ChatTable | null; overview?: OverviewSummary | null }
 
 const NUMBER = /^[−-]?\d{1,3}(?:[\s  ]\d{3})+(?:[.,]\d+)?$|^[−-]?\d+(?:[.,]\d+)?$/
 

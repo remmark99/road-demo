@@ -42,7 +42,8 @@ const COLUMN_LABELS: Record<string, string> = {
     cameras: 'Камер', cameras_online: 'Камер на связи', sensors: 'Датчики', sensors_status: 'Связь датчиков',
 }
 const GROUP_LABELS: Record<string, string> = { stop: 'Остановка', day: 'День', hour_of_day: 'Час', type: 'Тип события' }
-const HIDDEN = new Set(['stop_id', 'location', 'location_id', 'norms'])
+// duration и downtime — те же минуты словами, для текста модели; в таблице длительность уже есть.
+const HIDDEN = new Set(['stop_id', 'location', 'location_id', 'norms', 'duration', 'downtime'])
 const STATUS_LABELS: Record<string, string> = { online: 'в сети', offline: 'не в сети', unknown: 'нет данных' }
 const LOCAL_TIME = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}:\d{2}))?$/
 

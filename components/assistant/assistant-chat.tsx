@@ -6,14 +6,16 @@ import { DefaultChatTransport, type ChatTransport, type UIMessage } from "ai"
 import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
-    AlertTriangle, ArrowUp, AudioLines, Check, CircleAlert, Copy, Database, FileSpreadsheet, Loader2, Mic, PanelLeft, PanelLeftClose, Search, Snowflake, Square, SquarePen, Volume2, X,
+    AlertTriangle, ArrowUp, AudioLines, Check, CircleAlert, Copy, CornerDownRight, Database, FileSpreadsheet, Loader2, Mic, PanelLeft, PanelLeftClose, Search, Snowflake, Square, SquarePen, Volume2, X,
     Trash2, WifiOff, Sparkles, FileBarChart2, LineChart as LineChartIcon, Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ChartCard } from "@/components/assistant/chart-view"
 import { DataTableCard, MarkdownTable, ToolbarButton, downloadTablesXlsx, tableFromHast } from "@/components/assistant/data-table"
+import { OverviewCard } from "@/components/assistant/overview-card"
 import { ReportCard } from "@/components/assistant/report-card"
 import { UsageMeter } from "@/components/assistant/usage-meter"
+import { followUps, isOverviewSummary, type OverviewSummary } from "@/lib/assistant/overview"
 import type { ChatTable } from "@/lib/assistant/table"
 import { budgetExhausted, exhaustedMessage, formatTokens, type AssistantMessageMetadata, type AssistantUsageSummary } from "@/lib/assistant/usage-shared"
 import { VECTOR_TOOL_TITLES } from "@/lib/mcp/vector/titles"
@@ -53,6 +55,13 @@ function tableOf(part: ToolPart): ChatTable | null {
     if (part.state !== "output-available" || !part.output || typeof part.output !== "object") return null
     const table = (part.output as { table?: ChatTable | null }).table
     return table && Array.isArray(table.columns) && Array.isArray(table.rows) && table.rows.length ? table : null
+}
+
+/** Карточка сводки из вывода system_overview. */
+function overviewOf(part: ToolPart): OverviewSummary | null {
+    if (part.state !== "output-available" || !part.output || typeof part.output !== "object") return null
+    const overview = (part.output as { overview?: unknown }).overview
+    return isOverviewSummary(overview) ? overview : null
 }
 
 function toolFailed(part: ToolPart) {
@@ -197,8 +206,38 @@ const MARKDOWN_COMPONENTS: Components = {
     },
 }
 
-function AssistantMessage({ message, streaming, speech }: { message: UIMessage; streaming: boolean; speech: SpeechControls }) {
+/** Что спросить дальше: кнопки под последним ответом. */
+function FollowUps({ questions, onAsk }: { questions: string[]; onAsk: (question: string) => void }) {
+    if (!questions.length) return null
+    return (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+            {questions.map(question => (
+                <button key={question} type="button" onClick={() => onAsk(question)}
+                    className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-left text-[13px] leading-snug text-foreground/80 transition-colors hover:border-foreground/25 hover:bg-muted/60 hover:text-foreground">
+                    <CornerDownRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    {question}
+                </button>
+            ))}
+        </div>
+    )
+}
+
+interface AssistantMessageProps {
+    message: UIMessage
+    streaming: boolean
+    speech: SpeechControls
+    /** Вопрос, на который это ответ, — чтобы не предлагать его же. */
+    asked?: string
+    /** Задать следующий вопрос: плитки сводки и кнопки под последним ответом. */
+    onAsk?: (question: string) => void
+    /** Последний ответ диалога: под ним — что спросить дальше. */
+    last?: boolean
+}
+
+function AssistantMessage({ message, streaming, speech, asked = "", onAsk, last = false }: AssistantMessageProps) {
     const tools = message.parts.filter(isToolPart)
+    const overviews = tools.map(overviewOf).filter((overview): overview is OverviewSummary => overview !== null)
+    const nextQuestions = last && !streaming && onAsk ? followUps(tools.filter(part => !toolFailed(part)).map(toolName), asked) : []
     const reports = tools.map(reportOf).filter((report): report is ReportDocument => report !== null)
     const charts = tools.map(chartOf).filter((chart): chart is ReportChart => chart !== null)
     const dataTables = tools.map(tableOf).filter((table): table is ChatTable => table !== null)
@@ -215,11 +254,12 @@ function AssistantMessage({ message, streaming, speech }: { message: UIMessage; 
                     <div className={MARKDOWN}>
                         <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{text}</ReactMarkdown>
                     </div>
-                ) : streaming && !reports.length && !charts.length && !dataTables.length ? (
+                ) : streaming && !reports.length && !charts.length && !dataTables.length && !overviews.length ? (
                     <div className="flex h-7 items-center gap-1" aria-label="Ассистент думает">
                         {[0, 1, 2].map(i => <span key={i} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: `${i * 150}ms` }} />)}
                     </div>
                 ) : null}
+                {overviews.slice(-1).map(overview => <OverviewCard key={overview.asOf} overview={overview} onAsk={onAsk} disabled={streaming} />)}
                 {dataTables.map((table, index) => <DataTableCard key={`${table.title}-${index}`} table={table} />)}
                 {reports.map((report, index) => <ReportCard key={`${report.generatedAt}-${index}`} report={report} />)}
                 {text && !streaming && (
@@ -234,6 +274,7 @@ function AssistantMessage({ message, streaming, speech }: { message: UIMessage; 
                         )}
                     </div>
                 )}
+                {onAsk && <FollowUps questions={nextQuestions} onAsk={onAsk} />}
             </div>
         </div>
     )
@@ -509,7 +550,9 @@ function ChatPanel({ backend, conversationId, initialMessages, usage, onSaveLimi
                                 <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl bg-muted px-4 py-2.5 text-[15px] leading-relaxed">{messageText(message)}</div>
                             </div>
                         ) : (
-                            <AssistantMessage key={message.id} message={message} streaming={busy && index === messages.length - 1} speech={speech} />
+                            <AssistantMessage key={message.id} message={message} streaming={busy && index === messages.length - 1} speech={speech}
+                                asked={index > 0 && messages[index - 1].role === "user" ? messageText(messages[index - 1]) : ""}
+                                onAsk={busy || exhausted ? undefined : send} last={index === messages.length - 1} />
                         ))}
                         {waitingForFirstToken && <AssistantMessage message={{ id: "pending", role: "assistant", parts: [] }} streaming speech={speech} />}
                         {error && !busy && (

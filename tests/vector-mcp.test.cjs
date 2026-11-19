@@ -146,11 +146,17 @@ test('security events map cameras to stops and group them', async () => {
 test('equipment status and outages: offline first by duration, short blips skipped, downtime clipped to the period', async () => {
   const status = (await call('equipment_status', {})).data
   assert.deepEqual(status.items.map(i => [i.id, i.minutes]), [[131, 90], [180, 30]])
+  assert.deepEqual(status.items.map(i => i.duration), ['1 ч 30 мин', '30 мин'])
   const outages = (await call('equipment_outages', { from: '2026-11-13' })).data
   assert.equal(outages.devices_with_outages, 1)
   assert.equal(outages.worst[0].offline_now, true)
   const week = (await call('equipment_outages', { min_minutes: 0 })).data
   assert.equal(week.outages, 3); assert.equal(week.downtime_minutes, 90 + 120 + 3)
+  assert.equal(week.downtime, '3 ч 33 мин')
+  const args = load('lib/mcp/vector/args.ts')
+  assert.deepEqual([101049, 1440, 2862, 60, 0, null].map(args.durationText), ['70 сут 4 ч', '1 сут', '1 сут 23 ч', '1 ч', '0 мин', null])
+  const report = load('lib/mcp/vector/report-tool.ts', { '@/lib/notifications/admin': admin })
+  assert.ok(!report.outputTable('equipment_status', status).columns.some(c => /duration/i.test(c)))
 })
 
 test('overview, conditions, climate, bins and passenger load run end to end', async () => {
@@ -164,6 +170,19 @@ test('overview, conditions, climate, bins and passenger load run end to end', as
   assert.equal((await call('bin_episodes', { status: 'open' })).data.open_now, 1)
   const load = (await call('passenger_load', {}, { get_stop_load_hourly: () => ({ hours: [['73-24', iso(60), 40, 10, 7, 60], ['73-24', iso(120), 20, 10, 3, 60]], latest: [] }) })).data
   assert.deepEqual(load.rows[0], { key: 'Никольский (в центр)', average_people: 3, peak_people: 7 })
+})
+
+test('карточка сводки строится из вывода system_overview, подсказки — по использованным инструментам', async () => {
+  const cards = load('lib/assistant/overview.ts')
+  const card = cards.overviewSummary((await call('system_overview', {})).data)
+  assert.ok(cards.isOverviewSummary(card))
+  assert.deepEqual([card.asOf, card.cameras, card.controllers, card.binsFull], ['2026-11-13 18:40', { online: 1, total: 2 }, { online: 1, total: 2 }, 1])
+  assert.deepEqual(card.events[0], { label: 'Лежачий человек', count: 2 })
+  assert.equal(card.conditions.ok + card.conditions.warn + card.conditions.bad + card.conditions.unknown, 3)
+  assert.equal(cards.overviewSummary({ text: 'Ошибка' }), null)
+  assert.equal(cards.isOverviewSummary({ asOf: 'x' }), false)
+  assert.deepEqual(cards.followUps(['system_overview', 'stop_climate'], 'где температура вне нормы?'), ['Где самая высокая влажность?', 'Нарисуй график самых холодных павильонов', 'Сделай отчёт о состоянии павильонов за неделю'])
+  assert.deepEqual(cards.followUps(['create_report'], ''), [])
 })
 
 test('stop_climate: дубли показаний, устаревшие показания и фильтр «вне нормы»', async () => {
