@@ -247,7 +247,8 @@ function AssistantMessage({ message, streaming, speech, asked = "", onAsk, last 
     const text = messageText(message)
     // В отчёте свои таблицы и цифры: под ним остаются только его графики и карточка с файлами.
     const reportCharts = reports.flatMap(report => report.sections.flatMap(section => section.chart ? [section.chart] : []))
-    const tablesOpen = WANTS_TABLE.test(asked)
+    // Таблицы данных — только когда их просили; иначе ответ — слова и графики, а данные скачиваются кнопкой Excel.
+    const showTables = WANTS_TABLE.test(asked) && !reports.length
     const tokens = (message.metadata as AssistantMessageMetadata | undefined)?.tokens
     const allTables = streaming ? [] : [...markdownTables(text), ...dataTables]
     return (
@@ -263,16 +264,17 @@ function AssistantMessage({ message, streaming, speech, asked = "", onAsk, last 
                 ) : streaming ? (
                     <div className="flex h-7 items-center gap-1" aria-label="Ассистент думает">
                         {[0, 1, 2].map(i => <span key={i} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: `${i * 150}ms` }} />)}
+                        {tools.length > 0 && <span className="ml-2 text-[13px] text-muted-foreground">Собираю данные и готовлю ответ…</span>}
                     </div>
                 ) : null}
-                {!reports.length && overviews.slice(-1).map(overview => <OverviewCard key={overview.asOf} overview={overview} onAsk={onAsk} disabled={streaming} />)}
-                {!reports.length && dataTables.map((table, index) => <DataTableCard key={`${table.title}-${index}`} table={table} defaultOpen={tablesOpen} />)}
+                {!streaming && !reports.length && overviews.slice(-1).map(overview => <OverviewCard key={overview.asOf} overview={overview} onAsk={onAsk} />)}
+                {showTables && dataTables.map((table, index) => <DataTableCard key={`${table.title}-${index}`} table={table} defaultOpen />)}
                 {reportCharts.map((chart, index) => <ChartCard key={`report-${chart.title}-${index}`} chart={chart} />)}
-                {reports.map((report, index) => <ReportCard key={`${report.generatedAt}-${index}`} report={report} />)}
+                {reports.map((report, index) => <ReportCard key={`${report.generatedAt}-${index}`} report={report} withSummary={!text} />)}
                 {text && !streaming && (
                     <div className="mt-1.5 flex flex-wrap items-center gap-0.5">
                         <CopyButton text={text} />
-                        {allTables.length > 1 && <ExcelAllButton tables={allTables} title={allTables[0].title} />}
+                        {allTables.length > (showTables || !dataTables.length ? 1 : 0) && <ExcelAllButton tables={allTables} title={allTables[0].title} />}
                         {speech.enabled && <ListenButton id={message.id} text={text} speech={speech} />}
                         {typeof tokens === "number" && tokens > 0 && (
                             <span className="ml-auto pl-2 text-[11px] tabular-nums text-muted-foreground/70 opacity-0 transition-opacity group-hover/message:opacity-100" title="Токены модели на этот ответ: вопрос, данные и сам ответ">

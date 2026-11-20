@@ -80,8 +80,13 @@ export function ReportDownloadButtons({ report, className }: { report: ReportDoc
     )
 }
 
-/** Карточка отчёта в чате: заголовок, главные цифры и выводы, кнопки скачивания. */
-export function ReportCard({ report }: { report: ReportDocument }) {
+const METRIC_COLUMNS: Record<number, string> = { 1: "sm:grid-cols-1", 2: "sm:grid-cols-2", 3: "sm:grid-cols-3", 4: "sm:grid-cols-4", 5: "sm:grid-cols-3", 6: "sm:grid-cols-3" }
+
+/**
+ * Карточка отчёта в чате: заголовок, главные цифры, кнопки скачивания.
+ * Выводы показываем, только когда их не пересказал сам ответ (withSummary).
+ */
+export function ReportCard({ report, withSummary = true }: { report: ReportDocument; withSummary?: boolean }) {
     const headings = report.sections.map(section => section.heading).filter(Boolean)
     const charts = report.sections.filter(section => section.chart).length
     return (
@@ -98,7 +103,7 @@ export function ReportCard({ report }: { report: ReportDocument }) {
                 </div>
             </div>
             {report.metrics.length > 0 && (
-                <div className="grid grid-cols-2 gap-2 px-4 pt-3 sm:grid-cols-3">
+                <div className={cn("grid grid-cols-2 gap-2 px-4 pt-3", METRIC_COLUMNS[Math.min(report.metrics.length, 6)])}>
                     {report.metrics.slice(0, 6).map(metric => (
                         <div key={metric.label} className="rounded-lg border border-border/60 bg-muted/40 px-3 py-2">
                             <div className="text-lg font-semibold tabular-nums text-primary">{metric.value}</div>
@@ -107,7 +112,7 @@ export function ReportCard({ report }: { report: ReportDocument }) {
                     ))}
                 </div>
             )}
-            {report.summary.length > 0 && (
+            {withSummary && report.summary.length > 0 && (
                 <ul className="space-y-1.5 px-4 pt-3 text-sm">
                     {report.summary.map(item => (
                         <li key={item} className="flex gap-2">
