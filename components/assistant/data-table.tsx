@@ -211,23 +211,30 @@ function rowsLabel(count: number) {
     return `${count.toLocaleString("ru-RU")} ${word}`
 }
 
-/** Таблица данных под ответом: то, что ассистент получил из базы. */
-export function DataTableCard({ table }: { table: ChatTable }) {
+/**
+ * Таблица данных под ответом: то, что ассистент получил из базы.
+ * По умолчанию свёрнута в строку — ответ читают словами, таблицу раскрывают при необходимости.
+ */
+export function DataTableCard({ table, defaultOpen = false }: { table: ChatTable; defaultOpen?: boolean }) {
+    const [open, setOpen] = useState(defaultOpen)
     const hidden = useMemo(() => constantColumns(table), [table])
     const common = [...hidden].map(c => `${table.columns[c]}: ${displayText(table.rows[0][c])}`)
     return (
-        <div className="my-3 overflow-hidden rounded-xl border bg-card shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b px-3 py-2">
-                <div className="flex min-w-0 items-center gap-2.5">
+        <div className={cn("overflow-hidden rounded-xl border bg-card", open ? "my-3 shadow-sm" : "my-1.5")}>
+            <div className={cn("flex items-center justify-between gap-3 px-3", open ? "border-b py-2" : "py-1.5")}>
+                <button type="button" onClick={() => setOpen(value => !value)} aria-expanded={open}
+                    title={open ? "Свернуть таблицу" : "Показать таблицу"}
+                    className="group/table flex min-w-0 flex-1 items-center gap-2.5 text-left">
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground"><Table2 className="h-3.5 w-3.5" /></div>
                     <div className="min-w-0">
                         <div className="truncate text-sm font-semibold leading-tight">{table.title}</div>
                         <div className="truncate text-[11px] text-muted-foreground">{[rowsLabel(table.rows.length), ...common, table.note].filter(Boolean).join(" · ")}</div>
                     </div>
-                </div>
+                    <ChevronDown className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover/table:text-foreground", open && "rotate-180")} />
+                </button>
                 <TableActions table={table} />
             </div>
-            <TableView table={table} hidden={hidden} />
+            {open && <TableView table={table} hidden={hidden} />}
         </div>
     )
 }
