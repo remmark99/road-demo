@@ -147,18 +147,47 @@ async function sectionChart(ctx: VectorToolContext, section: { chart?: unknown; 
     }
 }
 
+/**
+ * Таблица и график раздела по теме его заголовка — на случай, когда модель их не указала:
+ * отчёт без графиков и таблиц — это пересказ текста, а не документ.
+ */
+const SECTION_DEFAULTS: { match: RegExp; table: string; chart: string }[] = [
+    { match: /событ|безопасн|видеоаналит|инцидент/i, table: 'security_by_stop', chart: 'security_by_day' },
+    { match: /пассаж|люд|нагрузк|загруж/i, table: 'passenger_load_by_stop', chart: 'passenger_load_by_hour' },
+    { match: /климат|температ|влажн/i, table: 'climate_coldest_now', chart: 'climate_coldest_now' },
+    { match: /урн/i, table: 'bin_episodes', chart: 'bins_by_day' },
+    { match: /оборудов|связ|просто|отключ|камер|датчик|контроллер/i, table: 'equipment_outages', chart: 'equipment_outages' },
+    { match: /состояни|норм|нарушен|охват/i, table: 'stop_problems_now', chart: 'stop_conditions_now' },
+]
+const MAX_REPORT_CHARTS = 4
+const named = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : ''
+
 /** Отчёт из аргументов модели: разделы с data получают таблицы из базы. */
 export async function buildReport(ctx: VectorToolContext, args: ToolArgs): Promise<ReportDocument> {
     const period: ToolArgs = {}
     for (const key of ['from', 'to'] as const) if (typeof args[key] === 'string' && (args[key] as string).trim()) period[key] = (args[key] as string).trim()
+    type RawSection = { heading?: unknown; table?: unknown; stop?: unknown; chart?: unknown; chart_type?: unknown }
     const sections = Array.isArray(args.sections) ? args.sections.slice(0, 20) : []
-    const resolved = await Promise.all(sections.map(async raw => {
+    // Сначала решаем, что будет в разделах: своё от модели, иначе по теме заголовка; графиков — не больше четырёх на отчёт.
+    const usedCharts = new Set(sections.map(raw => named((raw as RawSection | null)?.chart)).filter(Boolean))
+    const planned = sections.map(raw => {
         if (!raw || typeof raw !== 'object') return raw
-        const section = raw as { heading?: unknown; table?: unknown; stop?: unknown; chart?: unknown; chart_type?: unknown }
+        const section = raw as RawSection
         const heading = typeof section.heading === 'string' ? section.heading : 'Раздел'
+        const defaults = SECTION_DEFAULTS.find(item => item.match.test(heading))
+        let chart = named(section.chart)
+        if (!chart && defaults && !usedCharts.has(defaults.chart) && usedCharts.size < MAX_REPORT_CHARTS) {
+            chart = defaults.chart
+            usedCharts.add(chart)
+        }
+        return { ...section, heading, table: named(section.table) || defaults?.table || '', chart }
+    })
+    const resolved = await Promise.all(planned.map(async raw => {
+        if (!raw || typeof raw !== 'object') return raw
+        const section = raw as RawSection & { heading: string; table: string; chart: string }
         const [table, chart] = await Promise.all([
-            typeof section.table === 'string' && section.table.trim() ? presetTable(ctx, section.table.trim(), period, section.stop, heading) : undefined,
-            typeof section.chart === 'string' && section.chart.trim() ? sectionChart(ctx, section, period, heading) : undefined,
+            section.table ? presetTable(ctx, section.table, period, section.stop, section.heading) : undefined,
+            section.chart ? sectionChart(ctx, section, period, section.heading) : undefined,
         ])
         return { ...section, table, chart }
     }))

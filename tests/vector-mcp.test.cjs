@@ -264,4 +264,8 @@ test('create_chart: графики из базы разных форм, ошиб
   const report = await call('create_report', { title: 'С графиком', from: '2026-11-07', to: '2026-11-13', summary: ['x'],
     sections: [{ heading: 'События', chart: 'security_by_day', chart_type: 'line' }] })
   assert.equal(report.data.report.sections[0].chart.type, 'line')
+  // Модель не указала ни таблицу, ни график — раздел получает их по теме заголовка.
+  const bare = await call('create_report', { title: 'Без указаний', from: '2026-11-07', to: '2026-11-13', summary: ['x'], sections: [{ heading: 'События безопасности' }] })
+  assert.equal(bare.data.report.sections[0].chart.title, 'События безопасности по дням')
+  assert.ok(Array.isArray(bare.data.report.sections[0].table.rows))
 })
