@@ -153,5 +153,8 @@ test('create_report берёт таблицы из инструментов да
   assert.equal(result.report.sections[0].table.title, 'Самые долгие отключения оборудования')
   assert.equal(result.report.sections[1].table, undefined)
   assert.deepEqual(calls[0], { limit: 100, from: '2026-11-06', to: '2026-11-13', stop: 'Никольский' })
-  await assert.rejects(REPORT_TOOL.handler(ctx, { title: 'X', summary: ['y'], sections: [{ heading: 'Погода', table: 'weather' }] }), /table должен быть/)
+  // Незнакомый вид таблицы не срывает отчёт: раздел остаётся без таблицы.
+  const loose = await REPORT_TOOL.handler(ctx, { title: 'X', summary: ['y'], sections: [{ heading: 'Погода', table: 'weather' }] })
+  assert.equal(loose.report.sections[0].heading, 'Погода')
+  assert.equal(loose.report.sections[0].table, undefined)
 })

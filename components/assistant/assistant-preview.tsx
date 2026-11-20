@@ -8,6 +8,7 @@ import type { OverviewSummary } from "@/lib/assistant/overview"
 import type { ChatTable } from "@/lib/assistant/table"
 import { monthWindow, type AssistantUsageSummary } from "@/lib/assistant/usage-shared"
 import type { ReportChart } from "@/lib/reports/chart"
+import type { ReportDocument } from "@/lib/reports/document"
 
 /**
  * Прототип окна ассистента на условных данных: без базы и модели.
@@ -103,6 +104,14 @@ const novemberChart: ReportChart = {
     series: [{ name: "Отключений", values: [4, 6, 3, 23, 7, 5, 2, 4, 12, 6, 3, 5, 18, 7, 4, 3, 31, 42] }],
 }
 
+const previewReport: ReportDocument = {
+    title: "Остановочные павильоны Сургута — отчёт за неделю",
+    generatedAt: "2026-11-18 12:05",
+    summary: ["Не в сети 17 контроллеров датчиков, 11 из них — с 10 сентября.", "Коротких отключений больше всего 17 и 18 ноября: 31 и 42."],
+    metrics: [{ label: "Контроллеров в сети", value: "77 из 94" }, { label: "Отключений за неделю", value: "108" }],
+    sections: [{ heading: "Связь оборудования", paragraphs: [], bullets: [], chart: novemberChart }],
+}
+
 const previewOverview: OverviewSummary = {
     asOf: "2026-11-18 12:00",
     stops: { withCameras: 112, withSensors: 107 },
@@ -177,6 +186,17 @@ const CONVERSATIONS = [
 /** Ответы прототипа на новые вопросы: по ключевым словам. */
 function scenario(question: string): { tools: { name: string; output: unknown }[]; text: string; tokens: number } {
     const q = question.toLowerCase()
+    if (/отч[её]т|справк/.test(q)) {
+        return {
+            tools: [
+                { name: "system_overview", output: { text: "", overview: previewOverview } },
+                { name: "equipment_outages", output: { text: "", table: novemberOutages } },
+                { name: "create_report", output: { report: previewReport, formats: ["pdf", "xlsx", "docx"] } },
+            ],
+            text: "За неделю павильоны в целом работали штатно, главная проблема — связь: **17 контроллеров датчиков не в сети**, 11 из них молчат с 10 сентября. Коротких отключений стало больше к концу недели — **31 и 42** за 17 и 18 ноября, это стоит проверить в первую очередь. Отчёт с таблицами готов, файлы — под графиком.",
+            tokens: 96_300,
+        }
+    }
     if (/холод|тепл|темпер|влажн|климат/.test(q)) {
         return {
             tools: [{ name: "stop_climate", output: { text: "", table: climateTable } }],

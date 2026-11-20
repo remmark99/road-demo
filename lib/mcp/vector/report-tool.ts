@@ -105,10 +105,25 @@ export const REPORT_TABLES = [...Object.keys(PERIOD_TABLES), ...Object.keys(CURR
 /** Таблицы, которые можно сузить до одной остановки. */
 const STOP_SCOPED = new Set(['equipment_outages', 'security_events', 'passenger_load', 'bin_episodes', 'equipment_status'])
 
-async function presetTable(ctx: VectorToolContext, kind: string, period: ToolArgs, stop: unknown, heading: string): Promise<ReportTable> {
+/** Имена, которыми модель называет таблицу по имени инструмента или поля сводки. */
+const TABLE_ALIASES: Record<string, string> = {
+    stop_conditions_now: 'stop_problems_now', stop_conditions: 'stop_problems_now', equipment_status: 'equipment_offline_now',
+    security_events: 'security_by_stop', passenger_load: 'passenger_load_by_stop', stop_climate: 'climate_coldest_now',
+    bins_full: 'bins_full_now', districts_summary: 'districts',
+}
+
+/**
+ * Таблица раздела по её виду. Незнакомый вид — раздел остаётся без таблицы:
+ * отклонять из-за него весь отчёт нельзя, модель повторяет тот же вызов и тратит все шаги.
+ */
+async function presetTable(ctx: VectorToolContext, name: string, period: ToolArgs, stop: unknown, heading: string): Promise<ReportTable | undefined> {
+    const kind = TABLE_ALIASES[name] ?? name
     const preset = PERIOD_TABLES[kind] ?? CURRENT_TABLES[kind]
     const tool = preset ? VECTOR_TOOLS.find(t => t.name === preset.tool) : undefined
-    if (!preset || !tool) throw new ToolInputError(`Раздел «${heading}»: table должен быть одним из ${REPORT_TABLES.join(', ')}`)
+    if (!preset || !tool) {
+        console.warn(`report table skipped: unknown kind "${name.slice(0, 60)}"`)
+        return undefined
+    }
     const args: ToolArgs = { ...preset.args, limit: TABLE_ROWS, ...(PERIOD_TABLES[kind] ? period : {}) }
     if (typeof stop === 'string' && stop.trim() && STOP_SCOPED.has(tool.name)) args.stop = stop.trim()
     try {
@@ -125,8 +140,9 @@ async function sectionChart(ctx: VectorToolContext, section: { chart?: unknown; 
     try {
         return await buildChart(ctx, { preset: section.chart, type: section.chart_type, from: period.from, to: period.to, stop: section.stop }) ?? undefined
     } catch (error) {
-        if (error instanceof ToolInputError) throw new ToolInputError(`Раздел «${heading}»: ${error.message}`)
-        console.error('report chart failed:', error instanceof Error ? error.message : 'unknown error')
+        // Незнакомый вид графика — раздел без графика, отчёт всё равно собирается.
+        if (error instanceof ToolInputError) console.warn(`report chart skipped (${heading.slice(0, 60)}): ${error.message.slice(0, 200)}`)
+        else console.error('report chart failed:', error instanceof Error ? error.message : 'unknown error')
         return undefined
     }
 }

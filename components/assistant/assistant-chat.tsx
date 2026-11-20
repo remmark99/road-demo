@@ -222,6 +222,9 @@ function FollowUps({ questions, onAsk }: { questions: string[]; onAsk: (question
     )
 }
 
+/** Таблицу просили прямо — показываем её раскрытой; иначе она свёрнута под ответом. */
+const WANTS_TABLE = /выгруз|excel|эксел|таблиц|списо?к|перечен|перечисл/i
+
 interface AssistantMessageProps {
     message: UIMessage
     streaming: boolean
@@ -242,6 +245,9 @@ function AssistantMessage({ message, streaming, speech, asked = "", onAsk, last 
     const charts = tools.map(chartOf).filter((chart): chart is ReportChart => chart !== null)
     const dataTables = tools.map(tableOf).filter((table): table is ChatTable => table !== null)
     const text = messageText(message)
+    // В отчёте свои таблицы и цифры: под ним остаются только его графики и карточка с файлами.
+    const reportCharts = reports.flatMap(report => report.sections.flatMap(section => section.chart ? [section.chart] : []))
+    const tablesOpen = WANTS_TABLE.test(asked)
     const tokens = (message.metadata as AssistantMessageMetadata | undefined)?.tokens
     const allTables = streaming ? [] : [...markdownTables(text), ...dataTables]
     return (
@@ -254,13 +260,14 @@ function AssistantMessage({ message, streaming, speech, asked = "", onAsk, last 
                     <div className={MARKDOWN}>
                         <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={MARKDOWN_COMPONENTS}>{text}</ReactMarkdown>
                     </div>
-                ) : streaming && !reports.length && !charts.length && !dataTables.length && !overviews.length ? (
+                ) : streaming ? (
                     <div className="flex h-7 items-center gap-1" aria-label="Ассистент думает">
                         {[0, 1, 2].map(i => <span key={i} className="h-1.5 w-1.5 animate-bounce rounded-full bg-muted-foreground/50" style={{ animationDelay: `${i * 150}ms` }} />)}
                     </div>
                 ) : null}
-                {overviews.slice(-1).map(overview => <OverviewCard key={overview.asOf} overview={overview} onAsk={onAsk} disabled={streaming} />)}
-                {dataTables.map((table, index) => <DataTableCard key={`${table.title}-${index}`} table={table} />)}
+                {!reports.length && overviews.slice(-1).map(overview => <OverviewCard key={overview.asOf} overview={overview} onAsk={onAsk} disabled={streaming} />)}
+                {!reports.length && dataTables.map((table, index) => <DataTableCard key={`${table.title}-${index}`} table={table} defaultOpen={tablesOpen} />)}
+                {reportCharts.map((chart, index) => <ChartCard key={`report-${chart.title}-${index}`} chart={chart} />)}
                 {reports.map((report, index) => <ReportCard key={`${report.generatedAt}-${index}`} report={report} />)}
                 {text && !streaming && (
                     <div className="mt-1.5 flex flex-wrap items-center gap-0.5">

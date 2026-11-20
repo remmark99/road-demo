@@ -226,7 +226,10 @@ test('create_report: таблица раздела берётся из базы,
   assert.ok(table.rows.some(row => row.includes(131) && row.includes('не в сети')))
   assert.equal(result.data.report.generatedAt, '2026-11-13 18:40')
   assert.ok(Array.isArray(result.data.report.sections[1].table.rows))
-  assert.match((await call('create_report', { title: 'Отчёт', summary: ['x'], sections: [{ heading: 'Погода', table: 'weather' }] })).error, /table должен быть/)
+  const loose = await call('create_report', { title: 'Отчёт', summary: ['x'], sections: [{ heading: 'Погода', table: 'weather', chart: 'weather' }, { heading: 'Состояние', table: 'stop_conditions_now' }] })
+  assert.equal(loose.data.report.sections[0].table, undefined)
+  assert.equal(loose.data.report.sections[0].chart, undefined)
+  assert.equal(loose.data.report.sections[1].table.title, 'Остановки с нарушениями сейчас')
   assert.match((await call('create_report', { summary: ['x'] })).error, /title/)
 })
 
