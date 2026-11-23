@@ -17,7 +17,19 @@ function collect(node, predicate, out = []) {
     return out
 }
 
-function page({ currentUserId = 'verified-user', writeResponse = { ok: true, data: { success: true } } } = {}) {
+// Реальный lib/license-modules.ts: каталог, урезанный лицензией, — поведение,
+// которое здесь проверяется, живёт именно там.
+function loadLicenseModules() {
+    const shim = { exports: {} }
+    const code = ts.transpileModule(fs.readFileSync(path.join(__dirname, '../lib/license-modules.ts'), 'utf8'), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+    }).outputText
+    new Function('require', 'module', 'exports', code)(id => { throw new Error(`Unexpected import: ${id}`) }, shim, shim.exports)
+    return shim.exports
+}
+const licenseModulesLib = loadLicenseModules()
+
+function page({ currentUserId = 'verified-user', writeResponse = { ok: true, data: { success: true } }, license = { valid: true, modules: ['stops', 'roads', 'shore', 'transport', 'parks', 'asr'] } } = {}) {
     const state = [], effects = []
     let cursor = 0
     let response = { ok: false, data: { error: 'Users service unavailable' } }
@@ -43,9 +55,14 @@ function page({ currentUserId = 'verified-user', writeResponse = { ok: true, dat
         if (id === '@/components/providers/module-context') return { useModuleAccess: () => ({ role: 'admin', loading: false }) }
         if (id === '@/components/ui/dialog') return dialogModule
         if (id === '@/lib/supabase/client') return { createClient: () => ({ auth: { getUser: async () => ({ data: { user: { id: currentUserId } } }) } }) }
+        if (id === '@/lib/license-modules') return licenseModulesLib
         if (id.startsWith('@/components/') || id === 'lucide-react') return new Proxy({}, { get: () => passthrough })
         throw new Error(`Unexpected import: ${id}`)
     }, module, module.exports, async (url, options) => {
+        if (url === '/api/license') {
+            if (license === null) throw new Error('license endpoint unreachable')
+            return { ok: true, json: async () => license }
+        }
         assert.equal(url, '/api/admin/users')
         calls.push({ url, options })
         if (!options) return { ok: response.ok, json: async () => response.data }
@@ -54,6 +71,12 @@ function page({ currentUserId = 'verified-user', writeResponse = { ok: true, dat
     return {
         Dialog,
         calls,
+        buttonWithText(text) {
+            return collect(this.element(), node =>
+                typeof node.props?.onClick === 'function' &&
+                [].concat(node.props.children ?? []).some(child => typeof child === 'string' && child.trim() === text)
+            )[0]
+        },
         element() {
             cursor = 0
             return module.exports.default()
@@ -184,6 +207,65 @@ test('confirming sends DELETE (not POST/PUT) with the target id, closes the dial
     assert.deepEqual(JSON.parse(writes[0].options.body), { id: 'user-one' })
     assert.equal(ui.calls.at(-1).options, undefined)
     assert.doesNotMatch(ui.render(), /Понимаю, что действие необратимо/)
+})
+
+// --- Доступы выдаются в пределах купленной лицензии -------------------------
+//
+// Список модулей в админке — это каталог платформы, урезанный составом лицензии.
+// Клиентская отсечка нужна, чтобы админ не выбирал недоступное; серверная (см.
+// admin-users-api.test.cjs) остаётся обязательной: интерфейс обходится запросом.
+
+const CUSTOMER_LICENSE = { valid: true, modules: ['stops'] }
+
+test('the page states which modules the license allows', async () => {
+    const ui = page({ license: CUSTOMER_LICENSE })
+    ui.render()
+    await ui.load({ ok: true, data: [] })
+    assert.match(ui.render(), /Лицензия разрешает: Остановочные павильоны/)
+})
+
+test('the create dialog offers only the modules the license covers', async () => {
+    const ui = page({ license: CUSTOMER_LICENSE })
+    ui.render()
+    await ui.load({ ok: true, data: [] })
+    ui.buttonWithText('Создать пользователя').props.onClick()
+    const html = renderToStaticMarkup(ui.openDialog())
+    assert.match(html, /Остановочные павильоны/)
+    assert.doesNotMatch(html, /Состояние дорог/)
+    assert.doesNotMatch(html, /Площадки ТКО/)
+})
+
+test('an assigned module outside the license is marked as such, not hidden', async () => {
+    // Доступ выдан раньше или мимо админки. Скрыть его значило бы соврать о
+    // фактических правах; показать с пометкой — дать админу его снять.
+    const ui = page({ license: CUSTOMER_LICENSE })
+    ui.render()
+    await ui.load({ ok: true, data: [{ id: 'user-one', email: 'one@example.test', role: 'user', modules: ['stops', 'roads'] }] })
+    const html = ui.render()
+    assert.match(html, /Остановочные павильоны/)
+    assert.match(html, /Состояние дорог/)
+    assert.match(html, /не входит в купленную лицензию/)
+})
+
+test('an invalid license offers nothing to assign', async () => {
+    const ui = page({ license: { valid: false, modules: [] } })
+    ui.render()
+    await ui.load({ ok: true, data: [] })
+    const html = ui.render()
+    assert.match(html, /нет действующей лицензии/)
+    assert.doesNotMatch(html, /Остановочные павильоны/)
+})
+
+test('an unreachable license endpoint leaves the full catalogue to the server gate', async () => {
+    // Транзиентный сбой не должен отбирать у админа возможность работать: список
+    // остаётся полным, а отказ придёт от API.
+    const ui = page({ license: null })
+    ui.render()
+    await ui.load({ ok: true, data: [] })
+    const html = ui.render()
+    assert.doesNotMatch(html, /Лицензия разрешает/)
+    ui.buttonWithText('Создать пользователя').props.onClick()
+    assert.match(renderToStaticMarkup(ui.openDialog()), /Состояние дорог/)
 })
 
 test('a failed delete keeps the dialog open and surfaces the error', async () => {
