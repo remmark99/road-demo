@@ -1,4 +1,6 @@
 import { getSupabaseUrl } from '@/lib/supabase/endpoint'
+import { getActiveLicense } from '@/lib/license'
+import { moduleNames, partitionModules, withDemoModules } from '@/lib/license-modules'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
@@ -49,6 +51,70 @@ const verifyAdmin = async () => {
     return { userId: user.id }
 }
 
+/**
+ * Модули, которые инстанс вправе выдать: подписанная лицензия плюс демо-модули
+ * (`LICENSE_DEMO_MODULES`, если переменная задана на сервере). null — лицензия
+ * недействительна или отсутствует.
+ */
+const entitledModules = (): string[] | null => {
+    const license = getActiveLicense()
+    if (!license) return null
+    return withDemoModules(license.modules, process.env.LICENSE_DEMO_MODULES).modules
+}
+
+/**
+ * Заказчик покупает модули, а не «всё, что есть в интерфейсе», поэтому доступы
+ * сверяются с лицензией на сервере, а не только в интерфейсе.
+ *
+ * Выданный вне лицензии модуль не работает: либо воркеры бэкенда падают на
+ * `require_module(...)`, либо раздел просто не виден оператору (интерфейс режет
+ * модули по лицензии) — то есть выглядит как поломка платформы. Отсюда отказ:
+ * `outsideLicense` — не куплено, `unknown` — не модуль вообще.
+ *
+ * Возвращает либо проверенный список, либо готовый отказ.
+ */
+const validateModules = (modules: unknown): { modules: string[] } | { denial: NextResponse } => {
+    const requested = Array.isArray(modules)
+        ? modules.filter((module): module is string => typeof module === 'string')
+        : []
+
+    const licensed = entitledModules()
+    if (licensed === null) {
+        return {
+            denial: NextResponse.json(
+                { error: 'Лицензия недействительна или отсутствует — выдача доступов недоступна' },
+                { status: 403 }
+            ),
+        }
+    }
+
+    const { allowed, outsideLicense, unknown } = partitionModules(requested, licensed)
+
+    if (unknown.length > 0) {
+        return {
+            denial: NextResponse.json(
+                { error: `Неизвестный модуль: ${moduleNames(unknown)}` },
+                { status: 400 }
+            ),
+        }
+    }
+
+    if (outsideLicense.length > 0) {
+        return {
+            denial: NextResponse.json(
+                {
+                    error: `В лицензию не входит: ${moduleNames(outsideLicense)}. Доступно: ${moduleNames(licensed)}.`,
+                    modules_outside_license: outsideLicense,
+                    modules_licensed: licensed,
+                },
+                { status: 403 }
+            ),
+        }
+    }
+
+    return { modules: allowed }
+}
+
 // GET all users (profiles)
 export async function GET() {
     try {
@@ -88,6 +154,11 @@ export async function POST(request: Request) {
         const body = await request.json()
         const { email, password, modules, role } = body
 
+        // Проверяем доступы до создания учётки: иначе отказ по лицензии оставлял бы
+        // в auth.users пользователя, которому всё равно ничего не выдали.
+        const access = validateModules(modules)
+        if ('denial' in access) return access.denial
+
         const adminClient = getAdminSupabase()
 
         // 1. Create the user in Auth
@@ -108,7 +179,7 @@ export async function POST(request: Request) {
             .from('profiles')
             .update({
                 role: role || 'user',
-                modules: modules || [],
+                modules: access.modules,
             })
             .eq('id', authData.user.id)
 
@@ -136,11 +207,14 @@ export async function PUT(request: Request) {
             return NextResponse.json({ error: 'Missing user ID' }, { status: 400 })
         }
 
+        const access = validateModules(modules)
+        if ('denial' in access) return access.denial
+
         const adminClient = getAdminSupabase()
         const { data, error } = await adminClient
             .from('profiles')
             .update({
-                modules: modules || [],
+                modules: access.modules,
                 role: role || 'user',
             })
             .eq('id', id)
