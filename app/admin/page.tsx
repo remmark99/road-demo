@@ -14,24 +14,15 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 
 import { LicensePanel } from "@/components/licenses/license-panel"
-
-type Module = 'roads' | 'shore' | 'stops' | 'parks' | 'transport'
+import { licensedCatalog, moduleName, type LicenseState } from "@/lib/license-modules"
 
 interface Profile {
     id: string
     email: string
     role: string
-    modules: Module[]
+    modules: string[]
     created_at?: string
 }
-
-const AVAILABLE_MODULES: { id: Module; name: string }[] = [
-    { id: 'roads', name: 'Состояние дорог' },
-    { id: 'shore', name: 'Безопасный берег' },
-    { id: 'stops', name: 'Остановки' },
-    { id: 'parks', name: 'Безопасный парк' },
-    { id: 'transport', name: 'Контроль транспорта' },
-]
 
 export default function AdminPage() {
     const { role, loading: ctxLoading } = useModuleAccess()
@@ -44,13 +35,19 @@ export default function AdminPage() {
     const [newEmail, setNewEmail] = useState('')
     const [newPassword, setNewPassword] = useState('')
     const [newRole, setNewRole] = useState('user')
-    const [newModules, setNewModules] = useState<Module[]>([])
+    const [newModules, setNewModules] = useState<string[]>([])
     const [creating, setCreating] = useState(false)
 
     // Edit User State
     const [editingId, setEditingId] = useState<string | null>(null)
-    const [editModules, setEditModules] = useState<Module[]>([])
+    const [editModules, setEditModules] = useState<string[]>([])
     const [editRole, setEditRole] = useState('user')
+
+    // Состав лицензии: админ выдаёт доступы только к купленным модулям.
+    // 'unknown' — спросить не удалось, список не фильтруем (откажет сервер);
+    // 'invalid' — действующей лицензии нет, выдавать нечего.
+    const [licenseState, setLicenseState] = useState<LicenseState>('unknown')
+    const [licenseModules, setLicenseModules] = useState<string[] | null>(null)
 
     // Delete User State
     const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -64,6 +61,17 @@ export default function AdminPage() {
             .auth.getUser()
             .then(({ data }) => setCurrentUserId(data?.user?.id ?? null))
             .catch(() => setCurrentUserId(null))
+
+        // Что инстанс вправе выдать, знает только сервер: он читает подписанную
+        // лицензию. Не ответил — оставляем полный список, отказ вернёт API.
+        fetch('/api/license')
+            .then(res => res.json())
+            .then((data: { valid?: boolean; modules?: string[] } | null) => {
+                if (typeof data?.valid !== 'boolean') return
+                setLicenseState(data.valid ? 'ok' : 'invalid')
+                setLicenseModules(data.valid && Array.isArray(data.modules) ? data.modules : [])
+            })
+            .catch(() => { /* сервер недоступен — список не сужаем, откажет API */ })
     }, [])
 
     const fetchUsers = async () => {
@@ -200,7 +208,14 @@ export default function AdminPage() {
 
     const isDeleteDisabled = (user: Profile): boolean => deleteDisabledReason(user) !== undefined
 
-    const toggleModule = (modArray: Module[], setModArray: (arr: Module[]) => void, mod: Module) => {
+    // Что можно выдать: каталог, урезанный лицензией. Модуль, назначенный
+    // пользователю раньше, но в лицензию не входящий, показываем отдельно —
+    // админ должен его видеть, чтобы снять.
+    const assignableModules = licensedCatalog(licenseState === 'invalid' ? [] : licenseModules)
+    const assignableIds = new Set(assignableModules.map(mod => mod.id))
+    const modulesOutsideLicense = (mods: string[]) => mods.filter(id => !assignableIds.has(id))
+
+    const toggleModule = (modArray: string[], setModArray: (arr: string[]) => void, mod: string) => {
         if (modArray.includes(mod)) {
             setModArray(modArray.filter(m => m !== mod))
         } else {
@@ -243,6 +258,13 @@ export default function AdminPage() {
                         <p className="text-muted-foreground mt-2">
                             Управление пользователями и доступными модулями платформы
                         </p>
+                        {licenseState !== 'unknown' && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                                Лицензия разрешает: {licenseState === 'invalid'
+                                    ? 'нет действующей лицензии'
+                                    : assignableModules.map(mod => mod.name).join(', ') || '—'}
+                            </p>
+                        )}
                     </div>
 
                     <button
@@ -334,7 +356,7 @@ export default function AdminPage() {
                                                     <td className="px-6 py-4">
                                                         {editingId === u.id ? (
                                                             <div className="flex flex-wrap gap-2">
-                                                                {AVAILABLE_MODULES.map(mod => (
+                                                                {assignableModules.map(mod => (
                                                                     <label key={mod.id} className="flex items-center gap-1.5 text-sm cursor-pointer border border-border rounded-md px-2 py-1 hover:bg-white/5 transition-colors">
                                                                         <input
                                                                             type="checkbox"
@@ -345,18 +367,40 @@ export default function AdminPage() {
                                                                         {mod.name}
                                                                     </label>
                                                                 ))}
+                                                                {modulesOutsideLicense(editModules).map(id => (
+                                                                    <label
+                                                                        key={id}
+                                                                        className="flex items-center gap-1.5 text-sm cursor-pointer border border-amber-500/40 rounded-md px-2 py-1 text-amber-400 hover:bg-amber-500/10 transition-colors"
+                                                                        title="Модуль не входит в купленную лицензию. Пока галочка стоит, сохранение отклонится — снимите её."
+                                                                    >
+                                                                        <input
+                                                                            type="checkbox"
+                                                                            checked
+                                                                            onChange={() => toggleModule(editModules, setEditModules, id)}
+                                                                            className="accent-amber-500"
+                                                                        />
+                                                                        {moduleName(id)} — вне лицензии
+                                                                    </label>
+                                                                ))}
+                                                                {assignableModules.length === 0 && modulesOutsideLicense(editModules).length === 0 && (
+                                                                    <span className="text-sm text-muted-foreground italic">Лицензия не позволяет выдать ни одного модуля</span>
+                                                                )}
                                                             </div>
                                                         ) : (
                                                             <div className="flex flex-wrap gap-2">
-                                                                {AVAILABLE_MODULES.map(mod => {
-                                                                    const hasModule = (u.modules || []).includes(mod.id)
-                                                                    if (!hasModule) return null
-                                                                    return (
-                                                                        <span key={mod.id} className="inline-flex px-2 py-1 rounded-md text-xs font-medium bg-teal-500/10 text-teal-400 border border-teal-500/20">
-                                                                            {mod.name}
-                                                                        </span>
-                                                                    )
-                                                                })}
+                                                                {(u.modules || []).map(id => (
+                                                                    <span
+                                                                        key={id}
+                                                                        className={assignableIds.has(id)
+                                                                            ? "inline-flex px-2 py-1 rounded-md text-xs font-medium bg-teal-500/10 text-teal-400 border border-teal-500/20"
+                                                                            : "inline-flex px-2 py-1 rounded-md text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20"}
+                                                                        title={assignableIds.has(id)
+                                                                            ? undefined
+                                                                            : 'Модуль не входит в купленную лицензию: воркеры его не запустят, а раздел оператору не виден'}
+                                                                    >
+                                                                        {moduleName(id)}
+                                                                    </span>
+                                                                ))}
                                                                 {(!u.modules || u.modules.length === 0) && (
                                                                     <span className="text-sm text-muted-foreground italic">Нет назначенных модулей</span>
                                                                 )}
@@ -474,7 +518,15 @@ export default function AdminPage() {
                                     <label className="text-sm font-medium text-muted-foreground mb-2 block border-t border-border pt-4">
                                         Доступные модули
                                     </label>
-                                    {AVAILABLE_MODULES.map(mod => (
+                                    {licenseState === 'invalid' && (
+                                        <p className="text-sm text-red-400">Лицензия недействительна — выдача доступов недоступна.</p>
+                                    )}
+                                    {licenseState === 'unknown' && (
+                                        <p className="text-sm text-amber-400">
+                                            Состав лицензии получить не удалось: показан полный список, сервер отклонит всё, что не куплено.
+                                        </p>
+                                    )}
+                                    {assignableModules.map(mod => (
                                         <label key={mod.id} className="flex items-center gap-3 p-3 border border-border rounded-xl cursor-pointer hover:bg-muted transition-colors">
                                             <input
                                                 type="checkbox"
