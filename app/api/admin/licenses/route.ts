@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { readCustomerLicenses } from '@/lib/licenses/server'
+import { readLicensesForAdmin } from '@/lib/licenses/server'
 import { createLicenseDraft, LicenseEditError } from '@/lib/licenses/admin'
 import { parseLicenseInput } from '@/lib/licenses/editor'
 
@@ -20,7 +20,7 @@ export async function GET() {
   try {
     const { response } = await requireAdmin()
     if (response) return response
-    return NextResponse.json(await readCustomerLicenses(), { headers })
+    return NextResponse.json(await readLicensesForAdmin(), { headers })
   } catch {
     return NextResponse.json({ error: 'Не удалось загрузить лицензии. Проверьте подключение License DB.' }, { status: 503, headers })
   }
