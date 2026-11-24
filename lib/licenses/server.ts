@@ -5,7 +5,7 @@ import { getActiveLicense } from '../license'
 import { inventoryModules, parseResourceScopes, russianCameraName, russianModuleLabel, type LicenseDetail, type LicenseStop } from './resources'
 import { parseCustomerBindings, licenseStatus, type CustomerLicense, type LicenseResponse } from './types'
 
-function registryConfigured() {
+export function registryConfigured() {
   return Boolean(process.env.LICENSE_DB_URL && process.env.LICENSE_DB_SERVICE_ROLE_KEY)
 }
 
@@ -13,16 +13,26 @@ function registryConfigured() {
 // подписанный license.key, без демо-модулей: LICENSE_DEMO_MODULES лицензией не является.
 function readSignedLicense(): LicenseResponse {
   const license = getActiveLicense()
-  if (!license) return { licenses: [], moduleLabels: {}, linked: true }
+  if (!license) return { licenses: [], moduleLabels: {}, linked: true, registry: false }
   return {
     licenses: [{
-      id: license.license_id, license_id: license.license_id, customer_id: '', customer: license.customer, contract_no: null,
+      id: license.license_id, license_id: license.license_id, customer_id: '', customer: license.customer,
+      contract_no: license.contract_no ?? null,
       status: licenseStatus('active', license.expires_at), issued_at: license.issued_at, expires_at: license.expires_at,
       modules: license.modules, max_cameras: license.max_cameras, users: [], support: [], source: 'signed',
     }],
     moduleLabels: {},
     linked: true,
+    registry: false,
   }
+}
+
+// Админский роут обслуживает двух разных зрителей: вендора, у которого есть реестр
+// и видны все клиенты, и администратора инстанса заказчика, у которого реестра нет
+// и есть только подписанный license.key этого сервера. Ветку выбирает сервер по
+// наличию реестра, а не запрос: инстанс не может выдать себя за вендора.
+export async function readLicensesForAdmin(): Promise<LicenseResponse> {
+  return registryConfigured() ? readCustomerLicenses() : readSignedLicense()
 }
 
 // The DB stores customers, not platform auth users. Bind only by explicitly configured UUIDs.
@@ -30,7 +40,7 @@ export async function readCustomerLicenses(userId?: string): Promise<LicenseResp
   if (userId && !registryConfigured()) return readSignedLicense()
   const bindings = parseCustomerBindings(process.env.LICENSE_USER_CUSTOMERS)
   const customerId = userId ? bindings[userId] : undefined
-  if (userId && !customerId) return { licenses: [], moduleLabels: {}, linked: false }
+  if (userId && !customerId) return { licenses: [], moduleLabels: {}, linked: false, registry: true }
   const url = process.env.LICENSE_DB_URL
   const key = process.env.LICENSE_DB_SERVICE_ROLE_KEY
   if (!url || !key) throw new Error('License DB is not configured')
@@ -66,7 +76,7 @@ export async function readCustomerLicenses(userId?: string): Promise<LicenseResp
       for (const license of licenses) license.users = (profiles || []).filter(p => bindings[p.id] === license.customer_id)
     }
   }
-  return { licenses, moduleLabels: Object.fromEntries((modules || []).map(m => [m.key, m.label])), linked: true }
+  return { licenses, moduleLabels: Object.fromEntries((modules || []).map(m => [m.key, m.label])), linked: true, registry: true }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- реестр без сгенерированных типов
@@ -113,11 +123,7 @@ function signedMatches(signed: unknown, license: CustomerLicense): boolean {
 // Resource display does not alter the signed license or grant access to streams.
 // Verify customer ownership before reading inventory with the service-role client.
 export async function readLicenseDetail(id: string, userId?: string): Promise<LicenseDetail | null> {
-  if (userId && !registryConfigured()) {
-    const { licenses, moduleLabels } = readSignedLicense()
-    const license = licenses.find(row => row.id === id)
-    return license ? { license, moduleLabels, assigned: false, city: null, stops: [], cameras: [], inventorySource: 'unavailable', cameraCount: 0 } : null
-  }
+  if (userId && !registryConfigured()) return readSignedLicenseDetail(id)
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null
   const { licenses, moduleLabels } = await readCustomerLicenses(userId)
   const license = licenses.find(row => row.id === id)
@@ -162,6 +168,47 @@ export async function readLicenseDetail(id: string, userId?: string): Promise<Li
   }
   result.stops.sort((a, b) => a.name.localeCompare(b.name, 'ru'))
   return result
+}
+
+// Вендорский вход в ту же карточку: без реестра показывать нечего, кроме
+// подписанной лицензии этого сервера.
+export async function readLicenseDetailForAdmin(id: string): Promise<LicenseDetail | null> {
+  return registryConfigured() ? readLicenseDetail(id) : readSignedLicenseDetail(id)
+}
+
+// Карточка подписанной лицензии: камеры не перечисляем, а считаем по купленным
+// модулям — администратору нужны числа «Куплено / Подключено / Осталось», а не
+// сотни строк инвентаря.
+async function readSignedLicenseDetail(id: string): Promise<LicenseDetail | null> {
+  const result = signedDetail(id)
+  if (!result) return null
+  try {
+    return await countLicensedCameras(result)
+  } catch {
+    // Сбой чтения инвентаря не должен уносить саму лицензию: числа не показываем.
+    return result
+  }
+}
+
+async function countLicensedCameras(result: LicenseDetail): Promise<LicenseDetail> {
+  const modules = inventoryModules(result.license.modules)
+  if (!modules.length) return result
+  const inventory = createNotificationAdminClient()
+  let connected = 0
+  for (const moduleKey of modules) {
+    const { count, error } = await inventory.from('cameras').select('id', { count: 'exact', head: true }).eq('module', moduleKey)
+    if (error || count == null) throw new Error('Licensed camera count failed')
+    connected += count
+  }
+  result.inventorySource = 'platform'
+  result.cameraCount = connected
+  return result
+}
+
+function signedDetail(id: string): LicenseDetail | null {
+  const { licenses, moduleLabels } = readSignedLicense()
+  const license = licenses.find(row => row.id === id)
+  return license ? { license, moduleLabels, assigned: false, city: null, stops: [], cameras: [], inventorySource: 'unavailable', cameraCount: 0 } : null
 }
 
 async function readPlatformInventory(result: LicenseDetail): Promise<LicenseDetail> {

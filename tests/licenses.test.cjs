@@ -35,7 +35,7 @@ function route(file, user, role, reader) {
   return load(file, {
     'next/server': { NextResponse: { json: (body, options = {}) => ({ body, status: options.status || 200, headers: options.headers }) } },
     '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => ({ data: { user } }) }, from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: { role } }) }) }) }) }) },
-    '@/lib/licenses/server': { readCustomerLicenses: reader },
+    '@/lib/licenses/server': { readLicensesForAdmin: reader, readCustomerLicenses: reader },
     '@/lib/licenses/admin': adminMock, '@/lib/licenses/editor': editorMock,
   })
 }
@@ -62,19 +62,35 @@ test('without a registry a user sees the signed license of this server, with no 
   const previous = { url: process.env.LICENSE_DB_URL, key: process.env.LICENSE_DB_SERVICE_ROLE_KEY, demo: process.env.LICENSE_DEMO_MODULES }
   delete process.env.LICENSE_DB_URL; delete process.env.LICENSE_DB_SERVICE_ROLE_KEY
   process.env.LICENSE_DEMO_MODULES = 'roads,parks'
-  const signed = { license_id: 'SGT-1', customer: 'Администрация г. Сургут', hardware_id: null, issued_at: '2026-08-07T00:00:00Z', expires_at: '2099-08-07T23:59:59Z', modules: ['stops'], max_cameras: 30 }
+  const signed = { license_id: 'SGT-1', customer: 'Администрация г. Сургут', hardware_id: null, issued_at: '2026-08-07T00:00:00Z', expires_at: '2099-08-07T23:59:59Z', modules: ['stops'], max_cameras: 30, contract_no: 'Договор №17/2026' }
   let active = signed
+  const counted = []
   try {
-    const server = load('lib/licenses/server.ts', { 'server-only': {}, '../license': { getActiveLicense: () => active }, '@/lib/notifications/admin': {}, '@supabase/supabase-js': { createClient: () => { throw Error('Unexpected DB access') } } })
+    const server = load('lib/licenses/server.ts', { 'server-only': {}, '../license': { getActiveLicense: () => active }, '@/lib/notifications/admin': { createNotificationAdminClient: () => ({ from: table => ({ select: (selection, options) => ({ eq: (field, value) => { counted.push([table, selection, options.count === 'exact', options.head, field, value]); return Promise.resolve(value === 'roads' ? { count: null, error: { message: 'nope' } } : { count: 798, error: null }) } }) }) }) }, '@supabase/supabase-js': { createClient: () => { throw Error('Unexpected DB access') } } })
     const result = await server.readCustomerLicenses(userId)
     assert.equal(result.linked, true)
-    assert.deepEqual(result.licenses.map(license => [license.id, license.customer, license.status, license.modules, license.source]), [['SGT-1', 'Администрация г. Сургут', 'active', ['stops'], 'signed']])
+    assert.equal(result.registry, false)
+    // Админский вход на инстансе без реестра отдаёт ту же подписанную лицензию.
+    assert.deepEqual(await server.readLicensesForAdmin(), result)
+    assert.deepEqual(result.licenses.map(license => [license.id, license.customer, license.contract_no, license.status, license.modules, license.source]), [['SGT-1', 'Администрация г. Сургут', 'Договор №17/2026', 'active', ['stops'], 'signed']])
+    // Лицензия, выпущенная до появления договора в удостоверении, читается как раньше.
+    active = { ...signed, contract_no: undefined }
+    assert.equal((await server.readLicensesForAdmin()).licenses[0].contract_no, null)
+    active = signed
     const detail = await server.readLicenseDetail('SGT-1', userId)
-    assert.deepEqual([detail.license.id, detail.inventorySource, detail.cameraCount], ['SGT-1', 'unavailable', 0])
+    // Карточке нужны числа: считаем камеры по купленным модулям, список не тянем.
+    assert.deepEqual([detail.license.id, detail.inventorySource, detail.cameraCount, detail.cameras.length, detail.stops.length], ['SGT-1', 'platform', 798, 0, 0])
+    assert.deepEqual(counted, [['cameras', 'id', true, true, 'module', 'stops']])
     assert.equal(await server.readLicenseDetail('other', userId), null)
+    assert.deepEqual([(await server.readLicenseDetailForAdmin('SGT-1')).license.id, await server.readLicenseDetailForAdmin('other')], ['SGT-1', null])
+    // Сбой счётчика не уносит лицензию: карточка открывается без чисел.
+    active = { ...signed, modules: ['roads'] }
+    const degraded = await server.readLicenseDetailForAdmin('SGT-1')
+    assert.deepEqual([degraded.license.id, degraded.inventorySource, degraded.cameraCount], ['SGT-1', 'unavailable', 0])
+    active = signed
     await assert.rejects(server.readCustomerLicenses(), /not configured/)
     active = null
-    assert.deepEqual(await server.readCustomerLicenses(userId), { licenses: [], moduleLabels: {}, linked: true })
+    assert.deepEqual(await server.readCustomerLicenses(userId), { licenses: [], moduleLabels: {}, linked: true, registry: false })
   } finally {
     for (const [name, value] of Object.entries({ LICENSE_DB_URL: previous.url, LICENSE_DB_SERVICE_ROLE_KEY: previous.key, LICENSE_DEMO_MODULES: previous.demo })) { if (value === undefined) delete process.env[name]; else process.env[name] = value }
   }
@@ -86,7 +102,7 @@ test('unbound user never queries License DB', async () => {
   Object.assign(process.env, { LICENSE_DB_URL: 'http://db', LICENSE_DB_SERVICE_ROLE_KEY: 'test' })
   try {
     const server = load('lib/licenses/server.ts', { 'server-only': {}, '@supabase/supabase-js': { createClient: () => { throw Error('Unexpected DB access') } }, '@/lib/notifications/admin': {} })
-    assert.deepEqual(await server.readCustomerLicenses(userId), { licenses: [], moduleLabels: {}, linked: false })
+    assert.deepEqual(await server.readCustomerLicenses(userId), { licenses: [], moduleLabels: {}, linked: false, registry: true })
   } finally {
     if (old === undefined) delete process.env.LICENSE_USER_CUSTOMERS; else process.env.LICENSE_USER_CUSTOMERS = old
     for (const [name, value] of Object.entries({ LICENSE_DB_URL: registry.url, LICENSE_DB_SERVICE_ROLE_KEY: registry.key })) { if (value === undefined) delete process.env[name]; else process.env[name] = value }
@@ -138,7 +154,7 @@ function detailRoute(file, user, role, reader) {
   return load(file, {
     'next/server': { NextResponse: { json: (body, options = {}) => ({ body, status: options.status || 200, headers: options.headers }) } },
     '@/lib/supabase/server': { createClient: async () => ({ auth: { getUser: async () => ({ data: { user } }) }, from: () => ({ select: () => ({ eq: () => ({ single: async () => ({ data: { role } }) }) }) }) }) },
-    '@/lib/licenses/server': { readLicenseDetail: reader },
+    '@/lib/licenses/server': { readLicenseDetailForAdmin: reader, readLicenseDetail: reader },
     '@/lib/licenses/admin': adminMock, '@/lib/licenses/editor': editorMock,
   })
 }
@@ -152,6 +168,9 @@ test('detail endpoints reject anonymous and non-admin callers, bind owner and ma
   assert.equal(reads, 0)
   const owned = await detailRoute('app/api/settings/licenses/[id]/route.ts', { id: userId }, 'user', async (...args) => { assert.deepEqual(args, [licenseId,userId]); return {} }).GET(request, context)
   assert.equal(owned.status, 200)
+  // Админский вход зовёт карточку без владельца: владельца решает сервер по наличию реестра.
+  const byAdmin = await detailRoute('app/api/admin/licenses/[id]/route.ts', { id: userId }, 'admin', async (...args) => { assert.deepEqual(args, [licenseId]); return {} }).GET(request, context)
+  assert.equal(byAdmin.status, 200)
   assert.equal(owned.headers['Cache-Control'], 'private, no-store')
   assert.equal((await detailRoute('app/api/settings/licenses/[id]/route.ts', { id: userId }, 'user', async () => null).GET(request, context)).status, 404)
   const failure = await detailRoute('app/api/admin/licenses/[id]/route.ts', { id: userId }, 'admin', async () => { throw Error('secret') }).GET(request, context)
@@ -223,6 +242,46 @@ test('platform inventory fallback is explicit per customer, keeps every camera a
     const unavailable=await server.readLicenseDetail(licenseId,userId);assert.equal(unavailable.inventorySource,'unavailable');assert.equal(reads,before)
     assert.equal(await server.readLicenseDetail(licenseId,'55555555-5555-5555-5555-555555555555'),null);assert.equal(reads,before)
   }finally{for(const[k,v]of Object.entries(previous)){if(v===undefined)delete process.env[k];else process.env[k]=v}}
+})
+
+test('with a registry the admin route reads every customer and marks the answer as vendor', async () => {
+  const keys = ['LICENSE_DB_URL','LICENSE_DB_SERVICE_ROLE_KEY','LICENSE_USER_CUSTOMERS']
+  const previous = keys.map(key => process.env[key])
+  Object.assign(process.env, { LICENSE_DB_URL: 'http://db', LICENSE_DB_SERVICE_ROLE_KEY: 'test' })
+  delete process.env.LICENSE_USER_CUSTOMERS
+  const filters = []
+  try {
+    const server = load('lib/licenses/server.ts', { 'server-only': {}, '@/lib/notifications/admin': {}, '@supabase/supabase-js': { createClient: () => ({ from: table => ({ select: () => {
+      if (table === 'license_modules') return Promise.resolve({ data: [{ key: 'stops', label: 'Остановочные павильоны' }], error: null })
+      if (table === 'license_support') return { in: () => Promise.resolve({ data: [], error: null }) }
+      const row = { id: licenseId, license_id: 'SRG-2026-001', customer_id: customerId, customers: { name: 'Администрация' }, contract_no: '17/2026', modules: ['stops'], max_cameras: 30, status: 'active', issued_at: '2026-10-15T00:00:00Z', expires_at: '2027-08-07T23:59:59Z' }
+      const q = { order: () => q, range: () => q, eq: (field, value) => { filters.push([field, value]); return q },
+        in: () => Promise.resolve({ data: [{ id: licenseId, signed: { expires_at: '2027-08-07T23:59:59Z', modules: ['stops'], max_cameras: 30 } }], error: null }),
+        then: resolve => resolve({ data: [row], error: null, count: 1 }) }
+      return q
+    } }) }) } })
+    assert.equal(server.registryConfigured(), true)
+    const result = await server.readLicensesForAdmin()
+    assert.equal(result.registry, true)
+    // Вендорский вход не сужается до одного клиента: фильтра по customer_id нет.
+    assert.deepEqual(filters, [])
+    assert.deepEqual(result.licenses.map(license => [license.customer, license.contract_no, license.needs_signing]), [['Администрация', '17/2026', false]])
+    assert.equal(result.moduleLabels.stops, 'Остановочные павильоны')
+  } finally { keys.forEach((key, i) => { if (previous[i] === undefined) delete process.env[key]; else process.env[key] = previous[i] }) }
+})
+
+test('license panel decides from the registry flag who may sign', () => {
+  const { licensePanelView } = load('lib/licenses/presentation.ts')
+  const response = registry => ({ licenses: [], moduleLabels: {}, linked: true, registry })
+  assert.deepEqual(licensePanelView(false, response(true)), { vendor: false, title: 'Мои лицензии', empty: 'Лицензии не найдены.' })
+  const instance = licensePanelView(true, response(false))
+  assert.equal(instance.vendor, false)
+  assert.equal(instance.title, 'Лицензия этого сервера')
+  assert.match(instance.empty, /Обратитесь к поставщику/)
+  const vendor = licensePanelView(true, response(true))
+  assert.equal(vendor.vendor, true)
+  assert.equal(vendor.title, 'Лицензии клиентов')
+  assert.equal(licensePanelView(true, null).title, 'Лицензии клиентов')
 })
 
 const { parseLicenseInput, nextLicenseId, addYears } = load('lib/licenses/editor.ts')
