@@ -109,7 +109,7 @@ const STOP_SCOPED = new Set(['equipment_outages', 'security_events', 'passenger_
 const TABLE_ALIASES: Record<string, string> = {
     stop_conditions_now: 'stop_problems_now', stop_conditions: 'stop_problems_now', equipment_status: 'equipment_offline_now', equipment_status_now: 'equipment_offline_now',
     security_events: 'security_by_stop', passenger_load: 'passenger_load_by_stop', stop_climate: 'climate_coldest_now',
-    bins_full: 'bins_full_now', districts_summary: 'districts',
+    bins_full: 'bins_full_now', districts_summary: 'districts', climate_out_of_norm: 'stop_problems_now',
 }
 
 /**
@@ -160,14 +160,32 @@ const SECTION_DEFAULTS: { match: RegExp; table: string; chart: string }[] = [
     { match: /состояни|норм|нарушен|охват/i, table: 'stop_problems_now', chart: 'stop_conditions_now' },
 ]
 const MAX_REPORT_CHARTS = 4
+/** Разделы на случай, когда модель их не передала: таблицы и графики они получают по теме заголовка. */
+const DEFAULT_SECTIONS = ['Оборудование и связь', 'События безопасности', 'Загруженность остановок', 'Переполнение урн'].map(heading => ({ heading }))
+/** Списки, которые модель иногда присылает строкой с JSON внутри. */
+const LIST_ARGS = ['summary', 'metrics', 'sections'] as const
+function withLists(args: ToolArgs): ToolArgs {
+    const fixed: ToolArgs = { ...args }
+    for (const key of LIST_ARGS) {
+        const value = fixed[key]
+        if (typeof value !== 'string' || !value.trim().startsWith('[')) continue
+        try {
+            const parsed: unknown = JSON.parse(value)
+            if (Array.isArray(parsed)) fixed[key] = parsed
+        } catch { /* не JSON — остаётся как есть */ }
+    }
+    return fixed
+}
 const named = (value: unknown) => typeof value === 'string' && value.trim() ? value.trim() : ''
 
 /** Отчёт из аргументов модели: разделы с data получают таблицы из базы. */
-export async function buildReport(ctx: VectorToolContext, args: ToolArgs): Promise<ReportDocument> {
+export async function buildReport(ctx: VectorToolContext, rawArgs: ToolArgs): Promise<ReportDocument> {
+    const args = withLists(rawArgs)
     const period: ToolArgs = {}
     for (const key of ['from', 'to'] as const) if (typeof args[key] === 'string' && (args[key] as string).trim()) period[key] = (args[key] as string).trim()
     type RawSection = { heading?: unknown; table?: unknown; stop?: unknown; chart?: unknown; chart_type?: unknown }
-    const sections = Array.isArray(args.sections) ? args.sections.slice(0, 20) : []
+    // Без разделов отчёт — это пересказ цифр: подставляем стандартные.
+    const sections = Array.isArray(args.sections) && args.sections.length ? args.sections.slice(0, 20) : DEFAULT_SECTIONS
     // Сначала решаем, что будет в разделах: своё от модели, иначе по теме заголовка; графиков — не больше четырёх на отчёт.
     const usedCharts = new Set(sections.map(raw => named((raw as RawSection | null)?.chart)).filter(Boolean))
     const planned = sections.map(raw => {
