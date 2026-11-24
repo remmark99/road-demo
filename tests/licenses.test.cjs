@@ -62,7 +62,7 @@ test('without a registry a user sees the signed license of this server, with no 
   const previous = { url: process.env.LICENSE_DB_URL, key: process.env.LICENSE_DB_SERVICE_ROLE_KEY, demo: process.env.LICENSE_DEMO_MODULES }
   delete process.env.LICENSE_DB_URL; delete process.env.LICENSE_DB_SERVICE_ROLE_KEY
   process.env.LICENSE_DEMO_MODULES = 'roads,parks'
-  const signed = { license_id: 'SGT-1', customer: 'Администрация г. Сургут', hardware_id: null, issued_at: '2026-08-07T00:00:00Z', expires_at: '2099-08-07T23:59:59Z', modules: ['stops'], max_cameras: 30 }
+  const signed = { license_id: 'SGT-1', customer: 'Администрация г. Сургут', hardware_id: null, issued_at: '2026-08-07T00:00:00Z', expires_at: '2099-08-07T23:59:59Z', modules: ['stops'], max_cameras: 30, contract_no: 'Договор №17/2026' }
   let active = signed
   const counted = []
   try {
@@ -72,7 +72,11 @@ test('without a registry a user sees the signed license of this server, with no 
     assert.equal(result.registry, false)
     // Админский вход на инстансе без реестра отдаёт ту же подписанную лицензию.
     assert.deepEqual(await server.readLicensesForAdmin(), result)
-    assert.deepEqual(result.licenses.map(license => [license.id, license.customer, license.status, license.modules, license.source]), [['SGT-1', 'Администрация г. Сургут', 'active', ['stops'], 'signed']])
+    assert.deepEqual(result.licenses.map(license => [license.id, license.customer, license.contract_no, license.status, license.modules, license.source]), [['SGT-1', 'Администрация г. Сургут', 'Договор №17/2026', 'active', ['stops'], 'signed']])
+    // Лицензия, выпущенная до появления договора в удостоверении, читается как раньше.
+    active = { ...signed, contract_no: undefined }
+    assert.equal((await server.readLicensesForAdmin()).licenses[0].contract_no, null)
+    active = signed
     const detail = await server.readLicenseDetail('SGT-1', userId)
     // Карточке нужны числа: считаем камеры по купленным модулям, список не тянем.
     assert.deepEqual([detail.license.id, detail.inventorySource, detail.cameraCount, detail.cameras.length, detail.stops.length], ['SGT-1', 'platform', 798, 0, 0])

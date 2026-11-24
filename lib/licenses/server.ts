@@ -16,7 +16,8 @@ function readSignedLicense(): LicenseResponse {
   if (!license) return { licenses: [], moduleLabels: {}, linked: true, registry: false }
   return {
     licenses: [{
-      id: license.license_id, license_id: license.license_id, customer_id: '', customer: license.customer, contract_no: null,
+      id: license.license_id, license_id: license.license_id, customer_id: '', customer: license.customer,
+      contract_no: license.contract_no ?? null,
       status: licenseStatus('active', license.expires_at), issued_at: license.issued_at, expires_at: license.expires_at,
       modules: license.modules, max_cameras: license.max_cameras, users: [], support: [], source: 'signed',
     }],
@@ -194,8 +195,8 @@ async function countLicensedCameras(result: LicenseDetail): Promise<LicenseDetai
   if (!modules.length) return result
   const inventory = createNotificationAdminClient()
   let connected = 0
-  for (const module of modules) {
-    const { count, error } = await inventory.from('cameras').select('id', { count: 'exact', head: true }).eq('module', module)
+  for (const moduleKey of modules) {
+    const { count, error } = await inventory.from('cameras').select('id', { count: 'exact', head: true }).eq('module', moduleKey)
     if (error || count == null) throw new Error('Licensed camera count failed')
     connected += count
   }
