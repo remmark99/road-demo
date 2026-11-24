@@ -53,7 +53,9 @@ function classifySmtpError(error: unknown) {
   })
 }
 
-async function sendMail(options: { to: string; subject: string; text: string; html: string }) {
+interface MailAttachment { filename: string; content: Buffer; contentType: string }
+
+async function sendMail(options: { to: string; subject: string; text: string; html: string; attachments?: MailAttachment[] }) {
   const config = getSmtpConfig()
   const transporter = nodemailer.createTransport(config.transport)
 
@@ -90,6 +92,42 @@ function escapeHtml(value: string) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;")
+}
+
+/** Готовый отчёт ассистента: письмо с кратким содержанием и файлом во вложении. */
+export async function sendReportEmail(to: string, input: {
+  title: string
+  subtitle?: string
+  generatedAt: string
+  summary: string[]
+  file: MailAttachment
+}) {
+  const subject = `[Вектор Города] ${input.title}`.replace(/[\r\n]+/g, " ").slice(0, 200)
+  const summary = input.summary.slice(0, 6)
+  await sendMail({
+    to,
+    subject,
+    text: [
+      input.title,
+      input.subtitle,
+      `Сформирован: ${input.generatedAt} (время Сургута)`,
+      "",
+      ...summary.map((line) => `— ${line}`),
+      "",
+      "Полный отчёт — во вложении.",
+    ].filter((line): line is string => line !== undefined).join("\n"),
+    html: `
+      <div style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto;color:#172033">
+        <h1 style="font-size:22px;color:#0f766e">Вектор Города</h1>
+        <h2 style="font-size:18px;margin-bottom:4px">${escapeHtml(input.title)}</h2>
+        ${input.subtitle ? `<p style="margin:0 0 4px;color:#475569">${escapeHtml(input.subtitle)}</p>` : ""}
+        <p style="margin:0 0 16px;font-size:13px;color:#475569">Сформирован: ${escapeHtml(input.generatedAt)} (время Сургута)</p>
+        ${summary.length ? `<ul style="padding-left:20px;font-size:14px;line-height:1.5">${summary.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>` : ""}
+        <p style="font-size:14px">Полный отчёт — во вложении.</p>
+      </div>
+    `,
+    attachments: [input.file],
+  })
 }
 
 export async function sendSupportRequestEmail(input: {

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Switch } from "@/components/ui/switch"
-import { Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon, FileDown, MessageCircle, ExternalLink, Unplug, ChevronDown, UserRound } from "lucide-react"
+import { Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon, FileDown, MessageCircle, ExternalLink, Unplug, ChevronDown, UserRound, Send } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { isValidPhone, MAX_FULL_NAME_LENGTH, MAX_PHONE_LENGTH } from "@/lib/profile/contact"
 import type { NotificationEventTypeOption } from "@/lib/notifications/catalog"
@@ -27,6 +27,12 @@ const REPORT_FORMAT_OPTIONS: { value: ReportFormat; label: string }[] = [
   { value: "xlsx", label: "Excel" },
   { value: "docx", label: "Word" },
 ]
+/** Последний сформированный отчёт помним сутки: отправить его можно и после перезагрузки страницы. */
+const LAST_REPORT_KEY = "vector:last-settings-report"
+const LAST_REPORT_TTL_MS = 24 * 3_600_000
+/** Адрес, на который отчёт отправляли в прошлый раз. */
+const SEND_EMAIL_KEY = "vector:report-send-email"
+interface LastReport { conversationId: string; fileName: string; at: number }
 const MODULE_INFO: Record<string, { name: string; description: string }> = {
   roads: { name: 'Состояние дорог', description: 'Мониторинг дорожного покрытия и уборки' },
   shore: { name: 'Безопасный берег', description: 'Контроль прибрежных зон' },
@@ -78,6 +84,25 @@ export default function SettingsPage() {
   const [isReportGenerating, setIsReportGenerating] = useState(false)
   const [reportError, setReportError] = useState("")
   const [reportStatus, setReportStatus] = useState("")
+  const [lastReport, setLastReport] = useState<LastReport | null>(null)
+  const [sendEmail, setSendEmail] = useState("")
+  const [sendingChannel, setSendingChannel] = useState<"email" | "max" | null>(null)
+  const [sendStatus, setSendStatus] = useState("")
+  const [sendError, setSendError] = useState("")
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      try {
+        const stored = JSON.parse(window.localStorage.getItem(LAST_REPORT_KEY) ?? "null") as LastReport | null
+        if (stored && typeof stored.conversationId === "string" && Date.now() - stored.at < LAST_REPORT_TTL_MS) setLastReport(stored)
+      } catch { /* повреждённую запись просто не используем */ }
+      try {
+        const address = window.localStorage.getItem(SEND_EMAIL_KEY)
+        if (address) setSendEmail(current => current || address)
+      } catch { /* без хранилища адрес вводится заново */ }
+    }, 0)
+    return () => window.clearTimeout(timeout)
+  }, [])
 
   const loadNotificationSettings = useCallback(async (syncEmail = true) => {
     try {
@@ -97,6 +122,8 @@ export default function SettingsPage() {
 
         setEmail(data.email)
         setSavedEmail(data.email)
+        // Адрес для отчёта по умолчанию — тот же, что для уведомлений.
+        setSendEmail(current => current || data.email)
         setEmailEnabled(data.emailEnabled)
         setSavedEmailEnabled(data.emailEnabled)
         setAvailableEventTypes(data.availableEventTypes)
@@ -429,10 +456,19 @@ export default function SettingsPage() {
         throw new Error(data.error || "Не удалось сформировать отчёт.")
       }
       const encoded = response.headers.get("Content-Disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
+      const fileName = encoded ? decodeURIComponent(encoded) : `Отчёт.${reportFormat}`
+      const conversationId = response.headers.get("X-Conversation-Id")
+      if (conversationId) {
+        const ready: LastReport = { conversationId, fileName, at: Date.now() }
+        setLastReport(ready)
+        setSendStatus("")
+        setSendError("")
+        try { window.localStorage.setItem(LAST_REPORT_KEY, JSON.stringify(ready)) } catch { /* без хранилища отчёт отправляется до перезагрузки */ }
+      }
       const url = URL.createObjectURL(await response.blob())
       const link = document.createElement("a")
       link.href = url
-      link.download = encoded ? decodeURIComponent(encoded) : `Отчёт.${reportFormat}`
+      link.download = fileName
       document.body.appendChild(link)
       link.click()
       link.remove()
@@ -443,6 +479,36 @@ export default function SettingsPage() {
       setReportError(err instanceof Error ? err.message : "Не удалось сформировать отчёт.")
     } finally {
       setIsReportGenerating(false)
+    }
+  }
+
+  /** Готовый отчёт уходит файлом на почту или в MAX; заново он не собирается. */
+  const handleSendReport = async (channel: "email" | "max") => {
+    if (!lastReport || sendingChannel) return
+    setSendError("")
+    setSendStatus("")
+    const address = sendEmail.trim()
+    if (channel === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+      setSendError("Укажите адрес почты.")
+      return
+    }
+    setSendingChannel(channel)
+    try {
+      const response = await fetch("/api/assistant/reports/send", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conversationId: lastReport.conversationId, format: reportFormat, channel, email: channel === "email" ? address : undefined }),
+      })
+      const data = await response.json().catch(() => ({})) as { error?: string; message?: string }
+      if (!response.ok) throw new Error(data.error || "Не удалось отправить отчёт.")
+      setSendStatus(data.message || "Отчёт отправлен.")
+      if (channel === "email") {
+        try { window.localStorage.setItem(SEND_EMAIL_KEY, address) } catch { /* адрес просто не запомнится */ }
+      }
+    } catch (sendFailure) {
+      setSendError(sendFailure instanceof Error ? sendFailure.message : "Не удалось отправить отчёт.")
+    } finally {
+      setSendingChannel(null)
     }
   }
 
@@ -721,6 +787,58 @@ export default function SettingsPage() {
                 )}
                 {reportStatus && (
                   <p className="max-w-[360px] text-sm text-muted-foreground md:text-right">{reportStatus}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-lg border border-border bg-muted/20 p-4">
+              <div className="mb-3">
+                <h3 className="text-lg font-semibold">Отправить отчёт</h3>
+                <p className="text-sm text-muted-foreground">
+                  {lastReport
+                    ? `Готов: ${lastReport.fileName.replace(/\.[a-z]+$/i, "")}. Уйдёт файлом в выбранном выше формате.`
+                    : "Сначала сформируйте отчёт — затем его можно отправить файлом на почту или в MAX."}
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="report-send-email">Почта получателя</Label>
+                  <Input
+                    id="report-send-email"
+                    type="email"
+                    placeholder="name@example.ru"
+                    value={sendEmail}
+                    onChange={(e) => { setSendEmail(e.target.value); setSendError(""); setSendStatus("") }}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  className="gap-2"
+                  disabled={!lastReport || sendingChannel !== null}
+                  aria-busy={sendingChannel === "email"}
+                  onClick={() => void handleSendReport("email")}
+                >
+                  {sendingChannel === "email" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Отправить на почту
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="gap-2"
+                  disabled={!lastReport || sendingChannel !== null || maxStatus !== "connected"}
+                  aria-busy={sendingChannel === "max"}
+                  title={maxStatus === "connected" ? undefined : "Подключите MAX ниже, в уведомлениях"}
+                  onClick={() => void handleSendReport("max")}
+                >
+                  {sendingChannel === "max" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                  Отправить в MAX
+                </Button>
+              </div>
+              <div className="mt-2 min-h-5 text-sm" aria-live="polite">
+                {sendError && <p className="text-destructive">{sendError}</p>}
+                {sendStatus && <p className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check className="h-4 w-4" />{sendStatus}</p>}
+                {!sendError && !sendStatus && lastReport && maxStatus !== "connected" && (
+                  <p className="text-xs text-muted-foreground">MAX не подключён: подключите его ниже, в уведомлениях.</p>
                 )}
               </div>
             </div>
