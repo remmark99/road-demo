@@ -28,7 +28,6 @@ import {
     ChartCard,
     DataTable,
     EmptyNote,
-    FrameThumb,
     Insight,
     KpiCard,
     SectionShell,
@@ -248,7 +247,6 @@ export function StopsSensors() {
                                 if (!stop) return null
                                 return (
                                     <div key={event.id} className="flex items-center gap-3 rounded-lg border bg-muted/20 p-3">
-                                        <FrameThumb />
                                         <div className="min-w-0 flex-1"><StopLink stop={stop} sub={fmtDateTime(event.at)} /></div>
                                         {event.verdict === "confirmed" && <StatusBadge tone="high">Подтверждено</StatusBadge>}
                                         {event.verdict === "rejected" && <StatusBadge tone="muted">Не подтвердилось</StatusBadge>}
