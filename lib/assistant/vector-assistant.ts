@@ -1,5 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai'
-import { generateText, jsonSchema, stepCountIs, streamText, tool, type LanguageModelUsage, type ModelMessage, type PrepareStepFunction, type ToolSet, type UIMessage } from 'ai'
+import { generateText, jsonSchema, stepCountIs, streamText, tool, wrapLanguageModel, type LanguageModelUsage, type ModelMessage, type PrepareStepFunction, type ToolSet, type UIMessage } from 'ai'
 import { localTime } from '@/lib/mcp/vector/args'
 import { CHART_TOOL_NAME, chartSummary } from '@/lib/mcp/vector/chart-presets'
 import { REPORT_TOOL_NAME, outputTable } from '@/lib/mcp/vector/report-tool'
@@ -9,6 +9,7 @@ import type { ReportChart } from '@/lib/reports/chart'
 import type { ReportDocument } from '@/lib/reports/document'
 import { MAX_REPORT_PROMPT_CHARS } from './limits'
 import { overviewSummary, type OverviewSummary } from './overview'
+import { textToolCalls } from './text-tool-calls'
 import type { ChatTable, DataToolOutput } from './table'
 
 export { MAX_REPORT_PROMPT_CHARS }
@@ -238,7 +239,8 @@ function assistantRequest(messages: UIMessage[], ctx: VectorToolContext, options
     const system = systemPrompt(ctx.now, options)
     return {
         // Chat Completions: RouterAI и GigaChat не поддерживают Responses API.
-        model: provider.chat(process.env.ASSISTANT_LLM_MODEL!),
+        // Вызов инструмента, написанный текстом (разметка GigaChat), до пользователя не доходит: он выполняется как настоящий.
+        model: wrapLanguageModel({ model: provider.chat(process.env.ASSISTANT_LLM_MODEL!), middleware: textToolCalls }),
         system,
         messages: toModelMessages(messages),
         tools: vectorToolSet(ctx),
