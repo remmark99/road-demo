@@ -122,7 +122,7 @@ function signedMatches(signed: unknown, license: CustomerLicense): boolean {
 // Resource display does not alter the signed license or grant access to streams.
 // Verify customer ownership before reading inventory with the service-role client.
 export async function readLicenseDetail(id: string, userId?: string): Promise<LicenseDetail | null> {
-  if (userId && !registryConfigured()) return signedDetail(id)
+  if (userId && !registryConfigured()) return readSignedLicenseDetail(id)
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null
   const { licenses, moduleLabels } = await readCustomerLicenses(userId)
   const license = licenses.find(row => row.id === id)
@@ -172,7 +172,36 @@ export async function readLicenseDetail(id: string, userId?: string): Promise<Li
 // Вендорский вход в ту же карточку: без реестра показывать нечего, кроме
 // подписанной лицензии этого сервера.
 export async function readLicenseDetailForAdmin(id: string): Promise<LicenseDetail | null> {
-  return registryConfigured() ? readLicenseDetail(id) : signedDetail(id)
+  return registryConfigured() ? readLicenseDetail(id) : readSignedLicenseDetail(id)
+}
+
+// Карточка подписанной лицензии: камеры не перечисляем, а считаем по купленным
+// модулям — администратору нужны числа «Куплено / Подключено / Осталось», а не
+// сотни строк инвентаря.
+async function readSignedLicenseDetail(id: string): Promise<LicenseDetail | null> {
+  const result = signedDetail(id)
+  if (!result) return null
+  try {
+    return await countLicensedCameras(result)
+  } catch {
+    // Сбой чтения инвентаря не должен уносить саму лицензию: числа не показываем.
+    return result
+  }
+}
+
+async function countLicensedCameras(result: LicenseDetail): Promise<LicenseDetail> {
+  const modules = inventoryModules(result.license.modules)
+  if (!modules.length) return result
+  const inventory = createNotificationAdminClient()
+  let connected = 0
+  for (const module of modules) {
+    const { count, error } = await inventory.from('cameras').select('id', { count: 'exact', head: true }).eq('module', module)
+    if (error || count == null) throw new Error('Licensed camera count failed')
+    connected += count
+  }
+  result.inventorySource = 'platform'
+  result.cameraCount = connected
+  return result
 }
 
 function signedDetail(id: string): LicenseDetail | null {

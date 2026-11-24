@@ -64,8 +64,9 @@ test('without a registry a user sees the signed license of this server, with no 
   process.env.LICENSE_DEMO_MODULES = 'roads,parks'
   const signed = { license_id: 'SGT-1', customer: 'Администрация г. Сургут', hardware_id: null, issued_at: '2026-08-07T00:00:00Z', expires_at: '2099-08-07T23:59:59Z', modules: ['stops'], max_cameras: 30 }
   let active = signed
+  const counted = []
   try {
-    const server = load('lib/licenses/server.ts', { 'server-only': {}, '../license': { getActiveLicense: () => active }, '@/lib/notifications/admin': {}, '@supabase/supabase-js': { createClient: () => { throw Error('Unexpected DB access') } } })
+    const server = load('lib/licenses/server.ts', { 'server-only': {}, '../license': { getActiveLicense: () => active }, '@/lib/notifications/admin': { createNotificationAdminClient: () => ({ from: table => ({ select: (selection, options) => ({ eq: (field, value) => { counted.push([table, selection, options.count === 'exact', options.head, field, value]); return Promise.resolve(value === 'roads' ? { count: null, error: { message: 'nope' } } : { count: 798, error: null }) } }) }) }) }, '@supabase/supabase-js': { createClient: () => { throw Error('Unexpected DB access') } } })
     const result = await server.readCustomerLicenses(userId)
     assert.equal(result.linked, true)
     assert.equal(result.registry, false)
@@ -73,9 +74,16 @@ test('without a registry a user sees the signed license of this server, with no 
     assert.deepEqual(await server.readLicensesForAdmin(), result)
     assert.deepEqual(result.licenses.map(license => [license.id, license.customer, license.status, license.modules, license.source]), [['SGT-1', 'Администрация г. Сургут', 'active', ['stops'], 'signed']])
     const detail = await server.readLicenseDetail('SGT-1', userId)
-    assert.deepEqual([detail.license.id, detail.inventorySource, detail.cameraCount], ['SGT-1', 'unavailable', 0])
+    // Карточке нужны числа: считаем камеры по купленным модулям, список не тянем.
+    assert.deepEqual([detail.license.id, detail.inventorySource, detail.cameraCount, detail.cameras.length, detail.stops.length], ['SGT-1', 'platform', 798, 0, 0])
+    assert.deepEqual(counted, [['cameras', 'id', true, true, 'module', 'stops']])
     assert.equal(await server.readLicenseDetail('other', userId), null)
     assert.deepEqual([(await server.readLicenseDetailForAdmin('SGT-1')).license.id, await server.readLicenseDetailForAdmin('other')], ['SGT-1', null])
+    // Сбой счётчика не уносит лицензию: карточка открывается без чисел.
+    active = { ...signed, modules: ['roads'] }
+    const degraded = await server.readLicenseDetailForAdmin('SGT-1')
+    assert.deepEqual([degraded.license.id, degraded.inventorySource, degraded.cameraCount], ['SGT-1', 'unavailable', 0])
+    active = signed
     await assert.rejects(server.readCustomerLicenses(), /not configured/)
     active = null
     assert.deepEqual(await server.readCustomerLicenses(userId), { licenses: [], moduleLabels: {}, linked: true, registry: false })
