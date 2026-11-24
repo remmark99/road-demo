@@ -269,3 +269,55 @@ test('create_chart: графики из базы разных форм, ошиб
   assert.equal(bare.data.report.sections[0].chart.title, 'События безопасности по дням')
   assert.ok(Array.isArray(bare.data.report.sections[0].table.rows))
 })
+
+test('вызов инструмента, написанный текстом (разметка GigaChat), выполняется и не попадает в ответ', async () => {
+  const { MockLanguageModelV3 } = require('ai/test')
+  const { simulateReadableStream } = require('ai')
+  const open = (name, attrs = '') => `<｜GCML｜${name}${attrs}>`, close = name => `</｜GCML｜${name}>`
+  const reportArgs = {
+    title: 'Остановочные павильоны Сургута — отчёт за неделю', from: '2026-11-07', to: '2026-11-13',
+    summary: ['Камер не в сети 1 из 2, контроллеров 1 из 2.'], metrics: [{ label: 'Камер не в сети', value: '1 из 2' }],
+    sections: [{ heading: 'Связность и простои', paragraphs: ['Камера 131 не в сети полтора часа.'], table: 'equipment_status_now' }],
+  }
+  const markup = `${open('tool_calls')}\n${open('invoke', ' name="create_report"')}\n`
+    + Object.entries(reportArgs).map(([name, value]) => `${open('parameter', ` name="${name}" string="${typeof value === 'string'}"`)}${typeof value === 'string' ? value : JSON.stringify(value)}${close('parameter')}\n`).join('')
+    + `${close('invoke')}\n${close('tool_calls')}`
+
+  const { parseTextToolCall } = load('lib/assistant/text-tool-calls.ts')
+  const parsed = parseTextToolCall(markup)
+  assert.equal(parsed.toolName, 'create_report')
+  assert.deepEqual(JSON.parse(parsed.input), reportArgs)
+  assert.equal(parseTextToolCall(markup.slice(0, markup.indexOf(close('invoke')))), null) // ответ оборван — вызова нет
+  assert.equal(parseTextToolCall(markup.replace('[{"label"', '[{label')), null) // битый JSON в параметре
+
+  const usage = { inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 5, text: 5, reasoning: 0 } }
+  const finishReason = { unified: 'stop', raw: 'stop' }
+  const streamed = pieces => ({ stream: simulateReadableStream({ chunks: [
+    { type: 'stream-start', warnings: [] }, { type: 'text-start', id: 't' },
+    ...pieces.map(delta => ({ type: 'text-delta', id: 't', delta })),
+    { type: 'text-end', id: 't' }, { type: 'finish', finishReason, usage },
+  ] }) })
+  const generated = text => ({ content: [{ type: 'text', text }], finishReason, usage, warnings: [] })
+  const inTurn = answers => { let step = 0; return async () => answers[step++] }
+  const assistantWith = model => load('lib/assistant/vector-assistant.ts', { '@/lib/notifications/admin': admin, '@ai-sdk/openai': { createOpenAI: () => ({ chat: () => model }) } })
+  const question = [{ id: '1', role: 'user', parts: [{ type: 'text', text: 'Сделай отчёт о состоянии павильонов за неделю' }] }]
+
+  // Окно чата: разметка приходит кусками, начало тега разорвано между ними.
+  const chatModel = new MockLanguageModelV3({ doStream: inTurn([
+    streamed(['\n', '<', '｜GCML｜tool_', ...markup.slice('<｜GCML｜tool_'.length).match(/[\s\S]{1,40}/g)]),
+    streamed(['Связь в целом ', 'стабильна: 1 <', ' 2.']),
+  ]) })
+  const parts = []
+  for await (const part of assistantWith(chatModel).streamVectorAssistant(question, ctx()).fullStream) parts.push(part)
+  assert.equal(parts.filter(part => part.type === 'text-delta').map(part => part.text).join(''), 'Связь в целом стабильна: 1 < 2.')
+  const report = parts.find(part => part.type === 'tool-result' && part.toolName === 'create_report').output.report
+  assert.equal(report.title, reportArgs.title)
+  assert.equal(report.sections[0].table.title, 'Оборудование не в сети сейчас') // вид таблицы equipment_status_now
+  assert.equal(chatModel.doStreamCalls.length, 2)
+  assert.equal(chatModel.doStreamCalls[1].toolChoice.type, 'none')
+
+  // Ответ без потока: слова до разметки остаются; повторный create_report после готового отчёта не выполняется и не показывается.
+  const plainModel = new MockLanguageModelV3({ doGenerate: inTurn([generated(`Собираю отчёт.\n${markup}`), generated(markup)]) })
+  assert.equal(await assistantWith(plainModel).answerWithVectorAssistant(question, ctx()), 'Собираю отчёт.')
+  assert.equal(plainModel.doGenerateCalls.length, 2)
+})

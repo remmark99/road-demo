@@ -107,7 +107,7 @@ const STOP_SCOPED = new Set(['equipment_outages', 'security_events', 'passenger_
 
 /** Имена, которыми модель называет таблицу по имени инструмента или поля сводки. */
 const TABLE_ALIASES: Record<string, string> = {
-    stop_conditions_now: 'stop_problems_now', stop_conditions: 'stop_problems_now', equipment_status: 'equipment_offline_now',
+    stop_conditions_now: 'stop_problems_now', stop_conditions: 'stop_problems_now', equipment_status: 'equipment_offline_now', equipment_status_now: 'equipment_offline_now',
     security_events: 'security_by_stop', passenger_load: 'passenger_load_by_stop', stop_climate: 'climate_coldest_now',
     bins_full: 'bins_full_now', districts_summary: 'districts',
 }
