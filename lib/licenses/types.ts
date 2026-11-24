@@ -31,6 +31,10 @@ export type LicenseResponse = {
   licenses: CustomerLicense[]
   moduleLabels: Record<string, string>
   linked: boolean
+  /** true — строки собраны из реестра вендора, false — из подписанного license.key
+   *  этого сервера. На инстансе заказчика реестра нет, поэтому панель по этому
+   *  признаку прячет действия, которые без реестра невозможны. */
+  registry: boolean
 }
 
 export function parseCustomerBindings(value: string | undefined): Record<string, string> {

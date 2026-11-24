@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { readLicenseDetail } from '@/lib/licenses/server'
+import { readLicenseDetailForAdmin } from '@/lib/licenses/server'
 import { LicenseEditError, updateLicense } from '@/lib/licenses/admin'
 import { parseLicenseInput } from '@/lib/licenses/editor'
 
@@ -22,7 +22,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     const { response } = await requireAdmin()
     if (response) return response
     const { id } = await context.params
-    const detail = await readLicenseDetail(id)
+    const detail = await readLicenseDetailForAdmin(id)
     if (!detail) return NextResponse.json({ error: 'Лицензия не найдена' }, { status: 404, headers })
     return NextResponse.json(detail, { headers })
   } catch {

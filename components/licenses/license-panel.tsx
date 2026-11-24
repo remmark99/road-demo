@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { priceListModules, russianModuleLabel, type LicenseDetail } from '@/lib/licenses/resources'
-import { filterLicenses, formatLicenseDate, LICENSE_STATUSES } from '@/lib/licenses/presentation'
+import { filterLicenses, formatLicenseDate, licensePanelView, LICENSE_STATUSES } from '@/lib/licenses/presentation'
 import { isPerpetual, type CustomerLicense, type LicenseResponse } from '@/lib/licenses/types'
 import { LicenseEditor } from './license-editor'
 
@@ -102,18 +102,22 @@ export function LicensePanel({ admin = false }: { admin?: boolean }) {
   }, [endpoint, reload])
   const customers = useMemo(() => [...new Map((data?.licenses || []).map(license => [license.customer_id, license.customer])).entries()].sort((a,b) => a[1].localeCompare(b[1], 'ru')), [data])
   const visible = filterLicenses(data?.licenses || [], status, customer)
+  // Вендорские действия — «Новая лицензия», фильтры по клиентам, «Изменить / продлить»
+  // и подсказка про license_tool.py — возможны только там, где есть реестр. Инстанс
+  // заказчика видит одну подписанную лицензию и ничего не подписывает.
+  const view = licensePanelView(admin, data)
 
   return <Card className="mb-6">
     <CardHeader className="flex flex-row items-center justify-between gap-4">
-      <CardTitle>{admin ? 'Лицензии клиентов' : 'Мои лицензии'}</CardTitle>
+      <CardTitle>{view.title}</CardTitle>
       <div className="flex flex-wrap gap-2">
-        {admin && data?.linked && <Button onClick={() => { setNotice(''); setEditing('new') }}>Новая лицензия</Button>}
+        {view.vendor && data?.linked && <Button onClick={() => { setNotice(''); setEditing('new') }}>Новая лицензия</Button>}
         <Button variant="outline" disabled={loading} onClick={() => setReload(n => n + 1)}>Обновить</Button>
       </div>
     </CardHeader>
     <CardContent>
       {notice && <p role="status" className="mb-4 rounded-md bg-muted p-3 text-sm">{notice}</p>}
-      {admin && data?.linked && <div className="mb-4 flex flex-wrap items-center gap-3">
+      {view.vendor && data?.linked && <div className="mb-4 flex flex-wrap items-center gap-3">
         <Select value={status} onValueChange={setStatus}><SelectTrigger aria-label="Статус лицензии" className="w-48"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Все статусы</SelectItem>{Object.entries(LICENSE_STATUSES).map(([key,label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}</SelectContent></Select>
         <Select value={customer} onValueChange={setCustomer}><SelectTrigger aria-label="Клиент лицензии" className="w-full sm:w-72"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">Все клиенты</SelectItem>{customers.map(([id,name]) => <SelectItem key={id} value={id}>{name}</SelectItem>)}</SelectContent></Select>
         {(status !== 'all' || customer !== 'all') && <Button variant="ghost" onClick={() => { setStatus('all'); setCustomer('all') }}>Сбросить</Button>}
@@ -121,16 +125,16 @@ export function LicensePanel({ admin = false }: { admin?: boolean }) {
       </div>}
       {loading ? <p role="status">Загрузка лицензий…</p> : error ? <p role="alert" className="text-destructive">{error}</p> : !data?.linked ?
         <p className="text-muted-foreground">Лицензия пока не привязана к вашему аккаунту. Обратитесь к администратору.</p> : !data.licenses.length ?
-        <p className="text-muted-foreground">Лицензии не найдены.</p> : !visible.length ? <p className="text-muted-foreground">Нет лицензий с выбранными фильтрами.</p> :
+        <p className="text-muted-foreground">{view.empty}</p> : !visible.length ? <p className="text-muted-foreground">Нет лицензий с выбранными фильтрами.</p> :
         <div className="overflow-x-auto"><table className="w-full text-left text-sm">
           <thead><tr className="border-b">
-            {admin && <th className="p-3">Клиент / аккаунты</th>}
+            {view.vendor && <th className="p-3">Клиент / аккаунты</th>}
             <th className="p-3">Лицензия / договор</th><th className="p-3">Статус</th><th className="p-3">Срок действия</th><th className="p-3">Модули</th>
           </tr></thead>
           <tbody>{visible.map(license => <tr key={license.id} className="border-b align-top">
-            {admin && <td className="p-3"><p>{license.customer}</p><p className="text-muted-foreground">{license.users.map(user => user.email).join(', ') || 'Аккаунты не привязаны'}</p></td>}
+            {view.vendor && <td className="p-3"><p>{license.customer}</p><p className="text-muted-foreground">{license.users.map(user => user.email).join(', ') || 'Аккаунты не привязаны'}</p></td>}
             <td className="p-3"><button className="font-medium underline underline-offset-4 focus-visible:outline-ring" onClick={() => setSelected(license.id)} aria-label={`Открыть лицензию ${license.license_id}`}>{license.license_id}</button><p className="text-muted-foreground">Договор: {license.contract_no || 'Не указан'}</p></td>
-            <td className="p-3"><p>{LICENSE_STATUSES[license.status] || 'Статус не указан'}</p>{admin && license.needs_signing && license.status !== 'pending' && <p className="text-xs text-amber-600 dark:text-amber-400">Нужна переподпись license.key</p>}</td>
+            <td className="p-3"><p>{LICENSE_STATUSES[license.status] || 'Статус не указан'}</p>{view.vendor && license.needs_signing && license.status !== 'pending' && <p className="text-xs text-amber-600 dark:text-amber-400">Нужна переподпись license.key</p>}</td>
             <td className="p-3"><LicensePeriod license={license} /></td>
             <td className="p-3"><p>{priceListModules(license.modules).map(module => russianModuleLabel(module, data.moduleLabels)).join(', ') || 'Модули не указаны'}</p><SupportLines license={license} moduleLabels={data.moduleLabels} /></td>
           </tr>)}</tbody>
@@ -147,7 +151,7 @@ export function LicensePanel({ admin = false }: { admin?: boolean }) {
                 <div><dt className="text-muted-foreground">Договор</dt><dd>{detail.license.contract_no || 'Не указан'}</dd></div>
               </dl>
               <PriceComposition license={detail.license} moduleLabels={detail.moduleLabels} connected={detail.inventorySource === 'unavailable' ? null : detail.cameraCount} />
-              {admin && <div className="flex flex-wrap items-center gap-3">
+              {view.vendor && <div className="flex flex-wrap items-center gap-3">
                 <Button variant="outline" onClick={() => { setNotice(''); setEditing(detail.license) }}>Изменить / продлить</Button>
                 {detail.license.status === 'pending'
                   ? <span className="text-sm text-muted-foreground">Ждёт подписи: license_tool.py sign {detail.license.license_id}</span>
