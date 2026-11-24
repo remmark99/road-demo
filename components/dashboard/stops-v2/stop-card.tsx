@@ -43,7 +43,7 @@ import {
     type Scope,
 } from "@/components/dashboard/stops-v2/selectors"
 import { Legend, useScope, useVision, type Tone } from "@/components/dashboard/stops-v2/kit"
-import { stopMapHref, stopNotificationsHref } from "@/components/dashboard/stops-v2/links"
+import { cameraMapHref, stopMapHref, stopNotificationsHref } from "@/components/dashboard/stops-v2/links"
 import { V_BINS } from "@/lib/mock/stop-analytics-vision-data"
 
 const loadConfig = {
@@ -301,9 +301,11 @@ function StopCardBody({ stop }: { stop: VStop }) {
                     {stop.cameras.map((camera) => {
                         const down = data.offline || offlineCameras.has(`Камера ${camera}`)
                         return (
-                            <div key={camera} className="overflow-hidden rounded-lg border">
-                                <div className="flex aspect-video items-center justify-center bg-muted/60 text-muted-foreground">
-                                    <Camera className="h-7 w-7 opacity-50" />
+                            <a key={camera} href={cameraMapHref(stop, camera)} target="_blank" rel="noopener noreferrer" title="Открыть камеру на карте"
+                                className="group block overflow-hidden rounded-lg border transition hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                                <div className="flex aspect-video flex-col items-center justify-center gap-1.5 bg-muted/60 text-muted-foreground">
+                                    <Camera className="h-7 w-7 opacity-50 transition group-hover:opacity-90" />
+                                    <span className="inline-flex items-center gap-1 text-xs">Открыть на карте <ExternalLink className="h-3 w-3" /></span>
                                 </div>
                                 <div className="flex items-center justify-between px-3 py-2 text-sm">
                                     <span>Камера {camera}</span>
@@ -312,7 +314,7 @@ function StopCardBody({ stop }: { stop: VStop }) {
                                         {down ? "не в сети" : "на связи"}
                                     </span>
                                 </div>
-                            </div>
+                            </a>
                         )
                     })}
                 </div>

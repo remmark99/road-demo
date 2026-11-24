@@ -34,3 +34,8 @@ export function stopNotificationsHref(stop: VStop, from: number, to: number): st
 export function stopMapHref(stop: VStop) {
     return `/?stop=${stop.id}&tab=${stop.cameras.length ? "cameras" : "sensors"}`
 }
+
+/** Камера остановки на карте: карточка остановки открывается сразу на этой камере. */
+export function cameraMapHref(stop: VStop, camera: number) {
+    return `/?stop=${stop.id}&tab=cameras&camera=${camera}`
+}
