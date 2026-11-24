@@ -298,6 +298,12 @@ export interface VBinEpisode {
     startAt: number
     endAt: number | null
     confirmations: number
+    /** Уведомление и камера в журнале; в демо-данных их нет. */
+    alertId?: string
+    camera?: number | null
+    /** Кадры «до» (переполнена) и «после» (убрано). */
+    startImage?: string | null
+    endImage?: string | null
 }
 
 const BIN_HOURS = [0.2, 0.1, 0.1, 0.1, 0.1, 0.2, 0.5, 1, 1.5, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 5.5, 5, 4, 2.5, 1, 0.5]

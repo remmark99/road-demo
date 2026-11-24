@@ -277,7 +277,10 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
         const startAt = Date.parse(episode.started_at)
         const endAt = episode.ended_at ? Date.parse(episode.ended_at) : null
         if (endAt !== null && endAt < historyFrom) continue
-        bins.push({ id: `b-${alert.id}`, stopId, startAt, endAt, confirmations: episode.observation_count })
+        bins.push({
+            id: `b-${alert.id}`, stopId, startAt, endAt, confirmations: episode.observation_count,
+            alertId: alert.id, camera: alert.camera_index, startImage: episode.first_image_url ?? null, endImage: episode.closed_image_url ?? null,
+        })
     }
 
     const devicesByStop = new Map<number, number>()

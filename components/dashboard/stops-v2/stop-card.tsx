@@ -43,6 +43,7 @@ import {
     type Scope,
 } from "@/components/dashboard/stops-v2/selectors"
 import { Legend, useScope, useVision, type Tone } from "@/components/dashboard/stops-v2/kit"
+import { stopMapHref, stopNotificationsHref } from "@/components/dashboard/stops-v2/links"
 import { V_BINS } from "@/lib/mock/stop-analytics-vision-data"
 
 const loadConfig = {
@@ -190,6 +191,7 @@ function StopCardBody({ stop }: { stop: VStop }) {
 
     const climateOut = climateOutOfNorm(data.climate)
     const offlineCameras = new Set(data.open.filter((outage) => outage.device === "camera").map((outage) => outage.label))
+    const notificationsHref = stopNotificationsHref(stop, scope.from, scope.to)
 
     return (
         <div className="space-y-5">
@@ -317,14 +319,26 @@ function StopCardBody({ stop }: { stop: VStop }) {
             </div>
 
             <div className="flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="gap-2">
-                    <Bell className="h-4 w-4" />
-                    Уведомления по остановке
-                    <ExternalLink className="h-3.5 w-3.5" />
-                </Button>
-                <Button variant="outline" size="sm" className="gap-2">
-                    <MapIcon className="h-4 w-4" />
-                    Показать на карте
+                {notificationsHref ? (
+                    <Button asChild variant="outline" size="sm" className="gap-2">
+                        <a href={notificationsHref} target="_blank" rel="noopener noreferrer">
+                            <Bell className="h-4 w-4" />
+                            Уведомления по остановке
+                            <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                    </Button>
+                ) : (
+                    <Button variant="outline" size="sm" className="gap-2" disabled title="На остановке нет камер — уведомлений видеоаналитики нет">
+                        <Bell className="h-4 w-4" />
+                        Уведомления по остановке
+                    </Button>
+                )}
+                <Button asChild variant="outline" size="sm" className="gap-2">
+                    <a href={stopMapHref(stop)} target="_blank" rel="noopener noreferrer">
+                        <MapIcon className="h-4 w-4" />
+                        Показать на карте
+                        <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
                 </Button>
             </div>
         </div>

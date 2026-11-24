@@ -26,6 +26,7 @@ import {
     type VBinEpisode,
 } from "@/lib/mock/stop-analytics-vision-data"
 import { CATEGORY_COLORS, binDurationMs, binStats, binsIn, binsOpenNow } from "@/components/dashboard/stops-v2/selectors"
+import { binEpisodeHref, binPeriodHref } from "@/components/dashboard/stops-v2/links"
 import {
     ChartCard,
     DataTable,
@@ -120,7 +121,7 @@ export function StopsCleanliness() {
         { key: "duration", header: "Длительность", align: "right", cell: (episode) => <span className="font-medium">{fmtDuration(binDurationMs(episode))}</span>, value: (episode) => Math.round(binDurationMs(episode) / 60_000) },
         { key: "state", header: "Норматив", cell: (episode) => { const state = episodeState(episode); return <StatusBadge tone={state.tone}>{state.label}</StatusBadge> }, value: (episode) => episodeState(episode).label },
         { key: "confirmations", header: "Подтверждения", align: "right", cell: (episode) => fmtInt(episode.confirmations), value: (episode) => episode.confirmations },
-        { key: "frames", header: "Кадры", cell: (episode) => <span className="flex gap-1.5"><FrameThumb label="до" />{episode.endAt && <FrameThumb label="после" />}</span> },
+        { key: "frames", header: "Кадры", cell: (episode) => { const href = binEpisodeHref(episode); return <span className="flex gap-1.5"><FrameThumb label="до" src={episode.startImage} href={href} />{episode.endAt && <FrameThumb label="после" src={episode.endImage} href={href} />}</span> } },
     ]
 
     return (
@@ -179,9 +180,10 @@ export function StopsCleanliness() {
                                 const stop = stopById(episode.stopId)
                                 if (!stop) return null
                                 const late = V_NOW - episode.startAt > V_NORMS.binHours * HOUR
+                                const href = binEpisodeHref(episode)
                                 return (
                                     <div key={episode.id} className="flex items-center gap-3 rounded-lg border bg-muted/20 p-3">
-                                        <FrameThumb />
+                                        <FrameThumb src={episode.startImage} href={href} size="lg" />
                                         <div className="min-w-0 flex-1">
                                             <StopLink stop={stop} />
                                         </div>
@@ -189,6 +191,11 @@ export function StopsCleanliness() {
                                             с {fmtDateTime(episode.startAt)}
                                         </div>
                                         <StatusBadge tone={late ? "high" : "attention"}>{fmtDuration(V_NOW - episode.startAt)}</StatusBadge>
+                                        {href && (
+                                            <a href={href} target="_blank" rel="noopener noreferrer" title="Открыть в уведомлениях: кадры и ход эпизода" className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground">
+                                                <ExternalLink className="h-4 w-4" />
+                                            </a>
+                                        )}
                                     </div>
                                 )
                             })}
@@ -236,10 +243,12 @@ export function StopsCleanliness() {
                 icon={Clock3}
                 iconClassName="text-sky-500"
                 action={
-                    <Button variant="outline" size="sm" className="gap-2">
-                        <Bell className="h-4 w-4" />
-                        Уведомления
-                        <ExternalLink className="h-3.5 w-3.5" />
+                    <Button asChild variant="outline" size="sm" className="gap-2">
+                        <a href={binPeriodHref(scope.from, scope.to)} target="_blank" rel="noopener noreferrer">
+                            <Bell className="h-4 w-4" />
+                            Уведомления
+                            <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
                     </Button>
                 }
             >
