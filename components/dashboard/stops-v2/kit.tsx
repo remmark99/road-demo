@@ -946,11 +946,23 @@ export function usePeriodPhrase() {
     return PERIOD_PHRASE[timeRange.preset] ?? "За период"
 }
 
-/** Место под кадр с камеры: в прототипе снимков нет. */
-export function FrameThumb({ label }: { label?: string }) {
-    return (
-        <span className="inline-flex h-9 w-14 items-center justify-center rounded-md border bg-muted/60 text-[10px] text-muted-foreground" title={label ?? "Кадр с камеры"}>
-            {label ?? "кадр"}
-        </span>
+/**
+ * Кадр с камеры. Есть снимок — показываем его, есть ссылка — кадр открывает уведомление
+ * в журнале (новая вкладка), иначе — серое место под кадр с подписью.
+ */
+export function FrameThumb({ label, src, href, size = "sm" }: { label?: string; src?: string | null; href?: string | null; size?: "sm" | "lg" }) {
+    const box = cn("relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted/60 text-[10px] text-muted-foreground", size === "lg" ? "h-14 w-24" : "h-9 w-14")
+    const title = href ? `${label ? `Кадр «${label}». ` : ""}Открыть в уведомлениях` : label ?? "Кадр с камеры"
+    const body = src ? (
+        <>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={src} alt={label ?? "Кадр с камеры"} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+            {label && <span className="absolute bottom-0 left-0 right-0 bg-black/55 px-1 text-center text-[9px] leading-3 text-white">{label}</span>}
+        </>
+    ) : (label ?? "кадр")
+    return href ? (
+        <a href={href} target="_blank" rel="noopener noreferrer" title={title} className={cn(box, "transition hover:ring-2 hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary")}>{body}</a>
+    ) : (
+        <span className={box} title={title}>{body}</span>
     )
 }
