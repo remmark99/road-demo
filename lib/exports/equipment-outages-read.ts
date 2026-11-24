@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { sharedState } from '../server/shared-cache'
 
 // Контроллеры теряют связь на минуту-две десятки тысяч раз в месяц: в аналитику и отчёты идут
 // только перерывы от 10 минут и всё, что открыто сейчас.
@@ -44,16 +45,20 @@ export async function readSignificantOutages(supabase: SupabaseClient, from: num
 // Кэш процесса для аналитики: первое чтение — вся таблица за окно (~120 тыс. строк, секунды),
 // дальше раз в две минуты дочитываются только открытые, новые и закрывшиеся с прошлого раза.
 const REFRESH_MS = 2 * 60_000
-let cached: { from: number; syncedAt: number; rows: Map<number, OutageRow> } | null = null
-let pending: Promise<OutageRow[]> | null = null
+// Состояние общее для процесса: прогрев и маршрут собираются отдельно и иначе держали бы по своей копии.
+const state = sharedState('equipment-outages', () => ({
+    cached: null as { from: number; syncedAt: number; rows: Map<number, OutageRow> } | null,
+    pending: null as Promise<void> | null,
+}))
 
 const significant = (row: OutageRow) => row.ended_at === null || Date.parse(row.ended_at) - Date.parse(row.started_at) >= MIN_OUTAGE_MS
 
-async function refresh(supabase: SupabaseClient, from: number): Promise<OutageRow[]> {
+async function refresh(supabase: SupabaseClient, from: number): Promise<void> {
     const now = Date.now()
+    const cached = state.cached
     if (!cached || from < cached.from) {
         const rows = await readSignificantOutages(supabase, from, now)
-        cached = { from, syncedAt: now, rows: new Map(rows.map((row) => [row.id, row])) }
+        state.cached = { from, syncedAt: now, rows: new Map(rows.map((row) => [row.id, row])) }
     } else if (now - cached.syncedAt > REFRESH_MS) {
         const since = new Date(cached.syncedAt - 5 * 60_000).toISOString()
         const { data, error } = await supabase.from('equipment_outages')
@@ -67,12 +72,19 @@ async function refresh(supabase: SupabaseClient, from: number): Promise<OutageRo
         }
         cached.syncedAt = now
     }
-    const fromIso = from
-    return [...cached.rows.values()].filter((row) => row.ended_at === null || Date.parse(row.ended_at) > fromIso)
 }
 
-/** Отключения от 10 минут за окно [from, сейчас) из кэша процесса. */
-export function readSignificantOutagesCached(supabase: SupabaseClient, from: number): Promise<OutageRow[]> {
-    pending ??= refresh(supabase, from).finally(() => { pending = null })
-    return pending
+/**
+ * Отключения от 10 минут за окно [from, сейчас) из кэша процесса.
+ * Если кэш уже покрывает окно, отдаём его сразу, а дочитываем в фоне: вкладка не ждёт базу.
+ */
+export async function readSignificantOutagesCached(supabase: SupabaseClient, from: number): Promise<OutageRow[]> {
+    const covered = state.cached !== null && from >= state.cached.from
+    const stale = !covered || Date.now() - state.cached!.syncedAt > REFRESH_MS
+    if (stale) state.pending ??= refresh(supabase, from).finally(() => { state.pending = null })
+    if (!covered && state.pending) await state.pending
+    else state.pending?.catch(() => { /* фоновое дочитывание: ошибка не должна ронять процесс */ })
+    // Пока шла чужая загрузка с более поздним началом, наше окно могло остаться непокрытым.
+    if (!state.cached || from < state.cached.from) await refresh(supabase, from)
+    return [...state.cached!.rows.values()].filter((row) => row.ended_at === null || Date.parse(row.ended_at) > from)
 }
