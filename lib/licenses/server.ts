@@ -16,7 +16,8 @@ function readSignedLicense(): LicenseResponse {
   if (!license) return { licenses: [], moduleLabels: {}, linked: true, registry: false }
   return {
     licenses: [{
-      id: license.license_id, license_id: license.license_id, customer_id: '', customer: license.customer, contract_no: null,
+      id: license.license_id, license_id: license.license_id, customer_id: '', customer: license.customer,
+      contract_no: license.contract_no ?? null,
       status: licenseStatus('active', license.expires_at), issued_at: license.issued_at, expires_at: license.expires_at,
       modules: license.modules, max_cameras: license.max_cameras, users: [], support: [], source: 'signed',
     }],
