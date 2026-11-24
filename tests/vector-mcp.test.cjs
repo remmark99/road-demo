@@ -268,6 +268,15 @@ test('create_chart: графики из базы разных форм, ошиб
   const bare = await call('create_report', { title: 'Без указаний', from: '2026-11-07', to: '2026-11-13', summary: ['x'], sections: [{ heading: 'События безопасности' }] })
   assert.equal(bare.data.report.sections[0].chart.title, 'События безопасности по дням')
   assert.ok(Array.isArray(bare.data.report.sections[0].table.rows))
+
+  // Списки строкой с JSON внутри и отчёт вовсе без разделов: документ всё равно выходит с разделами, таблицами и графиками.
+  const asText = await call('create_report', { title: 'Строкой', from: '2026-11-07', to: '2026-11-13', summary: JSON.stringify(['x', 'y']), sections: JSON.stringify([{ heading: 'События безопасности' }]) })
+  assert.deepEqual(asText.data.report.summary, ['x', 'y'])
+  assert.equal(asText.data.report.sections[0].chart.title, 'События безопасности по дням')
+  const noSections = await call('create_report', { title: 'Без разделов', from: '2026-11-07', to: '2026-11-13', summary: ['x'] })
+  assert.deepEqual(noSections.data.report.sections.map(section => section.heading), ['Оборудование и связь', 'События безопасности', 'Загруженность остановок', 'Переполнение урн'])
+  assert.ok(noSections.data.report.sections.every(section => Array.isArray(section.table.rows)))
+  assert.ok(noSections.data.report.sections.some(section => section.chart))
 })
 
 test('вызов инструмента, написанный текстом (разметка GigaChat), выполняется и не попадает в ответ', async () => {
@@ -287,7 +296,15 @@ test('вызов инструмента, написанный текстом (р
   const parsed = parseTextToolCall(markup)
   assert.equal(parsed.toolName, 'create_report')
   assert.deepEqual(JSON.parse(parsed.input), reportArgs)
-  assert.equal(parseTextToolCall(markup.slice(0, markup.indexOf(close('invoke')))), null) // ответ оборван — вызова нет
+  assert.equal(parseTextToolCall(markup.slice(0, markup.indexOf('"paragraphs"'))), null) // ответ оборван посреди параметра — вызова нет
+  // Неряшливая разметка, как её пишет модель на деле: у последнего параметра нет закрывающего тега, после массива
+  // разделов дописан соседний ключ, вызов закрыт сразу тегом блока.
+  const { sections, ...headArgs } = reportArgs
+  const sloppy = `${open('tool_calls')}\n${open('invoke', ' name="create_report"')}\n`
+    + Object.entries(headArgs).map(([name, value]) => `${open('parameter', ` name="${name}" string="${typeof value === 'string'}"`)}${typeof value === 'string' ? value : JSON.stringify(value)}${close('parameter')}\n`).join('')
+    + `${open('parameter', ' name="sections" string="false"')}${JSON.stringify(sections)},"subtitle":"7–13 ноября 2026"}${close('tool_calls')}`
+  assert.deepEqual(JSON.parse(parseTextToolCall(sloppy).input), { ...reportArgs, subtitle: '7–13 ноября 2026' })
+  assert.deepEqual(JSON.parse(parseTextToolCall(markup.slice(0, markup.indexOf(close('invoke')))).input), reportArgs) // нет закрытия вызова
   assert.equal(parseTextToolCall(markup.replace('[{"label"', '[{label')), null) // битый JSON в параметре
 
   const usage = { inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 5, text: 5, reasoning: 0 } }
@@ -320,4 +337,22 @@ test('вызов инструмента, написанный текстом (р
   const plainModel = new MockLanguageModelV3({ doGenerate: inTurn([generated(`Собираю отчёт.\n${markup}`), generated(markup)]) })
   assert.equal(await assistantWith(plainModel).answerWithVectorAssistant(question, ctx()), 'Собираю отчёт.')
   assert.equal(plainModel.doGenerateCalls.length, 2)
+
+  // Неряшливая разметка в окне чата выполняется так же, как аккуратная.
+  const sloppyModel = new MockLanguageModelV3({ doStream: inTurn([streamed(sloppy.match(/[\s\S]{1,40}/g)), streamed(['Отчёт готов.'])]) })
+  const sloppyParts = []
+  for await (const part of assistantWith(sloppyModel).streamVectorAssistant(question, ctx()).fullStream) sloppyParts.push(part)
+  assert.equal(sloppyParts.find(part => part.type === 'tool-result' && part.toolName === 'create_report').output.report.subtitle, '7–13 ноября 2026')
+  assert.equal(sloppyParts.filter(part => part.type === 'text-delta').map(part => part.text).join(''), 'Отчёт готов.')
+
+  // Разметку разобрать нельзя (ответ оборван): пользователь получает просьбу повторить, а не пустой ответ и не разметку.
+  const { FAILED_CALL_REPLY } = load('lib/assistant/text-tool-calls.ts')
+  const cut = markup.slice(0, markup.indexOf('"paragraphs"'))
+  const cutChat = new MockLanguageModelV3({ doStream: inTurn([streamed(cut.match(/[\s\S]{1,40}/g))]) })
+  const cutParts = []
+  for await (const part of assistantWith(cutChat).streamVectorAssistant(question, ctx()).fullStream) cutParts.push(part)
+  assert.equal(cutParts.filter(part => part.type === 'text-delta').map(part => part.text).join(''), FAILED_CALL_REPLY)
+  assert.equal(cutParts.some(part => part.type === 'tool-call'), false)
+  const cutPlain = new MockLanguageModelV3({ doGenerate: inTurn([generated(`Собираю отчёт.\n${cut}`)]) })
+  assert.equal(await assistantWith(cutPlain).answerWithVectorAssistant(question, ctx()), `Собираю отчёт.\n\n${FAILED_CALL_REPLY}`)
 })
