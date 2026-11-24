@@ -4,7 +4,6 @@
 import { Component, useEffect, useState, type ComponentType, type ReactNode } from "react"
 import dynamic from "next/dynamic"
 import { useSearchParams } from "next/navigation"
-import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { VisionProvider, readVisionInitial, type VisionInitial, type VisionView } from "@/components/dashboard/stops-v2/kit"
@@ -20,6 +19,26 @@ const SECTIONS: Record<VisionView, ComponentType> = {
     sensors: dynamic(() => import("./sensors").then((m) => m.StopsSensors), { loading }),
     load: dynamic(() => import("./load").then((m) => m.StopsLoad), { loading }),
     districts: dynamic(() => import("./districts").then((m) => m.StopsDistricts), { loading }),
+}
+
+/** Пока данные едут — очертания раздела: заголовок, плитки показателей и два блока графиков. */
+function VisionSkeleton() {
+    return (
+        <div className="p-6 space-y-6" role="status" aria-label="Загрузка аналитики">
+            <div className="space-y-2">
+                <Skeleton className="h-7 w-64" />
+                <Skeleton className="h-4 w-96 max-w-full" />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+                {Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-28 w-full" />)}
+            </div>
+            <div className="grid gap-4 xl:grid-cols-2">
+                <Skeleton className="h-72 w-full" />
+                <Skeleton className="h-72 w-full" />
+            </div>
+            <Skeleton className="h-64 w-full" />
+        </div>
+    )
 }
 
 /** Сбой одного раздела не должен ронять всю вкладку «Аналитика». */
@@ -72,10 +91,7 @@ export function LiveStopsVision({ view, onViewChange, viewToUrl }: {
                 <Button variant="outline" size="sm" onClick={() => setAttempt((value) => value + 1)}>Повторить</Button>
             </div>
         ) : (
-            <div className="p-8 flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Загружаю данные остановок за два месяца…
-            </div>
+            <VisionSkeleton />
         )
     }
 

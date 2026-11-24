@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { createNotificationAdminClient } from '@/lib/notifications/admin'
+import { sharedCached, sharedState } from '@/lib/server/shared-cache'
 import {
     CONDITION_GLASS_CATEGORIES,
     INCIDENT_WINDOW_MS,
@@ -50,7 +51,8 @@ export function parseConditionWindow(params: URLSearchParams, now: number) {
 
 // Срез часа, который уже закончился, не меняется: такие срезы держим в памяти процесса.
 // Без кэша вкладка «Аналитика» делала ~770 запросов на каждое открытие (31 день по часам).
-const climateCache = new Map<string, Map<number, ClimatePoint>>()
+// Кэш общий для процесса: прогрев и маршруты собираются отдельно и иначе не видят друг друга.
+const climateCache = sharedState('climate-hours', () => new Map<string, Map<number, ClimatePoint>>())
 const CLIMATE_CACHE_LIMIT = 24 * 100
 const CLIMATE_CONCURRENCY = 16
 
@@ -142,3 +144,17 @@ export async function buildStopConditions(db: Db, start: number, end: number, li
     return { from: iso(start), to: iso(liveEnd), generatedAt: iso(Date.now()), thresholds, stops: series }
 }
 
+
+/** Срок жизни готового ответа; прогрев пересобирает окна вкладки «Аналитика» чаще. */
+export const CONDITIONS_TTL_MS = 6 * 60_000
+
+/** Тот же ответ из общего кэша процесса: один на окно для карты, вкладки «Аналитика» и прогрева. */
+export function getStopConditionsCached(db: Db, start: number, end: number, liveEnd: number, force = false): Promise<StopConditionsResponse> {
+    return sharedCached(`stop-conditions:${start}:${end}`, CONDITIONS_TTL_MS, async () => {
+        const started = Date.now()
+        const payload = await buildStopConditions(db, start, end, liveEnd)
+        // Время сборки — в лог, чтобы видеть, где тормозит вкладка «Аналитика».
+        console.info(`stop-conditions ${new Date(start).toISOString()}..${new Date(end).toISOString()} built in ${Date.now() - started} ms`)
+        return payload
+    }, force)
+}

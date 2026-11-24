@@ -13,3 +13,10 @@ export function analyticsClimateChunks(now: number): [number, number][] {
     for (let to = end; to > start; to -= CHUNK_DAYS * DAY) chunks.push([Math.max(start, to - CHUNK_DAYS * DAY), to])
     return chunks
 }
+
+/** Период, за который вкладка читает загруженность: 31 день до конца текущего часа.
+ *  Границы по часу — чтобы запрос вкладки попадал в тот же кэш, что и прогрев сервера. */
+export function analyticsLoadRange(now: number): [number, number] {
+    const end = Math.ceil(now / HOUR) * HOUR
+    return [end - CLIMATE_DAYS * DAY, end]
+}
