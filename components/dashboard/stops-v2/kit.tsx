@@ -690,7 +690,7 @@ export function RankList({ rows, colors, legend, emptyText = "Нет данны�
 
 // ---------------------------------------------------------------- тепловая карта «день недели × час»
 
-function heatClass(value: number, max: number) {
+export function heatClass(value: number, max: number) {
     if (max <= 0 || value <= 0) return "bg-muted/40 text-muted-foreground"
     const pct = value / max
     if (pct >= 0.8) return "bg-blue-700 text-white dark:bg-blue-500 dark:text-blue-950"

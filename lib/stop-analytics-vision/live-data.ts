@@ -237,8 +237,12 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
     const climateAt = climateLookup(climateData.climate)
     for (const stop of stops) {
         const hasController = devices.some((device) => device.stopId === stop.id && device.type === "controller")
-        const recent = (climateData.climate.get(stop.id) ?? []).some(([at, temp, humidity]) => at > now - DAY && (temp !== null || humidity !== null))
-        if (hasController && !recent) stop.sensorFault = "silent"
+        const readings = (climateData.climate.get(stop.id) ?? []).filter(([, temp, humidity]) => temp !== null || humidity !== null)
+        const lastAt = readings.length ? readings[readings.length - 1][0] : null
+        if (hasController && (lastAt === null || lastAt <= now - DAY)) {
+            stop.sensorFault = "silent"
+            stop.sensorLastAt = lastAt
+        }
     }
 
     const safety: VSafetyEvent[] = []
