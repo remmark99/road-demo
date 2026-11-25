@@ -135,7 +135,7 @@ export function StopsLoad() {
     const chosenIds = (picked ?? candidates.slice(0, 3).map((row) => row.stop.id)).filter((id) => byId.has(id))
     const chosenRows = chosenIds.map((id) => byId.get(id)!)
     const compareRows = Array.from({ length: 24 }, (_, hour) => {
-        const row: Record<string, number | string> = { hour: String(hour).padStart(2, "0") }
+        const row: Record<string, number | string> = { hour: `${String(hour).padStart(2, "0")}:00`, range: hourRange(hour) }
         chosenRows.forEach((item) => { row[`s${item.stop.id}`] = Number(item.byHour[hour].toFixed(1)) })
         return row
     })
@@ -245,11 +245,11 @@ export function StopsLoad() {
 
             <div className="grid gap-6 xl:grid-cols-12">
                 <ChartCard
-                    className="xl:col-span-7"
-                    title="Чем отличаются остановки?"
+                    className={hasCapacity ? "xl:col-span-7" : "xl:col-span-12"}
+                    title="Сравнение остановок по часам суток"
                     icon={GitCompareArrows}
                     iconClassName="text-violet-500"
-                    hint="Людей на остановке по часам суток. Включайте и выключайте остановки кнопками."
+                    hint="Сколько людей в среднем находится на остановке в каждый час суток за выбранный период. Добавьте до пяти остановок кнопкой «Остановка», нажатие на название убирает её."
                     action={
                         <div className="flex flex-wrap gap-1.5">
                             {chosenRows.map((item, index) => (
@@ -292,12 +292,35 @@ export function StopsLoad() {
                     <ChartContainer config={compareConfig} className="h-[300px] w-full">
                         <LineChart data={compareRows} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                             <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                            <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} interval={1} />
-                            <YAxis tickLine={false} axisLine={false} tickMargin={8} width={28} />
-                            <ChartTooltip content={<ChartTooltipContent />} />
+                            <XAxis dataKey="hour" tickLine={false} axisLine={false} tickMargin={8} interval={2} />
+                            <YAxis
+                                tickLine={false}
+                                axisLine={false}
+                                tickMargin={8}
+                                width={44}
+                                allowDecimals={false}
+                                label={{ value: "чел.", position: "insideTopLeft", offset: 0, dy: -12, fontSize: 11, fill: "var(--muted-foreground)" }}
+                            />
+                            <ChartTooltip
+                                content={
+                                    <ChartTooltipContent
+                                        labelFormatter={(_label, payload) => String(payload?.[0]?.payload?.range ?? _label)}
+                                        formatter={(value, _name, item) => (
+                                            <div className="flex w-full items-center justify-between gap-3">
+                                                <span className="flex items-center gap-1.5 text-muted-foreground">
+                                                    <span className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: item.color }} />
+                                                    {compareConfig[String(item.dataKey)]?.label}
+                                                </span>
+                                                <span className="font-mono font-medium tabular-nums text-foreground">{fmtNum(Number(value))} чел.</span>
+                                            </div>
+                                        )}
+                                    />
+                                }
+                            />
                             <ChartLegend content={<ChartLegendContent />} />
+                            {/* Без сглаживания: кривая не рисует пиков и провалов, которых нет в данных. */}
                             {chosenRows.map((item) => (
-                                <Line key={item.stop.id} dataKey={`s${item.stop.id}`} stroke={`var(--color-s${item.stop.id})`} strokeWidth={2} dot={false} type="monotone" isAnimationActive={false} />
+                                <Line key={item.stop.id} dataKey={`s${item.stop.id}`} stroke={`var(--color-s${item.stop.id})`} strokeWidth={2} dot={{ r: 2.5, strokeWidth: 0, fill: `var(--color-s${item.stop.id})` }} activeDot={{ r: 4 }} type="linear" isAnimationActive={false} />
                             ))}
                         </LineChart>
                     </ChartContainer>

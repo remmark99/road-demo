@@ -88,6 +88,8 @@ export interface VStop {
     flaky: number
     sensorFault: null | "silent" | "empty"
     glassFault: null | "stuck" | "noisy"
+    /** Последнее показание климата (живые данные); null — показаний не было за весь срок истории. */
+    sensorLastAt?: number | null
 }
 
 type Traits = Partial<Pick<VStop, "busy" | "binProne" | "safetyProne" | "coldProne" | "flaky" | "sensorFault" | "glassFault">>
