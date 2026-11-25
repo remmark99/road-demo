@@ -315,7 +315,13 @@ function httpBackend(): AssistantBackend {
             const body = await json<{ messages: UIMessage[] }>(await fetch(`/api/assistant/conversations/${id}`, { cache: "no-store" }))
             return Array.isArray(body.messages) ? body.messages : []
         },
-        deleteConversation: async id => { await json(await fetch(`/api/assistant/conversations/${id}`, { method: "DELETE" })) },
+        // Сервер отвечает на удаление пустым 204 — тело не разбираем, иначе успешное удаление выглядит как сбой.
+        deleteConversation: async id => {
+            const response = await fetch(`/api/assistant/conversations/${id}`, { method: "DELETE" })
+            if (response.ok || response.status === 404) return
+            const body = await response.json().catch(() => null) as { error?: string } | null
+            throw new Error(body?.error || "Не удалось удалить диалог")
+        },
         speechEnabled: async () => {
             const response = await fetch("/api/assistant/speech").catch(() => null)
             return Boolean(response?.ok && (await response.json() as { enabled?: boolean }).enabled)
@@ -784,7 +790,8 @@ export function AssistantChat({ backend: customBackend, initialSession, notice }
         try {
             await backend.deleteConversation(id)
         } catch {
-            setHistoryError(true)
+            // Сбой удаления не прячет весь список истории — диалог просто остаётся на месте.
+            window.alert("Не удалось удалить диалог. Попробуйте ещё раз.")
             return
         }
         setItems(current => current?.filter(item => item.id !== id) ?? current)
