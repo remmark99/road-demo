@@ -81,7 +81,8 @@ const DEVICE_FILTERS: { value: DeviceFilter; label: string }[] = [
     { value: "all", label: "Все" },
 ]
 
-const EXPORT_SLUG: Record<DeviceFilter, string> = { offline: "ne-v-seti", long: "ne-v-seti-dolshe-sutok", online: "v-seti", all: "vse" }
+/** Название выгрузки — оно же имя файла и листа Excel. */
+const EXPORT_TITLE: Record<DeviceFilter, string> = { offline: "не в сети", long: "не в сети дольше суток", online: "в сети", all: "все" }
 
 const CAUSE_LABEL = Object.fromEntries(OUTAGE_CAUSES.map((cause) => [cause.id, cause])) as Record<VOutageCause, (typeof OUTAGE_CAUSES)[number]>
 
@@ -186,11 +187,11 @@ export function StopsEquipment() {
     const columns: Column<VOutage>[] = [
         { key: "device", header: "Оборудование", cell: (outage) => <span className="inline-flex items-center gap-2 font-medium">{outage.device === "camera" ? <Camera className="h-4 w-4 text-muted-foreground" /> : <Gauge className="h-4 w-4 text-muted-foreground" />}{outage.label}</span>, value: (outage) => outage.label },
         { key: "stop", header: "Остановка", cell: (outage) => { const stop = stopById(outage.stopId); return stop ? <StopLink stop={stop} /> : null }, value: (outage) => stopById(outage.stopId)?.name ?? "" },
-        { key: "start", header: "Начало", cell: (outage) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(outage.startAt)}</span>, value: (outage) => outage.startAt },
-        { key: "end", header: "Восстановлено", cell: (outage) => <span className="whitespace-nowrap tabular-nums">{outage.endAt ? fmtDateTime(outage.endAt) : "—"}</span>, value: (outage) => outage.endAt ?? V_NOW },
-        { key: "duration", header: "Длительность", align: "right", cell: (outage) => <span className="font-medium">{fmtDuration(outageDurationMs(outage))}</span>, value: (outage) => Math.round(outageDurationMs(outage) / 60_000) },
+        { key: "start", header: "Начало", cell: (outage) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(outage.startAt)}</span>, value: (outage) => outage.startAt, exportValue: (outage) => fmtDateTime(outage.startAt) },
+        { key: "end", header: "Восстановлено", cell: (outage) => <span className="whitespace-nowrap tabular-nums">{outage.endAt ? fmtDateTime(outage.endAt) : "—"}</span>, value: (outage) => outage.endAt ?? V_NOW, exportValue: (outage) => (outage.endAt ? fmtDateTime(outage.endAt) : "") },
+        { key: "duration", header: "Длительность", align: "right", cell: (outage) => <span className="font-medium">{fmtDuration(outageDurationMs(outage))}</span>, value: (outage) => Math.round(outageDurationMs(outage) / 60_000), exportValue: (outage) => fmtDuration(outageDurationMs(outage)) },
         { key: "cause", header: "Вероятная причина", cell: (outage) => CAUSE_LABEL[outage.cause].hint, value: (outage) => CAUSE_LABEL[outage.cause].hint },
-        { key: "state", header: "Статус", cell: (outage) => outage.endAt === null ? <StatusBadge tone="high">Не работает</StatusBadge> : <StatusBadge tone="muted">Восстановлено</StatusBadge>, value: (outage) => (outage.endAt === null ? 0 : 1) },
+        { key: "state", header: "Статус", cell: (outage) => outage.endAt === null ? <StatusBadge tone="high">Не работает</StatusBadge> : <StatusBadge tone="muted">Восстановлено</StatusBadge>, value: (outage) => (outage.endAt === null ? 0 : 1), exportValue: (outage) => (outage.endAt === null ? "Не работает" : "Восстановлено") },
     ]
 
     return (
@@ -337,7 +338,7 @@ export function StopsEquipment() {
                             search={(row) => { const stop = stopById(row.stopId); return `${stop?.name ?? ""} ${stop?.code ?? ""} ${row.label} ${districtName(stop?.districtId ?? "")}` }}
                             searchPlaceholder="Остановка, номер или устройство"
                             scrollAll
-                            exportName={`${device === "camera" ? "kamery" : "kontrollery"}-${EXPORT_SLUG[deviceList]}`}
+                            exportName={`${device === "camera" ? "Камеры" : "Контроллеры"} ${EXPORT_TITLE[deviceList]}`}
                             initialSort={deviceList === "online" || deviceList === "all" ? { key: "stop", dir: "asc" } : { key: "since", dir: "asc" }}
                             toolbar={<Segmented<DeviceFilter> value={deviceList} onChange={setDeviceList} options={DEVICE_FILTERS} />}
                         />
@@ -352,7 +353,7 @@ export function StopsEquipment() {
                     rowKey={(outage) => outage.id}
                     search={(outage) => `${stopById(outage.stopId)?.name ?? ""} ${outage.label} ${districtName(stopById(outage.stopId)?.districtId ?? "")}`}
                     searchPlaceholder="Остановка или номер устройства"
-                    exportName="otklyucheniya"
+                    exportName="Отключения оборудования"
                     initialSort={{ key: "start", dir: "desc" }}
                     toolbar={
                         <div className="flex items-center gap-2">

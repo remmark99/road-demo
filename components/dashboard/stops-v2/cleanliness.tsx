@@ -116,9 +116,9 @@ export function StopsCleanliness() {
 
     const columns: Column<VBinEpisode>[] = [
         { key: "stop", header: "Остановка", cell: (episode) => { const stop = stopById(episode.stopId); return stop ? <StopLink stop={stop} /> : null }, value: (episode) => stopById(episode.stopId)?.name ?? "" },
-        { key: "start", header: "Начало", cell: (episode) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(episode.startAt)}</span>, value: (episode) => episode.startAt },
-        { key: "end", header: "Убрано", cell: (episode) => <span className="whitespace-nowrap tabular-nums">{episode.endAt ? fmtDateTime(episode.endAt) : "—"}</span>, value: (episode) => episode.endAt ?? V_NOW },
-        { key: "duration", header: "Длительность", align: "right", cell: (episode) => <span className="font-medium">{fmtDuration(binDurationMs(episode))}</span>, value: (episode) => Math.round(binDurationMs(episode) / 60_000) },
+        { key: "start", header: "Начало", cell: (episode) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(episode.startAt)}</span>, value: (episode) => episode.startAt, exportValue: (episode) => fmtDateTime(episode.startAt) },
+        { key: "end", header: "Убрано", cell: (episode) => <span className="whitespace-nowrap tabular-nums">{episode.endAt ? fmtDateTime(episode.endAt) : "—"}</span>, value: (episode) => episode.endAt ?? V_NOW, exportValue: (episode) => (episode.endAt ? fmtDateTime(episode.endAt) : "") },
+        { key: "duration", header: "Длительность", align: "right", cell: (episode) => <span className="font-medium">{fmtDuration(binDurationMs(episode))}</span>, value: (episode) => Math.round(binDurationMs(episode) / 60_000), exportValue: (episode) => fmtDuration(binDurationMs(episode)) },
         { key: "state", header: "Норматив", cell: (episode) => { const state = episodeState(episode); return <StatusBadge tone={state.tone}>{state.label}</StatusBadge> }, value: (episode) => episodeState(episode).label },
         { key: "confirmations", header: "Подтверждения", align: "right", cell: (episode) => fmtInt(episode.confirmations), value: (episode) => episode.confirmations },
         { key: "frames", header: "Кадры", cell: (episode) => { const href = binEpisodeHref(episode); return <span className="flex gap-1.5"><FrameThumb label="до" src={episode.startImage} href={href} />{episode.endAt && <FrameThumb label="после" src={episode.endImage} href={href} />}</span> } },
@@ -258,7 +258,7 @@ export function StopsCleanliness() {
                     rowKey={(episode) => episode.id}
                     search={(episode) => `${stopById(episode.stopId)?.name ?? ""} ${districtName(stopById(episode.stopId)?.districtId ?? "")}`}
                     searchPlaceholder="Остановка или микрорайон"
-                    exportName="epizody-perepolneniya"
+                    exportName="Эпизоды переполнения урн"
                     toolbar={
                         <Segmented<EpisodeFilter>
                             value={filter}

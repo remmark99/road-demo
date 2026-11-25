@@ -129,7 +129,7 @@ export function StopsLoad() {
         { key: "district", header: "Микрорайон", cell: (row) => districtName(row.stop.districtId), value: (row) => districtName(row.stop.districtId) },
         { key: "avg", header: "В среднем, чел.", align: "right", cell: (row) => fmtNum(row.avg), value: (row) => Math.round(row.avg * 10) / 10 },
         { key: "peak", header: "Пик, чел.", align: "right", cell: (row) => fmtInt(row.peak), value: (row) => row.peak },
-        { key: "hour", header: "Самый загруженный час", align: "right", cell: (row) => row.avg > 0 ? `${String(busiestHour(row)).padStart(2, "0")}:00` : "—", value: (row) => busiestHour(row) },
+        { key: "hour", header: "Самый загруженный час", align: "right", cell: (row) => row.avg > 0 ? `${String(busiestHour(row)).padStart(2, "0")}:00` : "—", value: (row) => busiestHour(row), exportValue: (row) => (row.avg > 0 ? `${String(busiestHour(row)).padStart(2, "0")}:00` : "") },
     ]
     const byId = new Map(data.perStop.map((row) => [row.stop.id, row]))
     const chosenIds = (picked ?? candidates.slice(0, 3).map((row) => row.stop.id)).filter((id) => byId.has(id))

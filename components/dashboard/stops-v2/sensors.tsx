@@ -267,7 +267,7 @@ export function StopsSensors() {
                     rowKey={(row) => row.key}
                     search={(row) => `${row.stop.name} ${row.sensor} ${row.problem}`}
                     searchPlaceholder="Остановка или неисправность"
-                    exportName="neispravnye-datchiki"
+                    exportName="Неисправные датчики"
                 />
             </ChartCard>
         </SectionShell>

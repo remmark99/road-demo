@@ -794,6 +794,8 @@ export interface Column<T> {
     cell: (row: T) => ReactNode
     /** Значение для сортировки и выгрузки. */
     value?: (row: T) => number | string
+    /** Что писать в Excel, когда сортировочное значение человеку не читается (метка времени, минуты, код статуса). */
+    exportValue?: (row: T) => number | string
     align?: "right"
     /** Только в выгрузке: на экране это уже видно в другой колонке. */
     exportOnly?: boolean
@@ -844,19 +846,24 @@ export function DataTable<T>({ columns: allColumns, rows, rowKey, search, search
         setSort((previous) => (previous?.key === key ? { key, dir: previous.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" }))
     }
 
-    const exportCsv = () => {
-        const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`
-        const lines = [
-            allColumns.map((column) => escape(column.header)).join(";"),
-            ...filtered.map((row) => allColumns.map((column) => escape(column.value ? column.value(row) : "")).join(";")),
-        ]
-        const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" })
-        const url = URL.createObjectURL(blob)
+    /** Настоящая книга Excel с тем, что сейчас в таблице (с учётом поиска и сортировки): шапка, фильтры, ширина колонок. */
+    const exportXlsx = async () => {
+        const { tablesToXlsx, xlsxFileName } = await import("@/lib/assistant/table")
+        const exported = allColumns.filter((column) => column.exportValue || column.value)
+        const title = exportName ?? "Таблица"
+        const bytes = tablesToXlsx([{
+            title,
+            columns: exported.map((column) => column.header),
+            rows: filtered.map((row) => exported.map((column) => (column.exportValue ?? column.value)!(row))),
+        }])
+        const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
         const link = document.createElement("a")
         link.href = url
-        link.download = `${exportName ?? "table"}.csv`
+        link.download = xlsxFileName(title)
+        document.body.appendChild(link)
         link.click()
-        URL.revokeObjectURL(url)
+        link.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 2000)
     }
 
     return (
@@ -870,7 +877,7 @@ export function DataTable<T>({ columns: allColumns, rows, rowKey, search, search
                 )}
                 {toolbar}
                 {exportName && (
-                    <Button variant="outline" size="sm" className="ml-auto gap-2" onClick={exportCsv}>
+                    <Button variant="outline" size="sm" className="ml-auto gap-2" onClick={() => void exportXlsx()}>
                         <Download className="h-4 w-4" />
                         Excel
                     </Button>
