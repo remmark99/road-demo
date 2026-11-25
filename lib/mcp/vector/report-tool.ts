@@ -43,7 +43,8 @@ const COLUMN_LABELS: Record<string, string> = {
 }
 const GROUP_LABELS: Record<string, string> = { stop: 'Остановка', day: 'День', hour_of_day: 'Час', type: 'Тип события' }
 // duration и downtime — те же минуты словами, для текста модели; в таблице длительность уже есть.
-const HIDDEN = new Set(['stop_id', 'location', 'location_id', 'norms', 'duration', 'downtime'])
+// offline_since и offline_for — подсказка модели, сколько устройство не в сети подряд; состав таблиц не меняем.
+const HIDDEN = new Set(['stop_id', 'location', 'location_id', 'norms', 'duration', 'downtime', 'offline_since', 'offline_for'])
 const STATUS_LABELS: Record<string, string> = { online: 'в сети', offline: 'не в сети', unknown: 'нет данных' }
 const LOCAL_TIME = /^(\d{4})-(\d{2})-(\d{2})(?: (\d{2}:\d{2}))?$/
 
