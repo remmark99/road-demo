@@ -6,6 +6,7 @@ import { BarChart3, Bell, CalendarClock, ExternalLink, MapPin, ShieldAlert, Time
 import { Cigarette, Dog, Package, PersonStanding, SprayCan, Wine } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { ChartContainer, ChartLegend, ChartLegendContent, ChartTooltip, ChartTooltipContent, type ChartConfig } from "@/components/ui/chart"
 import { cn } from "@/lib/utils"
 import {
@@ -18,8 +19,10 @@ import {
     cityHour,
     districtName,
     fmtDateTime,
+    fmtDuration,
     fmtInt,
     median,
+    plural,
     stopById,
     type SafetyType,
     type VSafetyEvent,
@@ -57,15 +60,22 @@ const TYPE_LABEL = Object.fromEntries(SAFETY_TYPES.map((type) => [type.id, type.
 const TYPE_COLOR = Object.fromEntries(SAFETY_TYPES.map((type) => [type.id, type.color])) as Record<SafetyType, string>
 
 const typeConfig = Object.fromEntries(SAFETY_TYPES.map((type) => [type.id, { label: type.label, color: type.color }])) satisfies ChartConfig
-const durationConfig = { episodes: { label: "Эпизодов", color: TYPE_COLOR.lying_person } } satisfies ChartConfig
+
+/** Виды событий, у которых есть начало и конец: остальные — разовые срабатывания. */
+const TIMED_TYPES: SafetyType[] = ["lying_person", "abandoned_object", "vandalism"]
+const isTimed = (event: VSafetyEvent) => TIMED_TYPES.includes(event.type) && event.durationMin !== 0
 
 const DURATION_BUCKETS: { label: string; max: number }[] = [
     { label: "до 5 мин", max: 5 },
     { label: "5–15 мин", max: 15 },
     { label: "15–30 мин", max: 30 },
     { label: "30–60 мин", max: 60 },
-    { label: "больше часа", max: Infinity },
+    { label: "1–3 ч", max: 180 },
+    { label: "больше 3 ч", max: Infinity },
 ]
+
+const DOW_FULL = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+const hourSpan = (hour: number) => `${String(hour).padStart(2, "0")}:00–${String(hour + 1).padStart(2, "0")}:00`
 
 function TypeMark({ type }: { type: SafetyType }) {
     return (
@@ -92,6 +102,8 @@ export function StopsSafety() {
     const scope = useScope()
     const phrase = usePeriodPhrase()
     const [active, setActive] = useState<Set<SafetyType>>(() => new Set(SAFETY_TYPES.map((type) => type.id)))
+    /** Клетка тепловой карты, события которой открыты списком. */
+    const [cell, setCell] = useState<{ dow: number; hour: number } | null>(null)
 
     const toggle = (type: SafetyType) => {
         setActive((current) => {
@@ -145,14 +157,24 @@ export function StopsSafety() {
             .slice(0, 10)
             .map((row) => ({ id: row.stop!.id, stop: row.stop!, parts: row.parts, valueText: fmtInt(row.total) }))
 
-        const lying = events.filter((event) => event.type === "lying_person" && event.durationMin !== null).map((event) => event.durationMin as number)
-        const durations = DURATION_BUCKETS.map((bucket, index) => ({
-            label: bucket.label,
-            episodes: lying.filter((value) => value <= bucket.max && value > (DURATION_BUCKETS[index - 1]?.max ?? -1)).length,
-        }))
+        // Длительность — только у закрытых эпизодов: у открытого она ещё растёт.
+        const timedTypes = types.filter((type) => TIMED_TYPES.includes(type.id))
+        const closed = events.filter((event) => isTimed(event) && event.durationMin !== null)
+        const durations = DURATION_BUCKETS.map((bucket, index) => {
+            const row: Record<string, number | string> = { label: bucket.label }
+            for (const type of timedTypes) {
+                row[type.id] = closed.filter((event) => event.type === type.id && (event.durationMin as number) <= bucket.max && (event.durationMin as number) > (DURATION_BUCKETS[index - 1]?.max ?? -1)).length
+            }
+            return row
+        })
+        const durationMedians = timedTypes
+            .map((type) => ({ type, values: closed.filter((event) => event.type === type.id).map((event) => event.durationMin as number) }))
+            .filter((item) => item.values.length > 0)
+            .map((item) => ({ label: item.type.label.toLowerCase(), median: median(item.values) }))
+        const openEpisodes = events.filter((event) => isTimed(event) && event.durationMin === null).length
 
         const night = events.filter((event) => cityHour(event.at) >= 22 || cityHour(event.at) < 6).length
-        return { events, types, byType, series, matrix, peak, ranking, durations, lyingMedian: median(lying), lyingCount: lying.length, night }
+        return { events, types, byType, series, matrix, peak, ranking, durations, timedTypes, durationMedians, closedCount: closed.length, openEpisodes, night }
     }, [scope, active])
 
     const top = data.byType.slice().sort((a, b) => b.count - a.count)[0]
@@ -166,18 +188,34 @@ export function StopsSafety() {
         filtered ? scope.stops.flatMap((stop) => stop.cameras) : [],
     )
 
-    const columns: Column<VSafetyEvent>[] = [
+    // Длительность как в карточке уведомления: у открытого эпизода — сколько он уже идёт, у разового срабатывания её нет.
+    const elapsedMin = (event: VSafetyEvent) => Math.max(1, Math.round((V_NOW - (event.startedAt ?? event.at)) / 60_000))
+    const stopColumn = (link: boolean): Column<VSafetyEvent> => ({
+        key: "stop",
+        header: "Остановка",
+        cell: (event) => {
+            const stop = stopById(event.stopId)
+            if (!stop) return null
+            // В окне событий клетки остановка — текстом: второе окно поверх первого не открываем.
+            return link ? <StopLink stop={stop} /> : <span className="font-medium">{stop.name}</span>
+        },
+        value: (event) => stopById(event.stopId)?.name ?? "",
+    })
+    const columnsWith = (stop: Column<VSafetyEvent>): Column<VSafetyEvent>[] => [
         { key: "at", header: "Время", cell: (event) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(event.at)}</span>, value: (event) => event.at },
         { key: "type", header: "Вид", cell: (event) => <TypeMark type={event.type} />, value: (event) => TYPE_LABEL[event.type] },
-        { key: "stop", header: "Остановка", cell: (event) => { const stop = stopById(event.stopId); return stop ? <StopLink stop={stop} /> : null }, value: (event) => stopById(event.stopId)?.name ?? "" },
+        stop,
         {
             key: "duration",
             header: "Длительность",
             align: "right",
-            cell: (event) => event.durationMin === null ? <StatusBadge tone="high">не закрыт</StatusBadge> : `${event.durationMin} мин`,
-            value: (event) => event.durationMin ?? 9999,
+            cell: (event) => !isTimed(event)
+                ? <span className="text-muted-foreground" title="Разовое срабатывание: длительности нет">—</span>
+                : event.durationMin === null
+                    ? <StatusBadge tone="high">идёт {fmtDuration(elapsedMin(event) * 60_000)}</StatusBadge>
+                    : <span className="whitespace-nowrap">{fmtDuration(event.durationMin * 60_000)}</span>,
+            value: (event) => !isTimed(event) ? -1 : event.durationMin ?? elapsedMin(event),
         },
-        { key: "confidence", header: "Уверенность", align: "right", cell: (event) => event.confidence === null ? "—" : `${Math.round(event.confidence * 100)} %`, value: (event) => event.confidence === null ? -1 : Math.round(event.confidence * 100) },
         { key: "camera", header: "Камера", align: "right", cell: (event) => event.camera ?? "—", value: (event) => event.camera ?? -1 },
         {
             key: "open",
@@ -193,6 +231,10 @@ export function StopsSafety() {
             ),
         },
     ]
+    const columns = columnsWith(stopColumn(true))
+    const cellColumns = columnsWith(stopColumn(false))
+    const cellEvents = cell ? data.events.filter((event) => cityDow(event.at) === cell.dow && cityHour(event.at) === cell.hour) : []
+    const medianText = data.durationMedians.map((item) => `${item.label} — ${fmtDuration(item.median * 60_000)}`).join(", ")
 
     return (
         <SectionShell
@@ -257,33 +299,40 @@ export function StopsSafety() {
                     </ChartContainer>
                 </ChartCard>
 
-                <ChartCard className="xl:col-span-6" title="В какие дни и часы это случается?" icon={CalendarClock} iconClassName="text-amber-500" hint="Чем темнее клетка, тем больше событий. По ней планируют время патруля.">
-                    <WeekHourHeatmap matrix={data.matrix} unit="событий" />
+                <ChartCard className="xl:col-span-6" title="В какие дни и часы это случается?" icon={CalendarClock} iconClassName="text-amber-500" hint="Чем темнее клетка, тем больше событий. Нажмите на клетку, чтобы увидеть события этого часа.">
+                    <WeekHourHeatmap matrix={data.matrix} unit="событий" onCellClick={(dow, hour) => setCell({ dow, hour })} />
                 </ChartCard>
             </div>
 
             <div className="grid gap-6 xl:grid-cols-12">
-                <ChartCard className="xl:col-span-7" title="Какие остановки «горячие»?" icon={MapPin} iconClassName="text-violet-500" hint="Десять остановок с наибольшим числом событий">
+                <ChartCard className="xl:col-span-7" title="На каких остановках больше всего событий?" icon={MapPin} iconClassName="text-violet-500" hint="Десять остановок с наибольшим числом событий">
                     <RankList rows={data.ranking} colors={data.types.map((type) => type.color)} legend={data.types.map((type) => type.label)} />
                 </ChartCard>
 
                 <ChartCard
                     className="xl:col-span-5"
-                    title="Сколько длится эпизод «лежачий человек»?"
+                    title="Сколько длятся эпизоды?"
                     icon={Timer}
                     iconClassName="text-red-500"
-                    hint={data.lyingCount > 0 ? `От первого кадра до закрытия эпизода. Медиана ${Math.round(data.lyingMedian)} мин.` : "От первого кадра до закрытия эпизода"}
+                    hint={data.closedCount > 0
+                        ? `От начала до закрытия эпизода, по видам событий. Медиана: ${medianText}.${data.openEpisodes > 0 ? ` Ещё не закрыто: ${fmtInt(data.openEpisodes)}.` : ""}`
+                        : "От начала до закрытия эпизода, по видам событий"}
                 >
-                    {data.lyingCount === 0 ? (
-                        <EmptyNote>За период таких эпизодов не было</EmptyNote>
+                    {data.timedTypes.length === 0 ? (
+                        <EmptyNote>У выбранных видов событий нет длительности: это разовые срабатывания</EmptyNote>
+                    ) : data.closedCount === 0 ? (
+                        <EmptyNote>За период закрытых эпизодов не было</EmptyNote>
                     ) : (
-                        <ChartContainer config={durationConfig} className="h-[300px] w-full">
+                        <ChartContainer config={typeConfig} className="h-[300px] w-full">
                             <BarChart data={data.durations} margin={{ left: 0, right: 12, top: 12, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                                 <XAxis dataKey="label" tickLine={false} axisLine={false} tickMargin={8} interval={0} />
                                 <YAxis tickLine={false} axisLine={false} tickMargin={8} allowDecimals={false} width={28} />
                                 <ChartTooltip content={<ChartTooltipContent />} />
-                                <Bar dataKey="episodes" fill="var(--color-episodes)" radius={[4, 4, 0, 0]} maxBarSize={56} isAnimationActive={false} />
+                                <ChartLegend content={<ChartLegendContent className="flex-wrap gap-x-4 gap-y-1" />} />
+                                {data.timedTypes.map((type) => (
+                                    <Bar key={type.id} dataKey={type.id} fill={`var(--color-${type.id})`} radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+                                ))}
                             </BarChart>
                         </ChartContainer>
                     )}
@@ -313,6 +362,28 @@ export function StopsSafety() {
                     exportName="sobytiya-bezopasnosti"
                 />
             </ChartCard>
+
+            <Dialog open={cell !== null} onOpenChange={(open) => { if (!open) setCell(null) }}>
+                <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-4xl">
+                    {cell && (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle>{DOW_FULL[cell.dow]}, {hourSpan(cell.hour)}</DialogTitle>
+                                <DialogDescription>
+                                    {phrase}: {fmtInt(cellEvents.length)} {plural(cellEvents.length, ["событие", "события", "событий"])} в этот день недели и час. Кнопка «Открыть» ведёт в уведомление с кадрами.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DataTable
+                                columns={cellColumns}
+                                rows={cellEvents}
+                                rowKey={(event) => event.id}
+                                initialSort={{ key: "at", dir: "desc" }}
+                                pageSize={8}
+                            />
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
         </SectionShell>
     )
 }

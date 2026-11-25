@@ -193,8 +193,10 @@ export interface VSafetyEvent {
     stopId: number
     type: SafetyType
     at: number
-    /** null — эпизод ещё не закрыт. */
+    /** null — эпизод ещё не закрыт; 0 — длительности нет: разовое срабатывание или эпизод не записан. */
     durationMin: number | null
+    /** Начало эпизода, если оно раньше момента уведомления `at` (оставленный предмет замечен до срабатывания). */
+    startedAt?: number
     camera: number | null
     /** null — уверенность модели не записана. */
     confidence: number | null
