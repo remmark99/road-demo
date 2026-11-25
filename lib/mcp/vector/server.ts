@@ -18,7 +18,7 @@ export const INSTRUCTIONS = `Платформа «Вектор города», �
 
 Готовые сценарии.
 1. «Как дела / что происходит / сводка»: system_overview, затем при необходимости stop_conditions(level=problems) и equipment_status.
-2. «Что не работает / что не в сети»: equipment_status (сейчас), equipment_outages (за период, самые долгие простои).
+2. «Что не работает / что не в сети»: equipment_status (сейчас; сколько устройство уже не в сети — поле duration), equipment_outages (за период, самые долгие простои; downtime там не больше длины периода, а сколько устройство не в сети подряд — offline_for).
 3. «Расскажи про остановку N»: get_stop(stop="название или id"). Если название неоднозначно, инструмент вернёт список с id — выбери нужную.
 4. «Сколько было лежачих / курящих / где чаще»: security_events с периодом; group_by=stop, day или hour_of_day.
 5. «Где холодно / влажно / нарушения норм»: stop_climate (sort=coldest/warmest/most_humid; out_of_norm=temperature или humidity — только остановки, где этот показатель вне нормы) и stop_conditions.

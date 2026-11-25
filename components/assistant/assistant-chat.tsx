@@ -7,7 +7,7 @@ import ReactMarkdown, { type Components } from "react-markdown"
 import remarkGfm from "remark-gfm"
 import {
     AlertTriangle, ArrowUp, AudioLines, Check, CircleAlert, Copy, CornerDownRight, Database, FileSpreadsheet, Loader2, Mic, PanelLeft, PanelLeftClose, Search, Snowflake, Square, SquarePen, Volume2, X,
-    Trash2, WifiOff, Sparkles, FileBarChart2, LineChart as LineChartIcon, Lock,
+    Trash2, WifiOff, Sparkles, FileBarChart2, LineChart as LineChartIcon, Lock, PenLine,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ChartCard } from "@/components/assistant/chart-view"
@@ -32,6 +32,7 @@ const SUGGESTIONS = [
     { icon: FileSpreadsheet, text: "Выгрузи в Excel всё оборудование, которое сейчас не в сети" },
     { icon: LineChartIcon, text: "Нарисуй график событий безопасности по дням за неделю" },
     { icon: FileBarChart2, text: "Сделай отчёт о состоянии павильонов за неделю" },
+    { icon: PenLine, text: "Напиши поручение подрядчику по уборке" },
 ] as const
 
 type ToolPart = { type: string; toolName?: string; state?: string; toolCallId?: string; output?: unknown }

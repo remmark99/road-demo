@@ -236,15 +236,17 @@ export const VECTOR_TOOLS: VectorTool[] = [
         name: 'equipment_outages',
         title: VECTOR_TOOL_TITLES.equipment_outages,
         description: 'История отключений камер и контроллеров за период: сколько раз и сколько минут каждое устройство было не в сети. '
-            + 'Короткие обрывы связи (меньше min_minutes) не считаются.',
+            + 'Короткие обрывы связи (меньше min_minutes) не считаются. downtime — простой только внутри периода (не больше его длины); '
+            + 'для устройства, которое не в сети сейчас, offline_since и offline_for — с какого времени и сколько оно не в сети подряд.',
         inputSchema: schema({ ...period, kind: { type: 'string', enum: ['camera', 'controller', 'all'], default: 'all' }, stop: stopParam,
-            min_minutes: { type: 'integer', minimum: 0, maximum: 1440, default: 10 }, limit: limit(30) }),
+            min_minutes: { type: 'integer', minimum: 0, maximum: 43200, default: 10 }, limit: limit(30) }),
         async handler(ctx, args) {
             const directory = await loadDirectory(ctx.db)
             const { from, to } = periodArgs(args, ctx.now, 7)
             const kind = enumArg(args, 'kind', ['camera', 'controller', 'all'] as const, 'all')
             const stop = args.stop != null ? resolveStop(directory, args.stop) : null
-            const minMinutes = intArg(args, 'min_minutes', 10, 0, 1440)
+            // До 30 суток: «не в сети дольше недели» — это min_minutes 10080, а не молча обрезанные сутки.
+            const minMinutes = intArg(args, 'min_minutes', 10, 0, 43200)
             const rows = await readAll<{ equipment_type: string; equipment_id: number; bus_stop_id: number | null; started_at: string; ended_at: string | null }>((a, b) => {
                 let q = ctx.db.from('equipment_outages').select('equipment_type,equipment_id,bus_stop_id,started_at,ended_at')
                     .lt('started_at', new Date(to).toISOString()).or(`ended_at.is.null,ended_at.gt.${new Date(from).toISOString()}`)
@@ -252,15 +254,16 @@ export const VECTOR_TOOLS: VectorTool[] = [
                 if (stop) q = q.eq('bus_stop_id', stop.id)
                 return q.order('started_at').range(a, b)
             }, 100_000)
-            const devices = new Map<string, { kind: string; id: number; stop_id: number | null; outages: number; minutes: number; open: boolean }>()
+            const devices = new Map<string, { kind: string; id: number; stop_id: number | null; outages: number; minutes: number; open: boolean; openSince: number | null }>()
             for (const row of rows) {
                 const full = minutesBetween(Date.parse(row.started_at), row.ended_at ? Date.parse(row.ended_at) : ctx.now)
                 if (full < minMinutes) continue
                 const key = `${row.equipment_type}:${row.equipment_id}`
-                const device = devices.get(key) ?? { kind: row.equipment_type, id: row.equipment_id, stop_id: row.bus_stop_id, outages: 0, minutes: 0, open: false }
+                const device = devices.get(key) ?? { kind: row.equipment_type, id: row.equipment_id, stop_id: row.bus_stop_id, outages: 0, minutes: 0, open: false, openSince: null }
                 device.outages++
                 device.minutes += minutesBetween(Math.max(Date.parse(row.started_at), from), Math.min(row.ended_at ? Date.parse(row.ended_at) : ctx.now, to))
                 device.open ||= row.ended_at === null
+                if (row.ended_at === null) device.openSince = Date.parse(row.started_at)
                 devices.set(key, device)
             }
             const list = [...devices.values()].sort((a, b) => b.minutes - a.minutes)
@@ -275,6 +278,7 @@ export const VECTOR_TOOLS: VectorTool[] = [
                     kind: d.kind === 'camera' ? 'камера' : 'контроллер датчиков', id: d.id, stop_id: d.stop_id,
                     stop: stopLabel(d.stop_id !== null ? directory.stopById.get(d.stop_id) : undefined, d.stop_id),
                     outages: d.outages, downtime_minutes: d.minutes, downtime: durationText(d.minutes), offline_now: d.open,
+                    ...(d.openSince !== null ? { offline_since: localTime(d.openSince), offline_for: durationText(minutesBetween(d.openSince, ctx.now)) } : {}),
                 })),
             }
         },
@@ -460,7 +464,8 @@ export const VECTOR_TOOLS: VectorTool[] = [
                 period: { from: localTime(from), to: localTime(to) }, total: episodes.length, open_now: episodes.filter(e => e.end === null).length,
                 episodes: episodes.slice(0, intArg(args, 'limit', 30, 1, LIMIT_MAX)).map(e => ({ stop_id: e.stop_id,
                     stop: stopLabel(e.stop_id !== null ? directory.stopById.get(e.stop_id) : undefined, e.stop_id),
-                    started: localTime(e.start), cleaned: localTime(e.end), minutes: minutesBetween(e.start, e.end ?? ctx.now), confirmations: e.episode.observation_count })),
+                    started: localTime(e.start), cleaned: localTime(e.end), minutes: minutesBetween(e.start, e.end ?? ctx.now),
+                    duration: durationText(minutesBetween(e.start, e.end ?? ctx.now)), confirmations: e.episode.observation_count })),
             }
         },
     },

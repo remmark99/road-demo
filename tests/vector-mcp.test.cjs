@@ -150,6 +150,10 @@ test('equipment status and outages: offline first by duration, short blips skipp
   const outages = (await call('equipment_outages', { from: '2026-11-13' })).data
   assert.equal(outages.devices_with_outages, 1)
   assert.equal(outages.worst[0].offline_now, true)
+  // Простой за период обрезан периодом, а «не в сети подряд» — полный срок с начала отключения.
+  assert.equal(outages.worst[0].offline_for, '1 ч 30 мин')
+  const lastHour = (await call('equipment_outages', { from: new Date(NOW - 60 * 60_000).toISOString() })).data
+  assert.deepEqual([lastHour.worst[0].downtime, lastHour.worst[0].offline_for], ['1 ч', '1 ч 30 мин'])
   const week = (await call('equipment_outages', { min_minutes: 0 })).data
   assert.equal(week.outages, 3); assert.equal(week.downtime_minutes, 90 + 120 + 3)
   assert.equal(week.downtime, '3 ч 33 мин')
@@ -167,7 +171,9 @@ test('overview, conditions, climate, bins and passenger load run end to end', as
   assert.equal(bad.stops[0].stop_id, 179)
   const cold = (await call('stop_climate', { sort: 'coldest' })).data
   assert.deepEqual([cold.stops[0].stop_id, cold.out_of_norm.temperature, cold.out_of_norm.humidity], [179, 1, 1])
-  assert.equal((await call('bin_episodes', { status: 'open' })).data.open_now, 1)
+  const bins = (await call('bin_episodes', { status: 'open' })).data
+  assert.equal(bins.open_now, 1)
+  assert.deepEqual([bins.episodes[0].minutes, bins.episodes[0].duration], [200, '3 ч 20 мин'])
   const load = (await call('passenger_load', {}, { get_stop_load_hourly: () => ({ hours: [['73-24', iso(60), 40, 10, 7, 60], ['73-24', iso(120), 20, 10, 3, 60]], latest: [] }) })).data
   assert.deepEqual(load.rows[0], { key: 'Никольский (в центр)', average_people: 3, peak_people: 7 })
 })
@@ -242,6 +248,28 @@ test('вежливые фразы — готовым ответом без мо�
   assert.equal(ask('Привет, что с урнами?'), null)
   assert.equal(ask('Дай рецепт печенья'), null)
   assert.match(assistant.OFF_TOPIC_REPLY, /только по остановочным павильонам/)
+})
+
+test('письмо, поручение и сообщение — текстом: отчёт и графики для такого ответа закрыты', () => {
+  const assistant = load('lib/assistant/vector-assistant.ts', { '@/lib/notifications/admin': admin })
+  const ask = text => assistant.isTextRequest([{ id: '1', role: 'user', parts: [{ type: 'text', text }] }])
+  for (const text of ['Напиши поручение подрядчику по уборке', 'Напиши письмо в департамент о состоянии остановок за неделю',
+    'Составь сообщение бригаде связи', 'Житель жалуется, что холодно. Напиши ему ответ', 'Подготовь служебную записку про камеры']) assert.equal(ask(text), true, text)
+  for (const text of ['Сделай отчёт за неделю', 'Напиши отчёт для руководства', 'Напиши письмо и приложи график событий',
+    'Какие урны переполнены?', 'Сводка по остановкам на сейчас']) assert.equal(ask(text), false, text)
+  // Данные для текста берутся кодом по теме просьбы; для остальных тем модель запрашивает их сама.
+  const data = text => assistant.textRequestData([{ id: '1', role: 'user', parts: [{ type: 'text', text }] }], NOW)
+  assert.deepEqual(data('Напиши поручение подрядчику по уборке'), [['bin_episodes', { status: 'open', limit: 30 }]])
+  assert.deepEqual(data('Напиши сообщение бригаде связи: какие контроллеры не в сети дольше недели'), [['equipment_status', { status: 'offline', limit: 30, kind: 'controller' }]])
+  assert.deepEqual(data('Подготовь служебную записку: какие камеры не в сети дольше недели')[0][1].kind, 'camera')
+  assert.deepEqual(data('Напиши письмо в департамент о состоянии остановок за неделю').map(call => call[0]),
+    ['system_overview', 'stop_conditions', 'equipment_status', 'bin_episodes', 'security_events'])
+  assert.equal(data('Житель жалуется, что на остановке Горсвет холодно. Напиши ему ответ'), null)
+  assert.equal(data('Напиши сообщение коллеге, что я опоздаю на совещание'), null)
+  assert.equal(data('Сделай отчёт про урны'), null)
+  // В данные для письма не попадают минуты, подтверждения и id; даты — в привычном виде.
+  assert.equal(assistant.textData(JSON.stringify({ open_now: 1, episodes: [{ stop_id: 7, stop: 'Горсвет', started: '2026-11-24 10:23', cleaned: null, minutes: 2310, duration: '1 сут 14 ч', confirmations: 23 }] })),
+    '{"open_now":1,"episodes":[{"stop":"Горсвет","started":"24.11.2026 10:23","cleaned":null,"duration":"1 сут 14 ч"}]}')
 })
 
 test('create_chart: графики из базы разных форм, ошибки — понятным текстом', async () => {
