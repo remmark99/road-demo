@@ -202,7 +202,7 @@ export function StopsSafety() {
         value: (event) => stopById(event.stopId)?.name ?? "",
     })
     const columnsWith = (stop: Column<VSafetyEvent>): Column<VSafetyEvent>[] => [
-        { key: "at", header: "Время", cell: (event) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(event.at)}</span>, value: (event) => event.at },
+        { key: "at", header: "Время", cell: (event) => <span className="whitespace-nowrap tabular-nums">{fmtDateTime(event.at)}</span>, value: (event) => event.at, exportValue: (event) => fmtDateTime(event.at) },
         { key: "type", header: "Вид", cell: (event) => <TypeMark type={event.type} />, value: (event) => TYPE_LABEL[event.type] },
         stop,
         {
@@ -215,8 +215,9 @@ export function StopsSafety() {
                     ? <StatusBadge tone="high">идёт {fmtDuration(elapsedMin(event) * 60_000)}</StatusBadge>
                     : <span className="whitespace-nowrap">{fmtDuration(event.durationMin * 60_000)}</span>,
             value: (event) => !isTimed(event) ? -1 : event.durationMin ?? elapsedMin(event),
+            exportValue: (event) => !isTimed(event) ? "" : event.durationMin === null ? `идёт ${fmtDuration(elapsedMin(event) * 60_000)}` : fmtDuration(event.durationMin * 60_000),
         },
-        { key: "camera", header: "Камера", align: "right", cell: (event) => event.camera ?? "—", value: (event) => event.camera ?? -1 },
+        { key: "camera", header: "Камера", align: "right", cell: (event) => event.camera ?? "—", value: (event) => event.camera ?? -1, exportValue: (event) => event.camera ?? "" },
         {
             key: "open",
             header: "Уведомления",
@@ -359,7 +360,7 @@ export function StopsSafety() {
                     rowKey={(event) => event.id}
                     search={(event) => `${stopById(event.stopId)?.name ?? ""} ${TYPE_LABEL[event.type]} ${districtName(stopById(event.stopId)?.districtId ?? "")} ${event.camera}`}
                     searchPlaceholder="Остановка, вид события или камера"
-                    exportName="sobytiya-bezopasnosti"
+                    exportName="События безопасности"
                 />
             </ChartCard>
 
