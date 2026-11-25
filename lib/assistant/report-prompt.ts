@@ -14,3 +14,12 @@ export async function readReportPrompt(db: SupabaseClient, userId: string): Prom
     const value = (data as { report_prompt?: unknown } | null)?.report_prompt
     return typeof value === 'string' && value.trim() ? value.trim().slice(0, MAX_REPORT_PROMPT_CHARS) : null
 }
+
+const DEFAULT_REPORT_REQUEST = 'Сводный отчёт о состоянии остановочных павильонов: оборудование и его связь, события безопасности, '
+    + 'температура и влажность, урны, пассажиропоток; главные проблемы и рекомендации.'
+
+/** Вопрос ассистенту для отчёта из настроек: период и пожелания пользователя (без них — сводный отчёт). */
+export function reportQuestion(from: string, to: string, wish: string | null | undefined): string {
+    const text = (wish ?? '').trim().slice(0, MAX_REPORT_PROMPT_CHARS)
+    return `Сделай отчёт за период с ${from} по ${to} включительно (даты по Сургуту).\n\n${text || DEFAULT_REPORT_REQUEST}`
+}

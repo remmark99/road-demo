@@ -1,17 +1,14 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { format } from "date-fns"
-import { ru } from "date-fns/locale"
-import { type DateRange } from "react-day-picker"
 import { Button } from "@/components/ui/button"
-import { Calendar } from "@/components/ui/calendar"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarIcon, FileDown, MessageCircle, ExternalLink, Unplug, ChevronDown, UserRound, Send } from "lucide-react"
+import { Mail, Settings, Check, Loader2, HelpCircle, Eye, EyeOff, LayoutGrid, CalendarClock, MessageCircle, ExternalLink, Unplug, ChevronDown, UserRound, Send } from "lucide-react"
 import { useModuleAccess } from "@/components/providers/module-context"
 import { isValidPhone, MAX_FULL_NAME_LENGTH, MAX_PHONE_LENGTH } from "@/lib/profile/contact"
 import type { NotificationEventTypeOption } from "@/lib/notifications/catalog"
@@ -20,19 +17,31 @@ import type { NotificationPreferencesResponse } from "@/lib/notifications/types"
 import { LicensePanel } from "@/components/licenses/license-panel"
 import { MAX_REPORT_PROMPT_CHARS } from "@/lib/assistant/limits"
 import type { ReportFormat } from "@/lib/reports/document"
+import { DEFAULT_REPORT_SCHEDULE, WEEKDAY_NAMES, describeSchedule, type ReportSchedule } from "@/lib/reports/schedule"
 
-const STANDARD_REPORT_MIN_DATE = new Date(2025, 0, 1)
 const REPORT_FORMAT_OPTIONS: { value: ReportFormat; label: string }[] = [
   { value: "pdf", label: "PDF" },
   { value: "xlsx", label: "Excel" },
   { value: "docx", label: "Word" },
 ]
-/** Последний сформированный отчёт помним сутки: отправить его можно и после перезагрузки страницы. */
-const LAST_REPORT_KEY = "vector:last-settings-report"
-const LAST_REPORT_TTL_MS = 24 * 3_600_000
-/** Адрес, на который отчёт отправляли в прошлый раз. */
-const SEND_EMAIL_KEY = "vector:report-send-email"
-interface LastReport { conversationId: string; fileName: string; at: number }
+const WEEKDAY_OPTIONS = WEEKDAY_NAMES.map((name, index) => ({ value: String(index + 1), label: name[0].toUpperCase() + name.slice(1) }))
+/** Время отправки — с шагом полчаса. */
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, index) => `${String(Math.floor(index / 2)).padStart(2, "0")}:${index % 2 ? "30" : "00"}`)
+interface ScheduleResponse {
+  schedule: ReportSchedule
+  nextAt: string | null
+  last: { status: string; message: string | null; at: string | null } | null
+  available?: boolean
+  error?: string
+}
+/** Момент по времени Сургута: «понедельник, 30.11 в 09:00». */
+function surgutMoment(iso: string | null | undefined) {
+  const time = iso ? Date.parse(iso) : NaN
+  if (!Number.isFinite(time)) return ""
+  const local = new Date(time + 5 * 3_600_000)
+  const two = (value: number) => String(value).padStart(2, "0")
+  return `${WEEKDAY_NAMES[(local.getUTCDay() + 6) % 7]}, ${two(local.getUTCDate())}.${two(local.getUTCMonth() + 1)} в ${two(local.getUTCHours())}:${two(local.getUTCMinutes())}`
+}
 const MODULE_INFO: Record<string, { name: string; description: string }> = {
   roads: { name: 'Состояние дорог', description: 'Мониторинг дорожного покрытия и уборки' },
   shore: { name: 'Безопасный берег', description: 'Контроль прибрежных зон' },
@@ -44,7 +53,6 @@ const MODULE_INFO: Record<string, { name: string; description: string }> = {
 
 export default function SettingsPage() {
   const { allModules, modules: activeModules, toggleModule, refreshProfile } = useModuleAccess()
-  const today = new Date()
   const [fullName, setFullName] = useState("")
   const [phone, setPhone] = useState("")
   const [savedFullName, setSavedFullName] = useState("")
@@ -76,33 +84,53 @@ export default function SettingsPage() {
   const [reportPrompt, setReportPrompt] = useState("")
   const [savedReportPrompt, setSavedReportPrompt] = useState("")
   const [reportPromptState, setReportPromptState] = useState<"idle" | "saving" | "saved" | "error">("idle")
-  const [reportFormat, setReportFormat] = useState<ReportFormat>("pdf")
-  const [standardReportRange, setStandardReportRange] = useState<DateRange | undefined>(() => ({
-    from: new Date(today.getFullYear(), today.getMonth(), today.getDate() - 6),
-    to: today,
-  }))
-  const [isReportGenerating, setIsReportGenerating] = useState(false)
   const [reportError, setReportError] = useState("")
-  const [reportStatus, setReportStatus] = useState("")
-  const [lastReport, setLastReport] = useState<LastReport | null>(null)
-  const [sendEmail, setSendEmail] = useState("")
-  const [sendingChannel, setSendingChannel] = useState<"email" | "max" | null>(null)
-  const [sendStatus, setSendStatus] = useState("")
-  const [sendError, setSendError] = useState("")
+  const [storedSchedule, setSchedule] = useState<ReportSchedule>(DEFAULT_REPORT_SCHEDULE)
+  const [notificationEmail, setNotificationEmail] = useState("")
+  const [scheduleEmailTouched, setScheduleEmailTouched] = useState(false)
+  // Пока адрес для отчёта не задан, в поле стоит адрес из уведомлений; он сохранится вместе с остальным.
+  const schedule = useMemo(
+    () => !storedSchedule.email && !scheduleEmailTouched && notificationEmail ? { ...storedSchedule, email: notificationEmail } : storedSchedule,
+    [storedSchedule, scheduleEmailTouched, notificationEmail],
+  )
+  const [savedSchedule, setSavedSchedule] = useState("")
+  const [scheduleNextAt, setScheduleNextAt] = useState<string | null>(null)
+  const [scheduleLast, setScheduleLast] = useState<ScheduleResponse["last"]>(null)
+  const [scheduleAvailable, setScheduleAvailable] = useState(true)
+  const [scheduleBusy, setScheduleBusy] = useState<"saving" | "sending" | null>(null)
+  const [scheduleNote, setScheduleNote] = useState("")
+  const [scheduleError, setScheduleError] = useState("")
+
+  const applySchedule = useCallback((data: ScheduleResponse, keepForm = false) => {
+    if (!keepForm) {
+      setSchedule(data.schedule)
+      setSavedSchedule(JSON.stringify(data.schedule))
+    }
+    setScheduleNextAt(data.nextAt)
+    setScheduleLast(data.last)
+    setScheduleAvailable(data.available !== false)
+  }, [])
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => {
-      try {
-        const stored = JSON.parse(window.localStorage.getItem(LAST_REPORT_KEY) ?? "null") as LastReport | null
-        if (stored && typeof stored.conversationId === "string" && Date.now() - stored.at < LAST_REPORT_TTL_MS) setLastReport(stored)
-      } catch { /* повреждённую запись просто не используем */ }
-      try {
-        const address = window.localStorage.getItem(SEND_EMAIL_KEY)
-        if (address) setSendEmail(current => current || address)
-      } catch { /* без хранилища адрес вводится заново */ }
-    }, 0)
-    return () => window.clearTimeout(timeout)
-  }, [])
+    let cancelled = false
+    fetch("/api/settings/report-schedule", { cache: "no-store" })
+      .then(response => response.ok ? response.json() as Promise<ScheduleResponse> : null)
+      .then(data => { if (!cancelled && data) applySchedule(data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [applySchedule])
+
+  // Пока отчёт собирается, раз в 10 секунд спрашиваем, чем закончилось.
+  useEffect(() => {
+    if (scheduleLast?.status !== "running") return
+    const timer = window.setInterval(() => {
+      fetch("/api/settings/report-schedule", { cache: "no-store" })
+        .then(response => response.ok ? response.json() as Promise<ScheduleResponse> : null)
+        .then(data => { if (data) applySchedule(data, true) })
+        .catch(() => {})
+    }, 10_000)
+    return () => window.clearInterval(timer)
+  }, [scheduleLast?.status, applySchedule])
 
   const loadNotificationSettings = useCallback(async (syncEmail = true) => {
     try {
@@ -123,7 +151,7 @@ export default function SettingsPage() {
         setEmail(data.email)
         setSavedEmail(data.email)
         // Адрес для отчёта по умолчанию — тот же, что для уведомлений.
-        setSendEmail(current => current || data.email)
+        setNotificationEmail(data.email)
         setEmailEnabled(data.emailEnabled)
         setSavedEmailEnabled(data.emailEnabled)
         setAvailableEventTypes(data.availableEventTypes)
@@ -426,89 +454,60 @@ export default function SettingsPage() {
     }
   }
 
-  const handleGenerateReport = async () => {
-    setReportError("")
-    setReportStatus("")
+  const changeSchedule = (patch: Partial<ReportSchedule>) => {
+    if (patch.email !== undefined) setScheduleEmailTouched(true)
+    setSchedule(current => ({ ...current, ...patch }))
+    setScheduleNote("")
+    setScheduleError("")
+  }
+  const scheduleDirty = savedSchedule !== JSON.stringify(storedSchedule)
 
-    if (!standardReportRange?.from || !standardReportRange?.to) {
-      setReportError("Выберите период отчёта.")
-      return
-    }
+  /** Сохраняет запрос и расписание; false — не сохранилось, причина уже показана. */
+  const saveSchedule = async () => {
+    await saveReportPrompt()
+    const response = await fetch("/api/settings/report-schedule", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(schedule),
+    })
+    const data = await response.json().catch(() => ({})) as ScheduleResponse
+    if (!response.ok) throw new Error(data.error || "Не удалось сохранить настройки рассылки")
+    applySchedule(data)
+    return data
+  }
 
-    setIsReportGenerating(true)
-    void saveReportPrompt()
-
+  const handleSaveSchedule = async () => {
+    if (scheduleBusy) return
+    setScheduleBusy("saving")
+    setScheduleError("")
+    setScheduleNote("")
     try {
-      const response = await fetch("/api/assistant/reports", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: reportPrompt.trim(),
-          format: reportFormat,
-          period: {
-            from: format(standardReportRange.from, "yyyy-MM-dd"),
-            to: format(standardReportRange.to, "yyyy-MM-dd"),
-          },
-        }),
-      })
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({})) as { error?: string }
-        throw new Error(data.error || "Не удалось сформировать отчёт.")
-      }
-      const encoded = response.headers.get("Content-Disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1]
-      const fileName = encoded ? decodeURIComponent(encoded) : `Отчёт.${reportFormat}`
-      const conversationId = response.headers.get("X-Conversation-Id")
-      if (conversationId) {
-        const ready: LastReport = { conversationId, fileName, at: Date.now() }
-        setLastReport(ready)
-        setSendStatus("")
-        setSendError("")
-        try { window.localStorage.setItem(LAST_REPORT_KEY, JSON.stringify(ready)) } catch { /* без хранилища отчёт отправляется до перезагрузки */ }
-      }
-      const url = URL.createObjectURL(await response.blob())
-      const link = document.createElement("a")
-      link.href = url
-      link.download = fileName
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      setTimeout(() => URL.revokeObjectURL(url), 2000)
-      setReportStatus("Отчёт скачан и сохранён в истории ИИ-ассистента: там его можно скачать в других форматах.")
-      setTimeout(() => setReportStatus(""), 8000)
-    } catch (err) {
-      setReportError(err instanceof Error ? err.message : "Не удалось сформировать отчёт.")
+      const data = await saveSchedule()
+      setScheduleNote(data.schedule.enabled ? `Сохранено. Отчёт будет приходить ${describeSchedule(data.schedule)}.` : "Сохранено. Рассылка выключена.")
+    } catch (failure) {
+      setScheduleError(failure instanceof Error ? failure.message : "Не удалось сохранить настройки рассылки")
     } finally {
-      setIsReportGenerating(false)
+      setScheduleBusy(null)
     }
   }
 
-  /** Готовый отчёт уходит файлом на почту или в MAX; заново он не собирается. */
-  const handleSendReport = async (channel: "email" | "max") => {
-    if (!lastReport || sendingChannel) return
-    setSendError("")
-    setSendStatus("")
-    const address = sendEmail.trim()
-    if (channel === "email" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
-      setSendError("Укажите адрес почты.")
-      return
-    }
-    setSendingChannel(channel)
+  /** Отчёт по этим настройкам уходит сразу, не дожидаясь расписания. */
+  const handleSendNow = async () => {
+    if (scheduleBusy) return
+    setScheduleBusy("sending")
+    setScheduleError("")
+    setScheduleNote("")
     try {
-      const response = await fetch("/api/assistant/reports/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conversationId: lastReport.conversationId, format: reportFormat, channel, email: channel === "email" ? address : undefined }),
-      })
+      await saveSchedule()
+      const response = await fetch("/api/settings/report-schedule/send", { method: "POST" })
       const data = await response.json().catch(() => ({})) as { error?: string; message?: string }
-      if (!response.ok) throw new Error(data.error || "Не удалось отправить отчёт.")
-      setSendStatus(data.message || "Отчёт отправлен.")
-      if (channel === "email") {
-        try { window.localStorage.setItem(SEND_EMAIL_KEY, address) } catch { /* адрес просто не запомнится */ }
-      }
-    } catch (sendFailure) {
-      setSendError(sendFailure instanceof Error ? sendFailure.message : "Не удалось отправить отчёт.")
+      if (!response.ok) throw new Error(data.error || "Не удалось отправить отчёт")
+      setScheduleLast({ status: "running", message: null, at: new Date().toISOString() })
+      setScheduleNote(data.message || "Отчёт собирается и придёт через минуту-две")
+    } catch (failure) {
+      setScheduleError(failure instanceof Error ? failure.message : "Не удалось отправить отчёт")
     } finally {
-      setSendingChannel(null)
+      setScheduleBusy(null)
     }
   }
 
@@ -686,160 +685,156 @@ export default function SettingsPage() {
                 setReportPrompt(e.target.value)
                 setReportPromptState("idle")
                 setReportError("")
-                setReportStatus("")
               }}
               onBlur={() => void saveReportPrompt()}
             />
             <div className="mt-1 h-4 text-xs text-muted-foreground" aria-live="polite">
-              {reportPromptState === "saving" ? "Сохраняем..." : reportPromptState === "saved" ? "Запрос сохранён" : ""}
+              {reportPromptState === "saving" ? "Сохраняем..." : reportPromptState === "saved" ? "Запрос сохранён" : reportPromptState === "error" ? reportError : ""}
             </div>
           </div>
 
           <div className="border-t pt-8">
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold">Сформировать отчёт</h3>
-              <p className="text-sm text-muted-foreground">
-                Без запроса — сводный отчёт по всем данным остановок за период.
-              </p>
-            </div>
-            <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/20 p-4 md:flex-row md:items-end md:justify-between">
-              <div className="space-y-2">
-                <Label htmlFor="standard-report-period">Период</Label>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      id="standard-report-period"
-                      type="button"
-                      variant="outline"
-                      className="w-full justify-start text-left font-normal md:w-[280px]"
-                    >
-                      <CalendarIcon className="mr-2 h-4 w-4" />
-                      {standardReportRange?.from ? (
-                        standardReportRange.to ? (
-                          <>
-                            {format(standardReportRange.from, "dd.MM.yyyy", { locale: ru })} -{" "}
-                            {format(standardReportRange.to, "dd.MM.yyyy", { locale: ru })}
-                          </>
-                        ) : (
-                          format(standardReportRange.from, "dd.MM.yyyy", { locale: ru })
-                        )
-                      ) : (
-                        <span>Выберите период</span>
-                      )}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="range"
-                      defaultMonth={standardReportRange?.from ?? STANDARD_REPORT_MIN_DATE}
-                      selected={standardReportRange}
-                      onSelect={setStandardReportRange}
-                      numberOfMonths={2}
-                      locale={ru}
-                      startMonth={STANDARD_REPORT_MIN_DATE}
-                      endMonth={today}
-                      disabled={(date) =>
-                        date < STANDARD_REPORT_MIN_DATE || date > today
-                      }
-                    />
-                  </PopoverContent>
-                </Popover>
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold">Рассылка по расписанию</h3>
+                <p className="text-sm text-muted-foreground">
+                  Ассистент сам соберёт отчёт по запросу выше и пришлёт его файлом. Ежедневный отчёт — за вчерашний день, еженедельный — за семь дней до дня отправки.
+                </p>
               </div>
-              <div className="space-y-2">
-                <Label>Формат</Label>
-                <div className="flex rounded-md border border-input p-0.5" role="radiogroup" aria-label="Формат отчёта">
-                  {REPORT_FORMAT_OPTIONS.map(option => (
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <Switch checked={schedule.enabled} onCheckedChange={(checked) => changeSchedule({ enabled: checked })} aria-label="Присылать отчёт по расписанию" />
+                {schedule.enabled ? "Рассылка включена" : "Рассылка выключена"}
+              </label>
+            </div>
+
+            <div className="grid gap-6 rounded-lg border border-border bg-muted/20 p-4 md:grid-cols-2">
+              <div className="space-y-3">
+                <Label>Как часто</Label>
+                <div className="flex w-fit rounded-md border border-input p-0.5" role="radiogroup" aria-label="Периодичность">
+                  {([["daily", "Каждый день"], ["weekly", "Раз в неделю"]] as const).map(([value, label]) => (
                     <button
-                      key={option.value}
+                      key={value}
                       type="button"
                       role="radio"
-                      aria-checked={reportFormat === option.value}
-                      className={`rounded px-3 py-1.5 text-sm transition-colors ${reportFormat === option.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
-                      onClick={() => setReportFormat(option.value)}
+                      aria-checked={schedule.frequency === value}
+                      className={`rounded px-3 py-1.5 text-sm transition-colors ${schedule.frequency === value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                      onClick={() => changeSchedule({ frequency: value })}
                     >
-                      {option.label}
+                      {label}
                     </button>
                   ))}
                 </div>
-              </div>
-              <div className="flex flex-col items-stretch gap-2 md:items-end">
-                <Button
-                  type="button"
-                  className="gap-2"
-                  disabled={isReportGenerating}
-                  aria-busy={isReportGenerating}
-                  onClick={handleGenerateReport}
-                >
-                  {isReportGenerating ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Ассистент собирает отчёт...
-                    </>
-                  ) : (
-                    <>
-                      <FileDown className="h-4 w-4" />
-                      Сформировать отчёт
-                    </>
+                <div className="flex flex-wrap items-end gap-3">
+                  {schedule.frequency === "weekly" && (
+                    <div className="space-y-2">
+                      <Label htmlFor="report-schedule-weekday">День недели</Label>
+                      <Select value={String(schedule.weekday)} onValueChange={(value) => changeSchedule({ weekday: Number(value) })}>
+                        <SelectTrigger id="report-schedule-weekday" className="w-[180px]"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {WEEKDAY_OPTIONS.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   )}
-                </Button>
-                {reportError && (
-                  <p className="max-w-[320px] text-sm text-destructive md:text-right">{reportError}</p>
-                )}
-                {reportStatus && (
-                  <p className="max-w-[360px] text-sm text-muted-foreground md:text-right">{reportStatus}</p>
-                )}
+                  <div className="space-y-2">
+                    <Label htmlFor="report-schedule-time">Время (Сургут)</Label>
+                    {/* Список, а не поле времени: браузер с английской локалью показал бы «09:00 AM». */}
+                    <Select value={schedule.time} onValueChange={(value) => changeSchedule({ time: value })}>
+                      <SelectTrigger id="report-schedule-time" className="w-[130px]"><SelectValue /></SelectTrigger>
+                      <SelectContent className="max-h-72">
+                        {(TIME_OPTIONS.includes(schedule.time) ? TIME_OPTIONS : [schedule.time, ...TIME_OPTIONS]).map(time => <SelectItem key={time} value={time}>{time}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Формат</Label>
+                  <div className="flex w-fit rounded-md border border-input p-0.5" role="radiogroup" aria-label="Формат отчёта">
+                    {REPORT_FORMAT_OPTIONS.map(option => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={schedule.format === option.value}
+                        className={`rounded px-3 py-1.5 text-sm transition-colors ${schedule.format === option.value ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"}`}
+                        onClick={() => changeSchedule({ format: option.value })}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <Label>Куда присылать</Label>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox checked={schedule.toEmail} onCheckedChange={(checked) => changeSchedule({ toEmail: checked === true })} />
+                    <Mail className="h-4 w-4 text-muted-foreground" />
+                    На почту
+                  </label>
+                  <Input
+                    id="report-schedule-email"
+                    type="email"
+                    aria-label="Почта получателя отчёта"
+                    placeholder="name@example.ru"
+                    disabled={!schedule.toEmail}
+                    value={schedule.email}
+                    onChange={(e) => changeSchedule({ email: e.target.value })}
+                  />
+                </div>
+                <label className={`flex items-center gap-2 text-sm ${maxStatus === "connected" ? "" : "text-muted-foreground"}`}>
+                  <Checkbox
+                    checked={schedule.toMax}
+                    disabled={maxStatus !== "connected" && !schedule.toMax}
+                    onCheckedChange={(checked) => changeSchedule({ toMax: checked === true })}
+                  />
+                  <MessageCircle className="h-4 w-4 text-muted-foreground" />
+                  В MAX
+                  {maxStatus !== "connected" && <span className="text-xs">— подключите MAX ниже, в уведомлениях</span>}
+                </label>
               </div>
             </div>
 
-            <div className="mt-4 rounded-lg border border-border bg-muted/20 p-4">
-              <div className="mb-3">
-                <h3 className="text-lg font-semibold">Отправить отчёт</h3>
-                <p className="text-sm text-muted-foreground">
-                  {lastReport
-                    ? `Готов: ${lastReport.fileName.replace(/\.[a-z]+$/i, "")}. Уйдёт файлом в выбранном выше формате.`
-                    : "Сначала сформируйте отчёт — затем его можно отправить файлом на почту или в MAX."}
-                </p>
+            <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="min-h-10 space-y-1 text-sm" aria-live="polite">
+                {!scheduleAvailable && <p className="text-destructive">Рассылка заработает после обновления базы.</p>}
+                {scheduleError && <p className="text-destructive">{scheduleError}</p>}
+                {scheduleNote && <p className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check className="h-4 w-4 shrink-0" />{scheduleNote}</p>}
+                {!scheduleError && !scheduleNote && schedule.enabled && !scheduleDirty && scheduleNextAt && (
+                  <p className="flex items-center gap-1 text-muted-foreground"><CalendarClock className="h-4 w-4 shrink-0" />Следующая отправка: {surgutMoment(scheduleNextAt)}</p>
+                )}
+                {scheduleLast && (
+                  <p className={scheduleLast.status === "failed" ? "text-destructive" : "text-muted-foreground"}>
+                    {scheduleLast.status === "running"
+                      ? "Отчёт собирается — это занимает минуту-две…"
+                      : `Последняя отправка (${surgutMoment(scheduleLast.at)}): ${scheduleLast.message ?? ""}`}
+                  </p>
+                )}
               </div>
-              <div className="flex flex-col gap-3 md:flex-row md:items-end">
-                <div className="flex-1 space-y-2">
-                  <Label htmlFor="report-send-email">Почта получателя</Label>
-                  <Input
-                    id="report-send-email"
-                    type="email"
-                    placeholder="name@example.ru"
-                    value={sendEmail}
-                    onChange={(e) => { setSendEmail(e.target.value); setSendError(""); setSendStatus("") }}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  className="gap-2"
-                  disabled={!lastReport || sendingChannel !== null}
-                  aria-busy={sendingChannel === "email"}
-                  onClick={() => void handleSendReport("email")}
-                >
-                  {sendingChannel === "email" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                  Отправить на почту
-                </Button>
+              <div className="flex shrink-0 flex-wrap gap-2">
                 <Button
                   type="button"
                   variant="outline"
                   className="gap-2"
-                  disabled={!lastReport || sendingChannel !== null || maxStatus !== "connected"}
-                  aria-busy={sendingChannel === "max"}
-                  title={maxStatus === "connected" ? undefined : "Подключите MAX ниже, в уведомлениях"}
-                  onClick={() => void handleSendReport("max")}
+                  disabled={scheduleBusy !== null || scheduleLast?.status === "running" || !scheduleAvailable}
+                  aria-busy={scheduleBusy === "sending"}
+                  onClick={() => void handleSendNow()}
                 >
-                  {sendingChannel === "max" ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
-                  Отправить в MAX
+                  {scheduleBusy === "sending" || scheduleLast?.status === "running" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Отправить сейчас
                 </Button>
-              </div>
-              <div className="mt-2 min-h-5 text-sm" aria-live="polite">
-                {sendError && <p className="text-destructive">{sendError}</p>}
-                {sendStatus && <p className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><Check className="h-4 w-4" />{sendStatus}</p>}
-                {!sendError && !sendStatus && lastReport && maxStatus !== "connected" && (
-                  <p className="text-xs text-muted-foreground">MAX не подключён: подключите его ниже, в уведомлениях.</p>
-                )}
+                <Button
+                  type="button"
+                  className="gap-2"
+                  disabled={scheduleBusy !== null || !scheduleDirty || !scheduleAvailable}
+                  aria-busy={scheduleBusy === "saving"}
+                  onClick={() => void handleSaveSchedule()}
+                >
+                  {scheduleBusy === "saving" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  Сохранить
+                </Button>
               </div>
             </div>
           </div>

@@ -1,4 +1,4 @@
-// Прогрев кэшей аналитики остановок при старте сервера и раз в 4 минуты:
+// Фоновые задачи сайта. Прогрев кэшей аналитики остановок при старте сервера и раз в 4 минуты:
 // открытие вкладки «Аналитика» не должно ждать базу. Прогрев кладёт готовые ответы в общий
 // кэш процесса (lib/server/shared-cache.ts) — тот же, из которого отвечают маршруты.
 export async function register() {
@@ -41,4 +41,24 @@ export async function register() {
     }
     setTimeout(() => { void warm() }, 10_000)
     setInterval(() => { void warm() }, WARM_EVERY_MS).unref?.()
+
+    // Рассылка сводного отчёта по расписанию: раз в минуту смотрим, кому пора.
+    let sending = false
+    const sendDueReports = async () => {
+        if (sending) return
+        sending = true
+        try {
+            const [{ createNotificationAdminClient }, { runDueReportSchedules }] = await Promise.all([
+                import('@/lib/notifications/admin'),
+                import('@/lib/reports/scheduled-run'),
+            ])
+            const started = await runDueReportSchedules(createNotificationAdminClient())
+            if (started) console.info(`Report schedules: ${started} processed`)
+        } catch (error) {
+            console.error('Report schedules failed:', error instanceof Error ? error.message : 'unknown error')
+        } finally {
+            sending = false
+        }
+    }
+    setInterval(() => { void sendDueReports() }, 60_000).unref?.()
 }

@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import type { UIMessage } from 'ai'
 import { assistantUser } from '@/lib/assistant/access'
 import { saveConversation } from '@/lib/assistant/conversations'
-import { MAX_REPORT_PROMPT_CHARS } from '@/lib/assistant/limits'
+import { reportQuestion } from '@/lib/assistant/report-prompt'
 import { readUsageSummary, recordUsage } from '@/lib/assistant/usage'
 import { budgetExhausted, exhaustedMessage } from '@/lib/assistant/usage-shared'
 import { assistantConfigured, generateVectorReport } from '@/lib/assistant/vector-assistant'
@@ -15,8 +15,6 @@ export const dynamic = 'force-dynamic'
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/
 const MAX_PERIOD_DAYS = 92
-const DEFAULT_REQUEST = 'Сводный отчёт о состоянии остановочных павильонов: оборудование и его связь, события безопасности, '
-    + 'температура и влажность, урны, пассажиропоток; главные проблемы и рекомендации.'
 
 /**
  * «Сформировать отчёт» в настройках: ассистент собирает отчёт по запросу
@@ -38,8 +36,7 @@ export async function POST(request: Request) {
     if ((Date.parse(to) - Date.parse(from)) / 86_400_000 >= MAX_PERIOD_DAYS) {
         return NextResponse.json({ error: `Период отчёта — не больше ${MAX_PERIOD_DAYS} дней` }, { status: 400 })
     }
-    const wish = typeof body?.prompt === 'string' ? body.prompt.trim().slice(0, MAX_REPORT_PROMPT_CHARS) : ''
-    const question = `Сделай отчёт за период с ${from} по ${to} включительно (даты по Сургуту).\n\n${wish || DEFAULT_REQUEST}`
+    const question = reportQuestion(from, to, typeof body?.prompt === 'string' ? body.prompt : '')
 
     const budget = await readUsageSummary(access.db, access.user.id)
     if (budgetExhausted(budget)) return NextResponse.json({ error: exhaustedMessage(budget) }, { status: 429 })
