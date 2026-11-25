@@ -70,6 +70,18 @@ export function buildStopPlaces(stops: BusStopProperties[]): CameraPlace[] {
 export function findStopPlace(places: CameraPlace[], busStopId: number | null | undefined) {
   return busStopId == null ? undefined : places.find(place => place.key === `stop:${busStopId}`)
 }
+/** Остановки, чьи камеры выбраны: с этим выбором лента датчиков показывает те же остановки, что лента камер. */
+export function stopsOfCameras(cameraPlaces: CameraPlace[], cameraIndexes: number[]) {
+  const selected = new Set(cameraIndexes)
+  return cameraPlaces
+    .filter(place => place.key.startsWith('stop:') && place.cameraIndexes.some(index => selected.has(index)))
+    .map(place => Number(place.key.slice(5)))
+}
+/** Все камеры выбранных остановок; у остановки без камер их нет. */
+export function camerasOfStops(cameraPlaces: CameraPlace[], stopIds: number[]) {
+  const keys = new Set(stopIds.map(id => `stop:${id}`))
+  return cameraPlaces.filter(place => keys.has(place.key)).flatMap(place => place.cameraIndexes)
+}
 export function searchCameraPlaces(places: CameraPlace[], query: string) {
   const words = query.toLocaleLowerCase('ru').replace(/ё/g, 'е').trim().split(/\s+/).filter(Boolean)
   return places.filter(place => {
