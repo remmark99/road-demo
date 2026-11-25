@@ -15,7 +15,7 @@ function load(file, mocks = {}, cache = {}) {
   }, module, module.exports)
   return module.exports
 }
-const { notificationPeriodBounds, notificationDate, formatEventDuration, buildCameraPlaces, filteredCameraIndexes } = load('lib/notifications/feed-filters.ts')
+const { notificationPeriodBounds, notificationDate, formatEventDuration, buildCameraPlaces, filteredCameraIndexes, stopsOfCameras, camerasOfStops } = load('lib/notifications/feed-filters.ts')
 test('one local day includes midnight and uses an exclusive next-day bound in UTC+5', () => {
   assert.deepEqual(notificationPeriodBounds({ from: '2026-09-03', to: '2026-09-03' }), { fromInclusive: '2026-09-02T19:00:00.000Z', toExclusive: '2026-09-03T19:00:00.000Z' })
   assert.deepEqual(notificationPeriodBounds({from:'',to:''}), { fromInclusive:undefined,toExclusive:undefined })
@@ -160,4 +160,14 @@ test('sensor feed: the operator reads what happened, not a controller label', ()
   assert.equal(isRecoveryAlert({ alarm: 'alarm' }), false)
   assert.equal(getCategoryColor({ category: 'temperature', alarm: 'normal' }), RECOVERY_COLOR)
   assert.equal(getCategoryColor({ category: 'incident', alarm: 'alarm' }), CATEGORY_COLORS.incident)
+})
+test('stop choice carries between camera and sensor feeds', () => {
+  const cameras=[{cameraIndex:10151,module:'stops',busStopId:10}, {cameraIndex:10152,module:'stops',busStopId:10}, {cameraIndex:10200,module:'stops',busStopId:20}, {cameraIndex:130,module:'roads',description:'Улица 30 лет Победы'}]
+  const places=buildCameraPlaces(cameras,[{id:10,name:'Никольский'},{id:20,name:'Геолог'},{id:30,name:'Без камер'}])
+  assert.deepEqual(stopsOfCameras(places,[10152]),[10])
+  assert.deepEqual(stopsOfCameras(places,[10151,10152,10200]).sort(),[10,20])
+  assert.deepEqual(stopsOfCameras(places,[130]),[])
+  assert.deepEqual(stopsOfCameras(places,[]),[])
+  assert.deepEqual(camerasOfStops(places,[10]),[10151,10152])
+  assert.deepEqual(camerasOfStops(places,[30]),[])
 })

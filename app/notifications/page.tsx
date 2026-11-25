@@ -7,7 +7,7 @@ import { getVandalismEpisode } from '@/lib/notifications/vandalism-episode'
 import { VandalismEvidencePanel } from '@/components/notifications/vandalism-evidence'
 import { PeriodFilter } from '@/components/notifications/period-filter'
 import { CameraPlaceFilter } from '@/components/notifications/camera-place-filter'
-import { buildCameraPlaces, buildStopPlaces, findStopPlace, filteredCameraIndexes, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
+import { buildCameraPlaces, buildStopPlaces, camerasOfStops, findStopPlace, filteredCameraIndexes, stopsOfCameras, notificationPeriodBounds, formatEventDuration, type NotificationPeriod, type CameraPlace } from '@/lib/notifications/feed-filters'
 import { fetchStopDirectory, type BusStopProperties } from '@/lib/api/bus-stops'
 import { formatCameraConfidence, binEpisodeConfidences, formatConfidencePercent, closedLyingEpisodeImage } from '@/lib/notifications/camera-evidence'
 import { getBinEpisode } from "@/lib/bin-episodes"
@@ -817,14 +817,10 @@ function OutageCamerasPanel({ message, cameras }: { message: string; cameras: Ou
 // ═══════════════════════════════════════════════════════════════════════
 // Camera Alerts Tab
 // ═══════════════════════════════════════════════════════════════════════
-function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras: Camera[]; places: CameraPlace[]; period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void }) {
+function CameraAlertsTab({ cameras, places, period, onPeriodChange, selectedCameras, onSelectedCamerasChange: setSelectedCameras }: { cameras: Camera[]; places: CameraPlace[]; period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void; selectedCameras: number[]; onSelectedCamerasChange: (value: number[]) => void }) {
   const searchParams = useSearchParams()
   const querySelectedTypes = useMemo(
     () => getQueryValues(searchParams, ["type", "types"]),
-    [searchParams]
-  )
-  const querySelectedCameras = useMemo(
-    () => getQueryNumberValues(searchParams, ["camera", "cameras"]),
     [searchParams]
   )
   const initialAlertId = searchParams.get("alertId")
@@ -839,7 +835,6 @@ function CameraAlertsTab({ cameras, places, period, onPeriodChange }: { cameras:
   const [selectedTypes, setSelectedTypes] = useState<string[]>(querySelectedTypes)
   const [repairShortcutSelected, setRepairShortcutSelected] = useState(false)
   const [feedKind, setFeedKind] = useState<FeedKind>('events')
-  const [selectedCameras, setSelectedCameras] = useState<number[]>(querySelectedCameras)
   const [cameraSearch, setCameraSearch] = useState('')
   const effectiveCameras = useMemo(() => filteredCameraIndexes(places, cameraSearch, selectedCameras), [places, cameraSearch, selectedCameras])
   const [alerts, setAlerts] = useState<Alert[]>([])
@@ -1888,10 +1883,9 @@ function getControllerAlertStopDisplay(alert: ControllerAlert, places: CameraPla
   return { label: "Остановка не указана", detail: "" }
 }
 
-function ControllerAlertsTab({ stopPlaces, period, onPeriodChange }: { stopPlaces: CameraPlace[]; period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void }) {
+function ControllerAlertsTab({ stopPlaces, period, onPeriodChange, selectedStops, onSelectedStopsChange: setSelectedStops }: { stopPlaces: CameraPlace[]; period: NotificationPeriod; onPeriodChange: (value: NotificationPeriod) => void; selectedStops: number[]; onSelectedStopsChange: (value: number[]) => void }) {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([])
   const [feedKind, setFeedKind] = useState<FeedKind>('events')
-  const [selectedStops, setSelectedStops] = useState<number[]>([])
   const [stopSearch, setStopSearch] = useState('')
   const effectiveStops = useMemo(() => filteredCameraIndexes(stopPlaces, stopSearch, selectedStops), [stopPlaces, stopSearch, selectedStops])
   const kindFilter = useMemo(
@@ -2300,6 +2294,13 @@ function NotificationsContent() {
   const [period, setPeriod] = useState<NotificationPeriod>(() => ({ from: searchParams.get('from') || '', to: searchParams.get('to') || '', ...(searchParams.get('start') ? {start: searchParams.get('start')!, end: searchParams.get('end') || ''} : {}) }))
   const [tab, setTab] = useState('camera')
   const places = useMemo(() => buildCameraPlaces(cameras, stops), [cameras, stops])
+  // Выбор остановки общий для «Камер» и «Датчиков»: вкладки пересоздаются при переключении и свой выбор не хранят.
+  const [selectedCameras, setSelectedCameras] = useState<number[]>(() => getQueryNumberValues(searchParams, ["camera", "cameras"]))
+  // null — остановки следуют за выбранными камерами; иначе их выбрали на вкладке датчиков.
+  const [stopSelection, setStopSelection] = useState<number[] | null>(null)
+  const selectedStops = useMemo(() => stopSelection ?? stopsOfCameras(places, selectedCameras), [stopSelection, places, selectedCameras])
+  const selectCameras = (value: number[]) => { setSelectedCameras(value); setStopSelection(null) }
+  const selectStops = (value: number[]) => { setStopSelection(value); setSelectedCameras(camerasOfStops(places, value)) }
   const stopPlaces = useMemo(() => buildStopPlaces(stops), [stops])
 
   useEffect(() => {
@@ -2346,12 +2347,12 @@ function NotificationsContent() {
             </TabsList>
 
             <TabsContent value="camera">
-              <CameraAlertsTab cameras={cameras} places={places} period={period} onPeriodChange={setPeriod} />
+              <CameraAlertsTab cameras={cameras} places={places} period={period} onPeriodChange={setPeriod} selectedCameras={selectedCameras} onSelectedCamerasChange={selectCameras} />
             </TabsContent>
 
             {showStops && (
               <TabsContent value="controller">
-                <ControllerAlertsTab stopPlaces={stopPlaces} period={period} onPeriodChange={setPeriod} />
+                <ControllerAlertsTab stopPlaces={stopPlaces} period={period} onPeriodChange={setPeriod} selectedStops={selectedStops} onSelectedStopsChange={selectStops} />
               </TabsContent>
             )}
           </Tabs>
