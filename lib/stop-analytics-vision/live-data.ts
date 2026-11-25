@@ -4,6 +4,7 @@
 import { createClient } from "@/lib/supabase/client"
 import { getBinEpisode } from "@/lib/bin-episodes"
 import { VANDALISM_ALERT_TYPE, getVandalismEpisode } from "@/lib/notifications/vandalism-episode"
+import { getAbandonedEpisode } from "@/lib/notifications/abandoned-episode"
 import { fetchCurrentStops, fetchStopCameras, resolveLocationStopId, toVmsCameraIndex } from "@/lib/api/stop-current-analytics"
 import { fetchStopDistricts, fetchStopDistrictAssignments } from "@/lib/api/stop-districts"
 import { fetchEquipmentState } from "@/lib/api/equipment"
@@ -245,7 +246,12 @@ export async function loadLiveVisionDataset(): Promise<VisionDataset> {
         const stopId = stopOfCamera(alert.camera_index) ?? (alert.metadata?.location_id ? stopOfLocation(alert.metadata.location_id) : undefined)
         if (stopId === undefined || !stopIds.has(stopId)) continue
         const confidence = typeof alert.metadata?.confidence === "number" ? alert.metadata.confidence as number : null
-        safety.push({ id: alert.id, stopId, type: alert.alert_type as SafetyType, at: Date.parse(alert.timestamp), durationMin: 0, camera: alert.camera_index, confidence, verdict: "confirmed" })
+        // Оставленный предмет — эпизод: длительность считается так же, как в карточке уведомления, от первого появления предмета.
+        const episode = getAbandonedEpisode(alert)
+        const startedAt = episode ? Date.parse(episode.object_first_seen_at || episode.started_at) : undefined
+        const endedAt = episode && episode.status === "closed" ? Date.parse(episode.ended_at || episode.last_seen_at) : null
+        const durationMin = !episode || startedAt === undefined ? 0 : endedAt === null ? null : Math.max(1, Math.round((endedAt - startedAt) / 60_000))
+        safety.push({ id: alert.id, stopId, type: alert.alert_type as SafetyType, at: Date.parse(alert.timestamp), durationMin, startedAt, camera: alert.camera_index, confidence, verdict: "confirmed" })
     }
     for (const episode of lyingEpisodes) {
         const stopId = stopOfCamera(episode.camera_index) ?? (episode.location_id ? stopOfLocation(episode.location_id) : undefined)

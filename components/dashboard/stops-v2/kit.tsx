@@ -719,13 +719,15 @@ export interface HeatRow {
 }
 
 /** Тепловая карта по часам суток: строки — дни недели или остановки. */
-export function HourHeatmap({ rows, unit, digits = 0, showValues = true, labelWidth = "2rem", rowTitle }: {
+export function HourHeatmap({ rows, unit, digits = 0, showValues = true, labelWidth = "2rem", rowTitle, onCellClick }: {
     rows: HeatRow[]
     unit: string
     digits?: number
     showValues?: boolean
     labelWidth?: string
     rowTitle?: (row: HeatRow) => string
+    /** Непустая клетка становится кнопкой: номер строки и час. */
+    onCellClick?: (rowIndex: number, hour: number) => void
 }) {
     const max = Math.max(...rows.flatMap((row) => row.values), 0)
     return (
@@ -736,18 +738,28 @@ export function HourHeatmap({ rows, unit, digits = 0, showValues = true, labelWi
                     {Array.from({ length: 24 }, (_, hour) => (
                         <div key={hour} className="pb-0.5 text-center tabular-nums text-muted-foreground">{hour % 3 === 0 ? String(hour).padStart(2, "0") : ""}</div>
                     ))}
-                    {rows.map((row) => (
+                    {rows.map((row, rowIndex) => (
                         <div key={row.key} className="contents">
                             <div className="flex min-w-0 items-center pr-2 text-xs">{row.label}</div>
-                            {row.values.map((value, hour) => (
-                                <div
-                                    key={hour}
-                                    className={cn("flex h-7 items-center justify-center rounded-[4px] tabular-nums", heatClass(value, max))}
-                                    title={`${rowTitle ? rowTitle(row) : row.key}, ${String(hour).padStart(2, "0")}:00–${String(hour + 1).padStart(2, "0")}:00 · ${fmtNum(value, digits)} ${unit}`}
-                                >
-                                    {showValues && value >= (digits > 0 ? 0.05 : 0.5) ? fmtNum(value, digits) : ""}
-                                </div>
-                            ))}
+                            {row.values.map((value, hour) => {
+                                const title = `${rowTitle ? rowTitle(row) : row.key}, ${String(hour).padStart(2, "0")}:00–${String(hour + 1).padStart(2, "0")}:00 · ${fmtNum(value, digits)} ${unit}`
+                                const text = showValues && value >= (digits > 0 ? 0.05 : 0.5) ? fmtNum(value, digits) : ""
+                                const className = cn("flex h-7 items-center justify-center rounded-[4px] tabular-nums", heatClass(value, max))
+                                return onCellClick && value > 0 ? (
+                                    <button
+                                        key={hour}
+                                        type="button"
+                                        className={cn(className, "cursor-pointer transition-shadow hover:ring-2 hover:ring-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary")}
+                                        title={`${title} — показать`}
+                                        aria-label={title}
+                                        onClick={() => onCellClick(rowIndex, hour)}
+                                    >
+                                        {text}
+                                    </button>
+                                ) : (
+                                    <div key={hour} className={className} title={title}>{text}</div>
+                                )
+                            })}
                         </div>
                     ))}
                 </div>
@@ -757,19 +769,21 @@ export function HourHeatmap({ rows, unit, digits = 0, showValues = true, labelWi
     )
 }
 
-export function WeekHourHeatmap({ matrix, unit, digits = 0, showValues = true }: {
+export function WeekHourHeatmap({ matrix, unit, digits = 0, showValues = true, onCellClick }: {
     /** matrix[день недели, 0 — понедельник][час] */
     matrix: number[][]
     unit: string
     digits?: number
     showValues?: boolean
+    /** Нажатие на непустую клетку: день недели (0 — понедельник) и час. */
+    onCellClick?: (dow: number, hour: number) => void
 }) {
     const rows = matrix.map((values, dow) => ({
         key: DOW_LABELS[dow],
         label: <span className={cn("font-medium", dow >= 5 ? "text-foreground" : "text-muted-foreground")}>{DOW_LABELS[dow]}</span>,
         values,
     }))
-    return <HourHeatmap rows={rows} unit={unit} digits={digits} showValues={showValues} />
+    return <HourHeatmap rows={rows} unit={unit} digits={digits} showValues={showValues} onCellClick={onCellClick} />
 }
 
 // ---------------------------------------------------------------- таблица с поиском
