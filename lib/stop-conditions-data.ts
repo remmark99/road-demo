@@ -127,8 +127,8 @@ export async function buildStopConditions(db: Db, start: number, end: number, li
     // Состояние остановки — только датчики: климат и стекло. Урны и видеоаналитика — инциденты.
     const [climate, glass] = await Promise.all([
         readClimate(db, stops.filter(s => s.ip_address).map(s => s.id), start, end),
-        readAll<{ bus_stop_id: number | null; created_at: string; alarm: string | null }>((a, b) => db.from('controller_alerts')
-            .select('bus_stop_id,created_at,alarm').in('category', [...CONDITION_GLASS_CATEGORIES])
+        readAll<{ bus_stop_id: number | null; created_at: string; alarm: string | null; metadata: { glass_episode?: { started_at?: string } } | null }>((a, b) => db.from('controller_alerts')
+            .select('bus_stop_id,created_at,alarm,metadata').in('category', [...CONDITION_GLASS_CATEGORIES])
             .gte('created_at', iso(start - INCIDENT_WINDOW_MS)).lt('created_at', iso(end)).order('id').range(a, b)),
     ])
 
@@ -136,8 +136,10 @@ export async function buildStopConditions(db: Db, start: number, end: number, li
     const of = (stopId: number) => (series[stopId] ??= { climate: [], incidents: [] })
     for (const [stopId, points] of climate) of(stopId).climate = points
     for (const alert of glass) {
-        if (alert.bus_stop_id === null || !alert.alarm || alert.alarm === 'normal') continue
-        of(alert.bus_stop_id).incidents.push(Date.parse(alert.created_at))
+        // Эпизод стекла обновляется на месте: после закрытия alarm = normal, но срабатывание было.
+        const episode = alert.metadata?.glass_episode
+        if (alert.bus_stop_id === null || (!episode && (!alert.alarm || alert.alarm === 'normal'))) continue
+        of(alert.bus_stop_id).incidents.push(Date.parse(episode?.started_at ?? alert.created_at))
     }
     for (const value of Object.values(series)) value.incidents.sort((a, b) => a - b)
 

@@ -70,17 +70,36 @@ export async function deliverScheduledReport(db: SupabaseClient, row: ScheduleRo
     if (budgetExhausted(await readUsageSummary(db, row.user_id))) return fail('Месячный лимит ИИ-ассистента исчерпан')
 
     const period = reportPeriod(row.frequency, at)
-    const question = reportQuestion(period.from, period.to, await readReportPrompt(db, row.user_id))
-    let result: Awaited<ReturnType<typeof generateVectorReport>>
+    const wish = await readReportPrompt(db, row.user_id)
+    const generate = (text: string | null) => generateVectorReport(reportQuestion(period.from, period.to, text), { db, now: Date.now() }, {
+        onUsage: usage => recordUsage(db, row.user_id, { source: 'report', usage }).then(() => undefined),
+    })
+    let question = reportQuestion(period.from, period.to, wish)
+    let result: Awaited<ReturnType<typeof generateVectorReport>> | null = null
     try {
-        result = await generateVectorReport(question, { db, now: Date.now() }, {
-            onUsage: usage => recordUsage(db, row.user_id, { source: 'report', usage }).then(() => undefined),
-        })
+        result = await generate(wish)
     } catch (error) {
         console.error('Scheduled report generation failed:', error instanceof Error ? error.message : 'unknown error')
-        return fail('Ассистент не ответил, отчёт не собран')
     }
-    if (!result.report) return fail('Ассистент не собрал отчёт по этому запросу')
+    // Запрос не про остановки («погода на завтра») модель отклоняет, а сбой бывает разовым.
+    // Человек нажал «Отправить» и ждёт письмо — тогда собираем стандартный сводный отчёт.
+    let standard = false
+    if (!result?.report) {
+        // Модель ответила, но без отчёта — значит, запрос ей не подошёл; при сбое сети это не так.
+        const declined = result !== null
+        try {
+            const retry = await generate(null)
+            if (retry.report) {
+                result = retry
+                question = reportQuestion(period.from, period.to, null)
+                standard = Boolean(wish) && declined
+            }
+        } catch (error) {
+            console.error('Scheduled report fallback failed:', error instanceof Error ? error.message : 'unknown error')
+            return fail('Ассистент не ответил, отчёт не собран')
+        }
+    }
+    if (!result?.report) return fail('Ассистент не собрал отчёт, попробуйте ещё раз')
 
     const messages = [
         { id: randomUUID(), role: 'user', parts: [{ type: 'text', text: question }] },
@@ -133,7 +152,8 @@ export async function deliverScheduledReport(db: SupabaseClient, row: ScheduleRo
     }
     console.info(`Scheduled report: ${done.length} sent, ${failed.length} failed (${row.format}, ${file.content.length} bytes)`)
     if (!done.length) return fail(`Отчёт собран, но не отправлен: ${failed.join('; ')}`)
-    return { status: failed.length ? 'partial' : 'sent', message: `Отправлен ${done.join(' и ')}${failed.length ? `; ${failed.join('; ')}` : ''}` }
+    const note = standard ? '. Запрос не про остановки — отправлен стандартный сводный отчёт' : ''
+    return { status: failed.length ? 'partial' : 'sent', message: `Отправлен ${done.join(' и ')}${failed.length ? `; ${failed.join('; ')}` : ''}${note}` }
 }
 
 /** Запуск с записью результата в строку расписания: его видно в настройках. */
